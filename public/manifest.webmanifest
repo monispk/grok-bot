@@ -1,6 +1,6 @@
 {
-  "name": "grok-bot",
-  "short_name": "grok-bot",
+  "name": "Monis' Grok Test Bot",
+  "short_name": "Grok Test Bot",
   "description": "Fast chat with gpt-oss-120b on Groq",
   "start_url": "/",
   "scope": "/",
@@ -9,7 +9,15 @@
   "background_color": "#0b0d10",
   "theme_color": "#0b0d10",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }

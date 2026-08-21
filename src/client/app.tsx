@@ -152,7 +152,7 @@ export function App() {
     return (
       <div class="gate">
         <form onSubmit={login}>
-          <h1>grok-bot</h1>
+          <h1>Monis' Grok Test Bot</h1>
           <input
             type="password"
             value={password}
@@ -170,22 +170,26 @@ export function App() {
   return (
     <div class="shell">
       <header>
-        <span class="dot" /> <strong>grok-bot</strong>
-        <div class="seg" role="group" aria-label="Reasoning effort">
-          {EFFORTS.map((e) => (
-            <button
-              key={e.id}
-              title={e.hint}
-              class={effort === e.id ? 'on' : ''}
-              onClick={() => setEffort(e.id)}
-            >
-              {e.label}
-            </button>
-          ))}
+        <div class="bar">
+          <span class="dot" /> <strong>Monis' Grok Test Bot</strong>
         </div>
-        <button class="ghost" onClick={reset} disabled={!messages.length && !busy}>
-          Clear
-        </button>
+        <div class="tools">
+          <div class="seg" role="group" aria-label="Reasoning effort">
+            {EFFORTS.map((e) => (
+              <button
+                key={e.id}
+                title={e.hint}
+                class={effort === e.id ? 'on' : ''}
+                onClick={() => setEffort(e.id)}
+              >
+                {e.label}
+              </button>
+            ))}
+          </div>
+          <button class="ghost" onClick={reset} disabled={!messages.length && !busy}>
+            Clear
+          </button>
+        </div>
       </header>
 
       <div class="scroll" ref={scroller}>
