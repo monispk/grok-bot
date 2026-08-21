@@ -100,22 +100,45 @@ npm install && npm run build && npm start
 
 ## Deploy
 
+The service is connected to this repo, so **pushing to `main` deploys**:
+
 ```bash
-railway up
+git push origin main
 ```
 
-Then set the service variables in Railway's dashboard:
+Set the service variables in Railway's dashboard (or `railway variables --set`):
 
 | Variable | Notes |
 | --- | --- |
-| `GROQ_API_KEY` | **required** — set it in the dashboard, never in the repo |
+| `GROQ_API_KEY` | **required** — set it in Railway, never in the repo |
 | `MODEL` | defaults to `openai/gpt-oss-120b` |
 | `SYSTEM_PROMPT` | editable without a redeploy |
 | `ACCESS_PASSWORD` | optional shared-password gate; unset means open to anyone |
 | `GROQ_BASE_URL` | provider swap point (xAI: `https://api.x.ai/v1`) |
 
-`railway.json` already pins the Singapore region, one always-on replica (no cold
-starts) and a `/healthz` check.
+To deploy the working tree instead of a commit, `railway up --service grok-bot`
+(this project needs the explicit `--service`).
+
+### The region field that matters
+
+`railway.json` pins Singapore through **`deploy.multiRegionConfig`**:
+
+```json
+"multiRegionConfig": { "asia-southeast1-eqsg3a": { "numReplicas": 1 } }
+```
+
+`deploy.region` is *not* in Railway's schema. Setting it is accepted silently,
+ignored, and the service defaults to `sfo`. Railway's edge is anycast, so a
+misplaced container still answers Pakistan from Singapore on the handshake and
+the mistake is invisible in connect timings. Verify the real thing instead —
+TTFB on `/healthz` minus `time_appconnect`:
+
+```bash
+curl -o /dev/null -s -w 'tls=%{time_appconnect}s ttfb=%{time_starttransfer}s\n' https://grok-bot-production-b3a4.up.railway.app/healthz
+```
+
+About one client round trip of difference (~105ms) means Singapore. An extra
+~190ms on top means it landed in the US.
 
 ## Endpoints
 
