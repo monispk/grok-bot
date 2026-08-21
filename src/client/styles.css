@@ -1,0 +1,282 @@
+/* Mobile first: the base rules target a phone, and the only media query widens
+   the layout for larger screens. */
+
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --line: #e3e6ea;
+  --fg: #14171a;
+  --muted: #667085;
+  --accent: #2f6fed;
+  --user: #eef2fb;
+  --err: #b42318;
+  --tap: 44px; /* minimum comfortable touch target */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0d10;
+    --panel: #14181d;
+    --line: #232a32;
+    --fg: #e6e9ee;
+    --muted: #8b95a5;
+    --accent: #5b8dff;
+    --user: #1b2431;
+    --err: #ff6b6b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  /* The app owns scrolling; stop the page itself rubber-banding on iOS. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  /* dvh tracks the shrinking viewport as mobile browser chrome hides. */
+  height: 100dvh;
+  max-width: 780px;
+  margin: 0 auto;
+}
+
+/* ---------- header ---------- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-top: calc(8px + var(--safe-t));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+header strong {
+  margin-right: auto;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dot {
+  flex: none;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #22c55e;
+}
+
+.seg {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.seg button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 38px;
+  padding: 0 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.seg button.on { background: var(--accent); color: #fff; }
+
+.ghost {
+  flex: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 10px;
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ghost:disabled { opacity: .4; cursor: default; }
+
+/* ---------- conversation ---------- */
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  /* Keep pull-to-refresh and scroll chaining out of the thread. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-wrap: anywhere;
+}
+
+.empty { margin: auto; text-align: center; color: var(--muted); padding: 0 24px; }
+.empty p { font-size: 17px; margin: 0 0 6px; }
+
+.msg { line-height: 1.6; font-size: 16px; }
+
+.msg.user {
+  align-self: flex-end;
+  background: var(--user);
+  padding: 10px 14px;
+  border-radius: 16px 16px 4px 16px;
+  max-width: 85%;
+  white-space: pre-wrap;
+}
+
+.msg.bot :first-child { margin-top: 0; }
+.msg.bot :last-child { margin-bottom: 0; }
+
+.msg.bot pre {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.msg.bot code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.msg.bot :not(pre) > code {
+  background: var(--panel);
+  padding: 2px 5px;
+  border-radius: 5px;
+}
+
+.msg.bot table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.msg.bot th, .msg.bot td { border: 1px solid var(--line); padding: 6px 10px; }
+
+.think { color: var(--muted); }
+.think::after { content: '…'; animation: blink 1.2s steps(1) infinite; }
+
+@keyframes blink { 50% { opacity: .25; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .think::after { animation: none; }
+}
+
+.err { color: var(--err); font-size: 14px; }
+
+.banner {
+  border: 1px solid var(--err);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+
+/* ---------- composer ---------- */
+
+footer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px 12px;
+  padding-bottom: calc(8px + var(--safe-b));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  /* Must stay >=16px: anything smaller makes iOS Safari zoom on focus. */
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 11px 15px;
+  min-height: var(--tap);
+  max-height: 40dvh;
+}
+
+textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+footer button {
+  flex: none;
+  border: 0;
+  border-radius: 20px;
+  min-height: var(--tap);
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+
+footer button:disabled { opacity: .4; cursor: default; }
+footer button.stop { background: var(--err); }
+
+/* ---------- password gate ---------- */
+
+.gate { display: grid; place-items: center; height: 100dvh; padding: 24px; }
+.gate form { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); }
+.gate h1 { font-size: 19px; margin: 0 0 4px; text-align: center; }
+
+.gate input {
+  font: inherit;
+  font-size: 16px;
+  min-height: var(--tap);
+  padding: 11px 15px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--fg);
+}
+
+.gate button {
+  border: 0;
+  border-radius: 12px;
+  min-height: var(--tap);
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* ---------- wider screens ---------- */
+
+@media (min-width: 640px) {
+  header { padding: 12px 16px; padding-top: calc(12px + var(--safe-t)); gap: 10px; }
+  .scroll { padding: 20px 16px; }
+  footer { padding: 12px 16px; padding-bottom: calc(12px + var(--safe-b)); }
+  .msg { font-size: 15px; }
+  .msg.user { max-width: 80%; }
+}

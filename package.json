@@ -1,0 +1,34 @@
+{
+  "name": "grok-bot",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client -c cyan,magenta \"tsx watch src/server/index.ts\" \"vite\"",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "esbuild src/server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server/index.js",
+    "start": "node dist/server/index.js",
+    "typecheck": "tsc --noEmit",
+    "dev:mock": "npm run build && concurrently -k -n mock,app -c gray,cyan \"node scripts/mock-upstream.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 PORT=3099 node dist/server/index.js\""
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "hono": "^4.6.14",
+    "marked": "^15.0.4",
+    "preact": "^10.25.3",
+    "undici": "^7.2.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.3",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vite-plugin-singlefile": "^2.1.0"
+  }
+}
