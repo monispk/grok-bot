@@ -74,10 +74,17 @@ having to start over. Nothing is ever hard-closed.
 | `license` | type is learner's or full; not expired |
 | `utility_bill` | recent; address present |
 
-The model is not shown these images — gpt-oss-120b has no vision, and it
-shouldn't be judging documents anyway. The OCR API returns fields, **code**
-compares them, and the model is only asked to phrase the outcome:
+**No LLM touches verification.** Documents go to a dedicated OCR API; selfie and
+face match go to the dedicated face APIs. Code compares the results. The model is
+only asked to phrase the outcome:
 *"CNIC ka number aap ke likhay huay number se match nahi kar raha."*
+
+The one genuinely fuzzy comparison is the **name**. Urdu names transliterate
+inconsistently — Muhammad / Mohammad / Mohd, Rehman / Rahman, extra or missing
+middle names. That is a normalised fuzzy string match in code (case-fold, strip
+punctuation, token-set ratio with a tuned threshold), not a judgement call and
+not an LLM. Everything else is exact: CNIC is 13 digits, licence type is one of
+two values, the bill has a date.
 
 ### 4. Deposit and appointment
 
@@ -134,18 +141,28 @@ leaks. That means, before the first real rider:
    the image and code decides; the model phrases the outcome.
 4. **No slot booking.** The rider is simply told the window: Mon–Fri, 12 PM–6 PM.
 
-### Caveat on in-conversation document handling
+### Verification is not the model's job
 
-gpt-oss-120b has no vision. It cannot look at a CNIC photo or a payment
-screenshot, so "the AI checks it" has to mean the same pipeline as every other
-document: OCR extracts the fields, code compares them against what is expected,
-and the model turns the verdict into a Roman Urdu sentence. A deposit screenshot
-needs amount, date and transaction reference pulled out and checked — that is an
-OCR job, not a judgement.
+Confirmed: gpt-oss is not used for document verification at all. OCR reads the
+documents, the existing face-match APIs handle the selfie, and code decides.
+This removes the vision-model question entirely — there is no second provider and
+no second latency budget to plan for.
 
-The alternative is routing image steps to a vision-capable model, which means a
-second provider and a second latency budget. Worth deciding before that step is
-built, not during.
+Choose OCR on real-world rider photos, not clean scans. Accuracy dies on glare,
+low light, a cracked card photographed at an angle in a shop doorway. That is the
+input this will actually receive.
+
+### The branch visit is the human review step
+
+There is no review queue, and none is needed. Every rider must appear at F8
+Markaz or Rawalpindi in person, Mon–Fri 12–6, and staff see the originals there.
+
+So automated checks do not have to be conclusive — they only have to catch
+obvious problems early, while the rider is still in the chat and can retake a
+photo. When OCR confidence is low or a comparison keeps failing, the flow should
+stop retrying after ~3 attempts and say: bring the original document to the
+branch. That is a real resolution, not a dead end, and it keeps a bad photo from
+trapping someone in a loop.
 
 ### Scale, for now
 
