@@ -84,6 +84,18 @@ export function startWarmer() {
   setInterval(ping, 45_000).unref()
 }
 
+/**
+ * Reasoning tokens are billed against max_completion_tokens, so a budget tuned
+ * for a two-sentence answer starves the higher efforts: at 300 the model spent
+ * the whole allowance thinking and returned nothing at all. Each effort gets
+ * room for its reasoning plus the short reply this bot actually gives.
+ */
+const OUTPUT_BUDGET: Record<Effort, number> = {
+  low: 400,
+  medium: 1200,
+  high: 2500,
+}
+
 export async function openCompletion(
   messages: Msg[],
   effort: Effort,
@@ -102,7 +114,7 @@ export async function openCompletion(
       messages: [{ role: 'system', content: SYSTEM }, ...messages],
       stream: true,
       temperature: 0.7,
-      max_completion_tokens: 300,
+      max_completion_tokens: OUTPUT_BUDGET[effort],
       // gpt-oss is a reasoning model. On default effort it burns hundreds of
       // hidden tokens before the first visible one — this is the top TTFT lever.
       reasoning_effort: effort,

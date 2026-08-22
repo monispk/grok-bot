@@ -74,6 +74,7 @@ async function pump(turn: Turn, messages: Msg[], effort: Effort) {
 
     const decoder = new TextDecoder()
     let buf = ''
+    let finishReason: string | null = null
 
     for await (const bytes of res.body) {
       buf += decoder.decode(bytes as Uint8Array, { stream: true })
@@ -91,8 +92,9 @@ async function pump(turn: Turn, messages: Msg[], effort: Effort) {
           let text: string | undefined
           try {
             const json = JSON.parse(payload) as {
-              choices?: { delta?: { content?: string } }[]
+              choices?: { delta?: { content?: string }; finish_reason?: string }[]
             }
+            finishReason = json.choices?.[0]?.finish_reason ?? finishReason
             text = json.choices?.[0]?.delta?.content
           } catch {
             continue
@@ -104,6 +106,19 @@ async function pump(turn: Turn, messages: Msg[], effort: Effort) {
           emit(turn, { type: 'delta', i, t: text })
         }
       }
+    }
+
+    // A turn that ends with nothing to show must say so. Silence reads as a
+    // broken app, and the rider has no way to tell the difference.
+    if (turn.chunks.length === 0) {
+      const message =
+        finishReason === 'length'
+          ? 'Maazrat, jawab poora nahi ho saka. Baraye meherbani "Fast" chun kar dobara poochein.'
+          : 'Maazrat, jawab nahi mil saka. Baraye meherbani dobara koshish karein.'
+      turn.error = message
+      turn.done = true
+      emit(turn, { type: 'error', message })
+      return
     }
 
     turn.done = true
