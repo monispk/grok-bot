@@ -72,10 +72,9 @@ header {
 
 header strong {
   margin-right: auto;
-  font-size: 15px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 1.25;
+  min-width: 0;
 }
 
 .dot {
@@ -370,6 +369,7 @@ footer button.stop { background: var(--err); }
 
 @media (min-width: 640px) {
   header { padding: 12px 16px; padding-top: calc(12px + var(--safe-t)); gap: 10px; }
+  header strong { font-size: 15px; white-space: nowrap; }
   .scroll { padding: 20px 16px; }
   footer { padding: 12px 16px; padding-bottom: calc(12px + var(--safe-b)); }
   .msg { font-size: 15px; }

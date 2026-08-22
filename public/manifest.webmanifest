@@ -1,7 +1,7 @@
 {
-  "name": "Monis' Grok Test Bot",
-  "short_name": "Grok Test Bot",
-  "description": "Fast chat with gpt-oss-120b on Groq",
+  "name": "Foodpanda Delivery Rider Onboarding",
+  "short_name": "Foodpanda Rider",
+  "description": "Apply to become a foodpanda delivery rider",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

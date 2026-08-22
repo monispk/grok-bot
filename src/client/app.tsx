@@ -336,7 +336,7 @@ export function App() {
     return (
       <div class="gate">
         <form onSubmit={login}>
-          <h1>Monis' Grok Test Bot</h1>
+          <h1>Foodpanda Delivery Rider Onboarding</h1>
           <input
             type="password"
             value={password}
@@ -354,7 +354,7 @@ export function App() {
   return (
     <div class="shell">
       <header>
-        <span class="dot" /> <strong>Monis' Grok Test Bot</strong>
+        <span class="dot" /> <strong>Foodpanda Delivery Rider Onboarding</strong>
         <button class="ghost" onClick={reset} disabled={busy}>
           Clear
         </button>

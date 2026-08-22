@@ -48,8 +48,15 @@ export function warmOcr() {
 }
 
 export async function read(bytes: Uint8Array, mime: string): Promise<Reading | null> {
-  // PDFs are not images; rendering one would need a whole extra toolchain.
-  if (!OCR_ENABLED || mime === 'application/pdf') return null
+  if (!OCR_ENABLED) return null
+
+  // A PDF with its text layer intact beats OCR outright — exact characters and
+  // exact positions. One with only a scan inside returns null and is accepted
+  // unchecked, same as before.
+  if (mime === 'application/pdf') {
+    const { readPdf } = await import('./pdf.ts')
+    return readPdf(bytes)
+  }
 
   try {
     const svc = await service()
