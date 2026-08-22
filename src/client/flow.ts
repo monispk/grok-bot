@@ -15,7 +15,8 @@ export type Step = {
   wrong: string
 }
 
-const CLIP = 'Neeche clip (📎) ka nishan daba kar tasveer chunein.'
+const CLIP =
+  'Neeche camera ka nishan daba kar tasveer khenchein, ya clip ka nishan daba kar file chunein.'
 
 /**
  * The application sequence. Code walks this list; the model never sees it and

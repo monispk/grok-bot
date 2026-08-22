@@ -238,7 +238,8 @@ header strong {
 
 .hidden { display: none; }
 
-.attach {
+.attach,
+.camera {
   flex: none;
   width: var(--tap);
   height: var(--tap);
@@ -251,7 +252,19 @@ header strong {
   cursor: pointer;
 }
 
-.attach:disabled { opacity: .45; cursor: default; }
+.camera {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.attach:disabled,
+.camera:disabled { opacity: .45; cursor: default; }
+
+/* A pointer that hovers precisely is a desktop, where capture does nothing. */
+@media (hover: hover) and (pointer: fine) {
+  .camera { display: none; }
+}
 
 .photo.doc { max-width: 240px; }
 

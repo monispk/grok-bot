@@ -9,6 +9,7 @@ import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
 const HISTORY_WINDOW = 12
 const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.gif,.pdf'
+const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
@@ -28,6 +29,7 @@ export function App() {
   const abort = useRef<AbortController | null>(null)
   const scroller = useRef<HTMLDivElement | null>(null)
   const picker = useRef<HTMLInputElement | null>(null)
+  const camera = useRef<HTMLInputElement | null>(null)
 
   const busy = streaming !== null || working
   const current = STEPS[step]
@@ -433,6 +435,39 @@ export function App() {
             if (f) void onFile(f)
           }}
         />
+        {/* capture="environment" opens the rear camera straight away on a phone.
+            Desktop browsers ignore it, so the button is hidden there. */}
+        <input
+          ref={camera}
+          class="hidden"
+          type="file"
+          accept={CAMERA_ACCEPT}
+          capture="environment"
+          onChange={(e) => {
+            const el = e.target as HTMLInputElement
+            const f = el.files?.[0]
+            el.value = ''
+            if (f) void onFile(f)
+          }}
+        />
+        <button
+          class="camera"
+          aria-label="Tasveer khenchein"
+          disabled={busy}
+          onClick={() => camera.current?.click()}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+            <circle cx="12" cy="13.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7" />
+          </svg>
+        </button>
+
         <button
           class="attach"
           aria-label="Tasveer ya file bhejein"
