@@ -197,6 +197,58 @@ header {
 
 .msg.bot th, .msg.bot td { border: 1px solid var(--line); padding: 6px 10px; }
 
+/* ---------- attachments ---------- */
+
+.msg.media { max-width: 88%; }
+
+.photo {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.voice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 8px 14px 8px 8px;
+  max-width: 320px;
+}
+
+.voice .play {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+}
+
+.voice .scrub {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.voice .time {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .think { color: var(--muted); }
 .think::after { content: '…'; animation: blink 1.2s steps(1) infinite; }
 

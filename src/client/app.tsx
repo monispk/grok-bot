@@ -3,6 +3,8 @@ import { render as renderMarkdown } from './markdown.ts'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
 import { runTurn, warm, type Effort } from './stream.ts'
+import { Picture, VoiceNote } from './media.tsx'
+import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
 const EFFORTS: { id: Effort; label: string; hint: string }[] = [
   { id: 'low', label: 'Fast', hint: 'Least thinking, lowest latency' },
@@ -15,7 +17,10 @@ const EFFORTS: { id: Effort; label: string; hint: string }[] = [
 const HISTORY_WINDOW = 12
 
 export function App() {
-  const [messages, setMessages] = useState<Message[]>(() => store.load())
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const saved = store.load()
+    return saved.length ? saved : WELCOME
+  })
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +80,7 @@ export function App() {
     let acc = ''
 
     void runTurn(
-      next.slice(-HISTORY_WINDOW),
+      forModel(next).slice(-HISTORY_WINDOW),
       effort,
       {
         onDelta: (t) => {
@@ -119,9 +124,9 @@ export function App() {
     abort.current?.abort()
     abort.current = null
     setStreaming(null)
-    setMessages([])
-    setError(null)
     store.clear()
+    setMessages(WELCOME)
+    setError(null)
   }, [])
 
   const login = useCallback(
@@ -144,7 +149,12 @@ export function App() {
   )
 
   const rendered = useMemo(
-    () => messages.map((m) => (m.role === 'assistant' ? renderMarkdown(m.content) : null)),
+    () =>
+      messages.map((m) =>
+        m.role === 'assistant' && (!m.kind || m.kind === 'text')
+          ? renderMarkdown(m.content)
+          : null,
+      ),
     [messages],
   )
 
@@ -200,8 +210,20 @@ export function App() {
           </div>
         )}
 
-        {messages.map((m, i) =>
-          m.role === 'user' ? (
+        {messages.map((m, i) => {
+          if (m.kind === 'image')
+            return (
+              <div key={i} class="msg bot media">
+                <Picture src={m.src ?? ''} alt="Foodpanda delivery rider" />
+              </div>
+            )
+          if (m.kind === 'audio')
+            return (
+              <div key={i} class="msg bot media">
+                <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
+              </div>
+            )
+          return m.role === 'user' ? (
             <div key={i} class="msg user">
               {m.content}
             </div>
@@ -211,8 +233,8 @@ export function App() {
               class="msg bot"
               dangerouslySetInnerHTML={{ __html: rendered[i] ?? '' }}
             />
-          ),
-        )}
+          )
+        })}
 
         {streaming !== null && (
           <div class="msg bot">

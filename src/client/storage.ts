@@ -1,5 +1,13 @@
 export type Role = 'user' | 'assistant'
-export type Message = { role: Role; content: string }
+export type Kind = 'text' | 'image' | 'audio'
+export type Message = {
+  role: Role
+  content: string
+  /** Attachments render as bubbles but are never sent to the model. */
+  kind?: Kind
+  src?: string
+  sources?: { src: string; type: string }[]
+}
 
 const KEY = 'grok-bot:history'
 const MAX = 60
@@ -10,12 +18,14 @@ export function load(): Message[] {
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (m): m is Message =>
-        !!m &&
-        typeof (m as Message).content === 'string' &&
-        ((m as Message).role === 'user' || (m as Message).role === 'assistant'),
-    )
+    return parsed.filter((m): m is Message => {
+      const v = m as Message | null
+      return (
+        !!v &&
+        typeof v.content === 'string' &&
+        (v.role === 'user' || v.role === 'assistant')
+      )
+    })
   } catch {
     return []
   }
