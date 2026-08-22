@@ -10,9 +10,17 @@ export const OCR_ENABLED = process.env.OCR_ENABLED !== 'false'
 export type Word = { text: string; x: number; y: number; w: number; h: number }
 export type Reading = { lines: string[]; words: Word[] }
 
+/**
+ * Below this, the page was not read — almost always a tilted or blurred photo.
+ * The detector is markedly sensitive to rotation: five degrees took one bill
+ * from 183 words to 1, and deskewing first did not recover it. So the rider is
+ * asked to reshoot rather than being given a wrong answer from a partial read.
+ */
+export const SPARSE_WORDS = 12
+
 type Service = {
   recognize: (
-    image: ArrayBuffer,
+    image: ArrayBuffer | unknown,
     options?: { flatten?: boolean },
   ) => Promise<{
     text?: string

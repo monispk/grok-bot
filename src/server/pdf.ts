@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import type { Reading, Word } from './ocr.ts'
 
 /**
@@ -9,6 +10,20 @@ import type { Reading, Word } from './ocr.ts'
  * A PDF that is only a scan has no text layer. That returns null and the caller
  * accepts the document unchecked.
  */
+/**
+ * Resolved from the package itself rather than a relative guess, because the
+ * path differs between running the sources and running the bundle.
+ */
+function standardFonts(): string | undefined {
+  try {
+    const req = createRequire(import.meta.url)
+    const entry = req.resolve('pdfjs-dist/legacy/build/pdf.mjs')
+    return new URL('../../standard_fonts/', `file://${entry}`).href
+  } catch {
+    return undefined
+  }
+}
+
 export async function readPdf(bytes: Uint8Array): Promise<Reading | null> {
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
@@ -18,10 +33,8 @@ export async function readPdf(bytes: Uint8Array): Promise<Reading | null> {
       // data still has to be locatable or every parse logs a warning.
       disableFontFace: true,
       useSystemFonts: false,
-      standardFontDataUrl: new URL(
-        '../../node_modules/pdfjs-dist/standard_fonts/',
-        import.meta.url,
-      ).href,
+      standardFontDataUrl: standardFonts(),
+      verbosity: 0,
     }).promise
 
     const words: Word[] = []

@@ -8,6 +8,10 @@ export type Message = {
   src?: string
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
+  /** Transient: identifies an optimistic bubble so it can be updated in place. */
+  tmp?: string
+  /** Transient: the upload is still in flight. */
+  pending?: boolean
 }
 
 export type FlowState = {
@@ -75,7 +79,14 @@ export function load(): Message[] {
 
 export function save(messages: Message[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(messages.slice(-MAX)))
+    // blob: URLs die with the page, and a half-finished upload should not come
+    // back as pending. Persist the bubble, drop what cannot survive a reload.
+    const clean = messages.slice(-MAX).map((m) =>
+      m.src?.startsWith('blob:') || m.pending
+        ? { ...m, src: m.src?.startsWith('blob:') ? undefined : m.src, pending: false, tmp: undefined }
+        : m,
+    )
+    localStorage.setItem(KEY, JSON.stringify(clean))
   } catch {
     /* private mode or quota — history is a convenience, not a requirement */
   }

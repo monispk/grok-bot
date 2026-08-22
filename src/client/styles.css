@@ -310,6 +310,31 @@ header strong {
 
 .gpsbar button:disabled { opacity: .5; cursor: default; }
 
+.msg.media { position: relative; }
+
+.msg.pending .photo,
+.msg.pending .filecard { opacity: .45; }
+
+.spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 3px solid rgba(255, 255, 255, .55);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  z-index: 1;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
+
 .think { color: var(--muted); }
 .think::after { content: '…'; animation: blink 1.2s steps(1) infinite; }
 

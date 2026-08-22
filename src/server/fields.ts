@@ -32,17 +32,23 @@ const yr = (n: number) => (n > 99 ? n : n <= 79 ? 2000 + n : 1900 + n)
  * Dates arrive as 21 AUG 26, 12.08.2031, 12-MAY-30 and 24/08/26, and OCR sprays
  * spaces through them ("12- MAY-30", "08-M AY-70"), so spacing is stripped first.
  */
+/** OCR routinely returns O for 0, l/I for 1, S for 5 and B for 8 in small print. */
+const digits = (t: string) =>
+  t.replace(/[olisb]/g, (c) => ({ o: '0', l: '1', i: '1', s: '5', b: '8' })[c] ?? c)
+
 export function parseDate(raw: string): { iso: string; date: Date } | null {
   const s = raw.replace(/\s+/g, '').toLowerCase()
 
-  let m = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$/)
+  let m = digits(s).match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})$/)
   if (m) {
     const d = new Date(Date.UTC(yr(+m[3]!), +m[2]! - 1, +m[1]!))
     return Number.isNaN(d.getTime()) ? null : { iso: d.toISOString().slice(0, 10), date: d }
   }
 
-  m = s.match(/^(\d{1,2})[.\-/]?([a-z]{3})[a-z]*[.\-/]?(\d{2,4})$/)
+  // Only the day and year are digit-corrected; the month name must stay letters.
+  m = s.match(/^([0-9olisb]{1,2})[.\-/]?([a-z]{3})[a-z]*[.\-/]?([0-9olisb]{2,4})$/)
   if (m && MONTHS[m[2]!]) {
+    m = [m[0], digits(m[1]!), m[2]!, digits(m[3]!)] as RegExpMatchArray
     const d = new Date(Date.UTC(yr(+m[3]!), MONTHS[m[2]!]! - 1, +m[1]!))
     return Number.isNaN(d.getTime()) ? null : { iso: d.toISOString().slice(0, 10), date: d }
   }
@@ -83,7 +89,18 @@ function labelled(lines: string[], label: string): string | null {
  */
 export function dateUnder(words: Word[], label: string): string | null {
   const want = squash(label)
-  const labels = words.filter((w) => squash(w.text) === want)
+
+  // Utilities word this differently — DUE DATE, Due Date:, LAST DATE OF PAYMENT.
+  // Accept a label that ends with the phrase, but never one qualified by
+  // "after"/"within"/"payable", which is how a bill names its late-payment date.
+  const isLabel = (t: string) => {
+    const q = squash(t)
+    if (q === want) return true
+    if (!q.endsWith(want)) return false
+    return !/after|within|payable|surcharge/.test(q)
+  }
+
+  const labels = words.filter((w) => isLabel(w.text))
   let best: { text: string; dy: number } | null = null
 
   for (const label of labels) {
@@ -98,6 +115,54 @@ export function dateUnder(words: Word[], label: string): string | null {
   }
   return best?.text ?? null
 }
+
+/**
+ * Reads a left-aligned block of lines under a label — the consumer name and
+ * address on a bill. The x tolerance is deliberately tight: the label row also
+ * spans the sub-division column, whose values would otherwise be swept in.
+ */
+export function columnUnder(words: Word[], labels: string[], maxDyFactor = 4): string[] {
+  const wanted = labels.map(squash)
+  const anchor = words.find((w) => {
+    const q = squash(w.text)
+    return wanted.some((want) => q.includes(want))
+  })
+  if (!anchor) return []
+
+  // Everything is measured against the label's own height, so the rules hold at
+  // any photo resolution rather than only at the size this was written against.
+  const xSlack = Math.max(anchor.h * 1.5, 12)
+  const maxDy = anchor.h * maxDyFactor
+
+  const below = words
+    .filter(
+      (w) =>
+        w.y > anchor.y &&
+        w.y - anchor.y <= maxDy &&
+        w.x <= anchor.x + xSlack &&
+        w.x + w.w > anchor.x - xSlack / 2,
+    )
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+
+  const rows: string[] = []
+  let baseline = Number.NaN
+  let row: string[] = []
+  for (const w of below) {
+    if (Number.isNaN(baseline) || Math.abs(w.y - baseline) <= Math.max(4, w.h * 0.7)) {
+      if (Number.isNaN(baseline)) baseline = w.y
+      row.push(w.text)
+    } else {
+      rows.push(row.join(' '))
+      baseline = w.y
+      row = [w.text]
+    }
+  }
+  if (row.length) rows.push(row.join(' '))
+  return rows.map((r) => r.trim()).filter(Boolean)
+}
+
+/** A proof of residence has to be recent to prove anything. */
+const BILL_MAX_AGE_DAYS = 92
 
 const RETRY: Record<DocKind, string> = {
   cnic_front:
@@ -162,12 +227,33 @@ export function inspect(kind: DocKind, reading: Reading): Inspection {
     if (!fields.cnic) missing.push('cnic number')
   }
 
+  let override: string | null = null
+
   if (kind === 'bill') {
     const due = dateUnder(reading.words, 'Due Date')
     const parsed = due ? parseDate(due) : null
     fields.dueDate = parsed?.iso ?? null
     fields.dueDateRaw = due
+
+    const block = columnUnder(reading.words, [
+      'name address',
+      'name and address',
+      'consumer name',
+      'nameaddress',
+    ])
+    fields.billName = block[0] ?? null
+    fields.billAddress = block.slice(1).join(', ') || null
+
     if (!parsed) missing.push('due date')
+    else {
+      const ageDays = (Date.now() - parsed.date.getTime()) / 86_400_000
+      fields.billAgeDays = String(Math.round(ageDays))
+      if (ageDays > BILL_MAX_AGE_DAYS) {
+        missing.push('bill older than three months')
+        override =
+          'Ye bill teen mahine se purana hai. Baraye meherbani pichlay teen mahine ka bill bhejein.'
+      }
+    }
   }
 
   return {
@@ -175,6 +261,6 @@ export function inspect(kind: DocKind, reading: Reading): Inspection {
     kind,
     fields,
     missing,
-    reason: missing.length === 0 ? null : RETRY[kind],
+    reason: missing.length === 0 ? null : (override ?? RETRY[kind]),
   }
 }

@@ -186,6 +186,29 @@ export function App() {
         return
       }
 
+      // Show the photo straight away. A camera shot on a slow connection takes
+      // seconds to upload and verify, and a rider who sees nothing assumes the
+      // button did not work and shoots again.
+      const tmp = crypto.randomUUID()
+      const localPreview = URL.createObjectURL(file)
+      setMessages((m) => [
+        ...m,
+        {
+          role: 'user',
+          content: '',
+          kind: 'document',
+          src: localPreview,
+          tmp,
+          pending: true,
+          doc: { name: file.name, mime: file.type, size: file.size },
+        },
+      ])
+
+      const settle = (src: string | undefined) =>
+        setMessages((m) =>
+          m.map((x) => (x.tmp === tmp ? { ...x, src, pending: false, tmp: undefined } : x)),
+        )
+
       setWorking(true)
       try {
         const body = new FormData()
@@ -208,41 +231,32 @@ export function App() {
           }
         }
         if (!res.ok || !data.id) {
+          settle(undefined)
           setError(data.error ?? 'File bhejne mein masla hua. Dobara koshish karein.')
           return
         }
 
-        const shown: Message = {
-          role: 'user',
-          content: '',
-          kind: 'document',
-          src: `/api/upload/${data.id}`,
-          doc: {
-            name: data.name ?? file.name,
-            mime: data.mime ?? file.type,
-            size: data.size ?? file.size,
-          },
-        }
+        settle(`/api/upload/${data.id}`)
+        URL.revokeObjectURL(localPreview)
 
-        // The document was read and is not what this step asked for. Show it,
-        // say why, and ask again — the step does not move.
+        // The document was read and is not what this step asked for. Say why and
+        // ask again — the step does not move.
         if (data.verification && data.verification.pass === false) {
-          setMessages((m) => [
-            ...m,
-            shown,
+          say(
             bot(
               data.verification?.reason ??
                 'Ye tasveer saaf nahi hai. Baraye meherbani dobara bhejein.',
             ),
-          ])
+          )
           return
         }
 
         // Remember the CNIC from the first document that carries one, so every
         // later document is checked against it.
         const seen = data.verification?.fields?.cnic
-        advanceFrom(step, [shown, thanksDoc()], seen && !cnic ? { cnic: seen } : {})
+        advanceFrom(step, [thanksDoc()], seen && !cnic ? { cnic: seen } : {})
       } catch {
+        settle(undefined)
         setError('File bhejne mein masla hua. Dobara koshish karein.')
       } finally {
         setWorking(false)
@@ -379,7 +393,10 @@ export function App() {
             )
           if (m.kind === 'document')
             return (
-              <div key={i} class="msg user media">
+              <div key={i} class={`msg user media${m.pending ? ' pending' : ''}`}>
+                {m.pending && (
+                  <span class="spinner" role="status" aria-label="Tasveer check ho rahi hai" />
+                )}
                 <DocumentBubble
                   src={m.src ?? ''}
                   name={m.doc?.name ?? 'document'}

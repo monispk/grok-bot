@@ -14,7 +14,7 @@ import {
 import { accept, get as getUpload } from './uploads.ts'
 import { inspect, type DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
-import { read, warmOcr } from './ocr.ts'
+import { read, SPARSE_WORDS, warmOcr } from './ocr.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
 
 const app = new Hono()
@@ -150,6 +150,23 @@ app.post('/api/upload', guard, async (c) => {
 
   if (kind) {
     const reading = await read(bytes, mime)
+
+    // Almost nothing was read. That is a tilted, blurred or dark photo, and
+    // guessing from a partial read is worse than asking for another one.
+    if (reading && reading.words.length > 0 && reading.words.length < SPARSE_WORDS) {
+      return c.json({
+        id, name, mime, size,
+        verification: {
+          pass: false,
+          checked: true,
+          reason:
+            'Tasveer saaf nahi aayi. Camera ko seedha rakh kar, achi roshni mein dobara khenchein.',
+          missing: ['unreadable'],
+          fields: {},
+        },
+      })
+    }
+
     if (reading) {
       const found = inspect(kind, reading)
       let pass = found.pass
