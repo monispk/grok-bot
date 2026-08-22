@@ -12,7 +12,8 @@
     "build:server": "esbuild src/server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
-    "dev:mock": "npm run build && concurrently -k -n mock,app -c gray,cyan \"node scripts/mock-upstream.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 PORT=3099 node dist/server/index.js\""
+    "dev:mock": "npm run build && concurrently -k -n mock,app -c gray,cyan \"node scripts/mock-upstream.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 PORT=3099 node dist/server/index.js\"",
+    "test": "tsx --test src/server/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
