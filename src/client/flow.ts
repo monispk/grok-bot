@@ -2,9 +2,13 @@ import type { Message } from './storage.ts'
 
 export type StepKind = 'text' | 'upload' | 'gps'
 
+export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
+
 export type Step = {
   id: string
   kind: StepKind
+  /** Which document the server should verify this upload as. */
+  doc?: DocKind
   /** The canned question. No model call — instant, and always identical. */
   ask: string
   /** Said when the wrong sort of input arrives, before re-asking. */
@@ -28,24 +32,28 @@ export const STEPS: Step[] = [
   {
     id: 'license_front',
     kind: 'upload',
+    doc: 'license',
     ask: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.',
     wrong: `Iske liye driving license ke front ki tasveer chahiye. ${CLIP}`,
   },
   {
     id: 'cnic_front',
     kind: 'upload',
+    doc: 'cnic_front',
     ask: 'Ab apne CNIC ke saamne wale hissay (front) ki tasveer bhejein.',
     wrong: `Iske liye CNIC ke front ki tasveer chahiye. ${CLIP}`,
   },
   {
     id: 'cnic_back',
     kind: 'upload',
+    doc: 'cnic_back',
     ask: 'Ab apne CNIC ke peechay wale hissay (back) ki tasveer bhejein.',
     wrong: `Iske liye CNIC ke back ki tasveer chahiye. ${CLIP}`,
   },
   {
     id: 'utility_bill',
     kind: 'upload',
+    doc: 'bill',
     ask: 'Ab apne ghar ka utility bill (bijli, gas ya paani) ki tasveer bhejein jis par aap ke rehne ka pata likha ho. Bill kisi aur ke naam par ho to bhi theek hai.',
     wrong: `Iske liye utility bill ki tasveer chahiye jis par pata likha ho. ${CLIP}`,
   },

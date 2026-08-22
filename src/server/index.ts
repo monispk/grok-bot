@@ -12,6 +12,9 @@ import {
   type Msg,
 } from './provider.ts'
 import { accept, get as getUpload } from './uploads.ts'
+import { inspect, type DocKind } from './fields.ts'
+import { compareNames } from './names.ts'
+import { read, warmOcr } from './ocr.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
 
 const app = new Hono()
@@ -118,6 +121,10 @@ async function relay(
   unsubscribe()
 }
 
+const DOC_KINDS: DocKind[] = ['cnic_front', 'cnic_back', 'license', 'bill']
+const asDocKind = (v: unknown): DocKind | null =>
+  typeof v === 'string' && (DOC_KINDS as string[]).includes(v) ? (v as DocKind) : null
+
 app.post('/api/upload', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
 
@@ -131,7 +138,50 @@ app.post('/api/upload', guard, async (c) => {
   if (!result.ok) return c.json({ error: result.reason }, 400)
 
   const { id, name, mime, size } = result.upload
-  return c.json({ id, name, mime, size })
+  const kind = asDocKind(body?.['kind'])
+  const expectedName = typeof body?.['expectedName'] === 'string' ? body['expectedName'] : ''
+  const expectedCnic =
+    typeof body?.['expectedCnic'] === 'string' ? body['expectedCnic'].replace(/\D/g, '') : ''
+
+  // Verification never blocks on its own failure. If OCR is off, or the upload
+  // is a PDF we cannot rasterise, the document is accepted and the branch checks
+  // the original — the rider is not punished for our pipeline.
+  let verification: Record<string, unknown> = { pass: true, checked: false }
+
+  if (kind) {
+    const reading = await read(bytes, mime)
+    if (reading) {
+      const found = inspect(kind, reading)
+      let pass = found.pass
+      let reason = found.reason
+
+      const cnic = typeof found.fields.cnic === 'string' ? found.fields.cnic : null
+      if (pass && expectedCnic && cnic && cnic !== expectedCnic) {
+        // 13 exact digits either match or they do not — worth blocking on.
+        pass = false
+        reason =
+          'Is document par CNIC number aap ke CNIC se match nahi kar raha. Baraye meherbani sahi document bhejein.'
+      }
+
+      // Names are never blocking: Roman Urdu spelling varies too much to refuse
+      // a rider over it. Recorded so the branch can look.
+      const docName = typeof found.fields.name === 'string' ? found.fields.name : null
+      const nameCheck =
+        expectedName && docName ? compareNames(expectedName, docName) : null
+
+      verification = {
+        pass,
+        checked: true,
+        reason,
+        missing: found.missing,
+        fields: found.fields,
+        nameVerdict: nameCheck?.verdict ?? null,
+        nameScore: nameCheck?.score ?? null,
+      }
+    }
+  }
+
+  return c.json({ id, name, mime, size, verification })
 })
 
 app.get('/api/upload/:id', guard, (c) => {
@@ -221,6 +271,7 @@ app.use('/*', serveStatic({ root: './dist/client' }))
 app.get('*', serveStatic({ path: './dist/client/index.html' }))
 
 startWarmer()
+warmOcr()
 
 const port = Number(process.env.PORT ?? 3099)
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {

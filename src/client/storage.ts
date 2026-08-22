@@ -10,21 +10,28 @@ export type Message = {
   doc?: { name: string; mime: string; size: number }
 }
 
-export type FlowState = { step: number; firstName: string }
+export type FlowState = {
+  step: number
+  firstName: string
+  fullName: string
+  cnic: string
+}
 
 const STATE_KEY = 'grok-bot:flow'
 
 export function loadState(): FlowState {
   try {
     const raw = localStorage.getItem(STATE_KEY)
-    if (!raw) return { step: 0, firstName: '' }
+    if (!raw) return { step: 0, firstName: '', fullName: '', cnic: '' }
     const v = JSON.parse(raw) as Partial<FlowState>
     return {
       step: typeof v.step === 'number' && v.step >= 0 ? v.step : 0,
       firstName: typeof v.firstName === 'string' ? v.firstName : '',
+      fullName: typeof v.fullName === 'string' ? v.fullName : '',
+      cnic: typeof v.cnic === 'string' ? v.cnic : '',
     }
   } catch {
-    return { step: 0, firstName: '' }
+    return { step: 0, firstName: '', fullName: '', cnic: '' }
   }
 }
 

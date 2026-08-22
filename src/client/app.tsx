@@ -17,7 +17,7 @@ export function App() {
     const saved = store.load()
     return saved.length ? saved : WELCOME
   })
-  const [{ step, firstName }, setFlow] = useState(() => store.loadState())
+  const [{ step, firstName, fullName, cnic }, setFlow] = useState(() => store.loadState())
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -42,7 +42,10 @@ export function App() {
   }, [])
 
   useEffect(() => store.save(messages), [messages])
-  useEffect(() => store.saveState({ step, firstName }), [step, firstName])
+  useEffect(
+    () => store.saveState({ step, firstName, fullName, cnic }),
+    [step, firstName, fullName, cnic],
+  )
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -62,10 +65,17 @@ export function App() {
 
   /** Move to the next step, or finish. Called only once the input was accepted. */
   const advanceFrom = useCallback(
-    (i: number, extra: Message[], name: string) => {
+    (i: number, extra: Message[], patch: Partial<store.FlowState> = {}) => {
       const next = STEPS[i + 1]
-      setMessages((m) => [...m, ...extra, ...(next ? [bot(next.ask)] : finished(name))])
-      setFlow({ step: i + 1, firstName: name })
+      setFlow((f) => {
+        const merged = { ...f, ...patch, step: i + 1 }
+        setMessages((m) => [
+          ...m,
+          ...extra,
+          ...(next ? [bot(next.ask)] : finished(merged.firstName)),
+        ])
+        return merged
+      })
     },
     [],
   )
@@ -148,7 +158,10 @@ export function App() {
 
       if (named.is_name) {
         const first = (named.first_name ?? '').trim()
-        advanceFrom(step, [thanksName(first)], first)
+        advanceFrom(step, [thanksName(first)], {
+          firstName: first,
+          fullName: (named.full_name ?? text).trim(),
+        })
       } else {
         await runFaq(withUser)
         say(bot(current.ask))
@@ -175,6 +188,10 @@ export function App() {
       try {
         const body = new FormData()
         body.append('file', file)
+        if (current.doc) body.append('kind', current.doc)
+        if (fullName) body.append('expectedName', fullName)
+        if (cnic) body.append('expectedCnic', cnic)
+
         const res = await fetch('/api/upload', { method: 'POST', body })
         const data = (await res.json()) as {
           id?: string
@@ -182,39 +199,54 @@ export function App() {
           mime?: string
           size?: number
           error?: string
+          verification?: {
+            pass?: boolean
+            reason?: string | null
+            fields?: Record<string, string | null>
+          }
         }
         if (!res.ok || !data.id) {
           setError(data.error ?? 'File bhejne mein masla hua. Dobara koshish karein.')
           return
         }
 
-        // Verification APIs slot in here. Until then every document is accepted,
-        // but a document must genuinely have arrived for the step to move.
-        advanceFrom(
-          step,
-          [
-            {
-              role: 'user',
-              content: '',
-              kind: 'document',
-              src: `/api/upload/${data.id}`,
-              doc: {
-                name: data.name ?? file.name,
-                mime: data.mime ?? file.type,
-                size: data.size ?? file.size,
-              },
-            },
-            thanksDoc(),
-          ],
-          firstName,
-        )
+        const shown: Message = {
+          role: 'user',
+          content: '',
+          kind: 'document',
+          src: `/api/upload/${data.id}`,
+          doc: {
+            name: data.name ?? file.name,
+            mime: data.mime ?? file.type,
+            size: data.size ?? file.size,
+          },
+        }
+
+        // The document was read and is not what this step asked for. Show it,
+        // say why, and ask again — the step does not move.
+        if (data.verification && data.verification.pass === false) {
+          setMessages((m) => [
+            ...m,
+            shown,
+            bot(
+              data.verification?.reason ??
+                'Ye tasveer saaf nahi hai. Baraye meherbani dobara bhejein.',
+            ),
+          ])
+          return
+        }
+
+        // Remember the CNIC from the first document that carries one, so every
+        // later document is checked against it.
+        const seen = data.verification?.fields?.cnic
+        advanceFrom(step, [shown, thanksDoc()], seen && !cnic ? { cnic: seen } : {})
       } catch {
         setError('File bhejne mein masla hua. Dobara koshish karein.')
       } finally {
         setWorking(false)
       }
     },
-    [current, step, firstName, say, advanceFrom],
+    [current, step, fullName, cnic, say, advanceFrom],
   )
 
   const onGps = useCallback(() => {
@@ -238,7 +270,6 @@ export function App() {
             },
             thanksGps(),
           ],
-          firstName,
         )
       },
       () => {
@@ -251,7 +282,7 @@ export function App() {
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
     )
-  }, [current, step, firstName, say, advanceFrom])
+  }, [current, step, say, advanceFrom])
 
   const stop = useCallback(() => {
     abort.current?.abort()
@@ -270,7 +301,7 @@ export function App() {
     store.clear()
     store.clearState()
     setMessages(WELCOME)
-    setFlow({ step: 0, firstName: '' })
+    setFlow({ step: 0, firstName: '', fullName: '', cnic: '' })
     setError(null)
   }, [])
 
