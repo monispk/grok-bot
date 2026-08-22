@@ -55,9 +55,9 @@ function png(size, shade) {
   ])
 }
 
-const BG = [11, 13, 16]
-const BUBBLE = [91, 141, 255]
-const DOT = [34, 197, 94]
+// foodpanda magenta, PANTONE 214 C
+const BG = [215, 15, 100]
+const WHITE = [255, 255, 255]
 
 // Signed distance to a rounded rectangle, used for cheap anti-aliasing.
 const roundRect = (px, py, x0, y0, x1, y1, r) => {
@@ -68,24 +68,41 @@ const roundRect = (px, py, x0, y0, x1, y1, r) => {
 
 const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t))
 
+const circle = (u, v, cx, cy, r) => Math.hypot(u - cx, v - cy) - r
+
+const ellipse = (u, v, cx, cy, rx, ry) =>
+  Math.hypot((u - cx) / rx, (v - cy) / ry) - 1
+
+/** The panda mark: white head and ears on brand pink, pink features knocked out. */
 function shade(x, y, s) {
   const u = x / s
   const v = y / s
   let color = BG
 
-  // speech bubble
-  const d = roundRect(u, v, 0.17, 0.2, 0.83, 0.66, 0.13)
-  const tail =
-    v > 0.62 && v < 0.8 && u > 0.28 && u < 0.28 + (0.8 - v) * 1.15 ? -0.01 : 1
-  const inBubble = Math.min(d, tail)
-  color = mix(color, BUBBLE, 1 - Math.min(1, Math.max(0, inBubble * s * 0.5)))
+  const head = Math.min(
+    circle(u, v, 0.5, 0.54, 0.30),
+    circle(u, v, 0.28, 0.29, 0.10),
+    circle(u, v, 0.72, 0.29, 0.10),
+  )
+  color = mix(color, WHITE, 1 - Math.min(1, Math.max(0, head * s * 0.6)))
 
-  // three "typing" dots
-  for (const cx of [0.35, 0.5, 0.65]) {
-    const dd = Math.hypot(u - cx, v - 0.43) - 0.052
-    const t = 1 - Math.min(1, Math.max(0, dd * s * 0.5))
-    if (t > 0) color = mix(color, cx === 0.65 ? DOT : BG, t)
+  // Eye patches, pupils knocked back to white, then nose and smile.
+  for (const cx of [0.385, 0.615]) {
+    const patch = ellipse(u, v, cx, 0.50, 0.105, 0.125)
+    color = mix(color, BG, 1 - Math.min(1, Math.max(0, patch * s * 0.35)))
+    const pupil = circle(u, v, cx, 0.505, 0.042)
+    color = mix(color, WHITE, 1 - Math.min(1, Math.max(0, pupil * s * 0.6)))
   }
+  const nose = ellipse(u, v, 0.5, 0.615, 0.055, 0.040)
+  color = mix(color, BG, 1 - Math.min(1, Math.max(0, nose * s * 0.35)))
+
+  const smile = Math.max(
+    circle(u, v, 0.5, 0.615, 0.115),
+    -circle(u, v, 0.5, 0.615, 0.075),
+    0.66 - v,
+  )
+  color = mix(color, BG, 1 - Math.min(1, Math.max(0, smile * s * 0.6)))
+
   return [...color, 255]
 }
 

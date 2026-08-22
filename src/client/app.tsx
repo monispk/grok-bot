@@ -354,7 +354,8 @@ export function App() {
   return (
     <div class="shell">
       <header>
-        <span class="dot" /> <strong>Foodpanda Delivery Rider Onboarding</strong>
+        <img class="mark" src="/panda.png" alt="" />
+        <strong>Foodpanda Delivery Rider Onboarding</strong>
         <button class="ghost" onClick={reset} disabled={busy}>
           Clear
         </button>
@@ -479,6 +480,11 @@ export function App() {
           </button>
         )}
       </footer>
+
+      <div class="credit">
+        <span>Powered by</span>
+        <img src="/rozeegpt.png" alt="RozeeGPT" />
+      </div>
     </div>
   )
 }
