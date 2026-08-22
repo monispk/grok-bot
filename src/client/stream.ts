@@ -1,7 +1,5 @@
 import type { Message } from './storage.ts'
 
-export type Effort = 'low' | 'medium' | 'high'
-
 export type Handlers = {
   onDelta: (text: string) => void
   onDone: () => void
@@ -21,7 +19,6 @@ const RETRIES = 4
  */
 export async function runTurn(
   messages: Message[],
-  effort: Effort,
   h: Handlers,
   signal: AbortSignal,
 ): Promise<void> {
@@ -43,7 +40,7 @@ export async function runTurn(
               'content-type': 'application/json',
               accept: 'text/event-stream',
             },
-            body: JSON.stringify({ messages, effort }),
+            body: JSON.stringify({ messages }),
           })
 
       if (res.status === 401) return h.onUnauthorized()

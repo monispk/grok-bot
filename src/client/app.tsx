@@ -2,15 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { render as renderMarkdown } from './markdown.ts'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
-import { runTurn, warm, type Effort } from './stream.ts'
+import { runTurn, warm } from './stream.ts'
 import { Picture, VoiceNote } from './media.tsx'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
-
-const EFFORTS: { id: Effort; label: string; hint: string }[] = [
-  { id: 'low', label: 'Fast', hint: 'Least thinking, lowest latency' },
-  { id: 'medium', label: 'Balanced', hint: 'Some reasoning before answering' },
-  { id: 'high', label: 'Deep', hint: 'Most reasoning, slowest first token' },
-]
 
 // Only the tail is sent upstream: prompt length drives time-to-first-token
 // linearly, and the round trip to Groq's US origin is already ~175ms.
@@ -24,9 +18,6 @@ export function App() {
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [effort, setEffort] = useState<Effort>(
-    () => (localStorage.getItem('grok-bot:effort') as Effort) || 'low',
-  )
   const [gate, setGate] = useState<{ required: boolean; authed: boolean }>({
     required: false,
     authed: true,
@@ -47,7 +38,6 @@ export function App() {
   }, [])
 
   useEffect(() => store.save(messages), [messages])
-  useEffect(() => localStorage.setItem('grok-bot:effort', effort), [effort])
 
   // Idle keepalive so the edge connection never goes cold between turns.
   useEffect(() => {
@@ -81,7 +71,6 @@ export function App() {
 
     void runTurn(
       forModel(next).slice(-HISTORY_WINDOW),
-      effort,
       {
         onDelta: (t) => {
           acc += t
@@ -108,7 +97,7 @@ export function App() {
       controller.signal,
     )
     },
-    [draft, busy, messages, effort],
+    [draft, busy, messages],
   )
 
   const stop = useCallback(() => {
@@ -180,26 +169,10 @@ export function App() {
   return (
     <div class="shell">
       <header>
-        <div class="bar">
-          <span class="dot" /> <strong>Monis' Grok Test Bot</strong>
-        </div>
-        <div class="tools">
-          <div class="seg" role="group" aria-label="Reasoning effort">
-            {EFFORTS.map((e) => (
-              <button
-                key={e.id}
-                title={e.hint}
-                class={effort === e.id ? 'on' : ''}
-                onClick={() => setEffort(e.id)}
-              >
-                {e.label}
-              </button>
-            ))}
-          </div>
-          <button class="ghost" onClick={reset} disabled={!messages.length && !busy}>
-            Clear
-          </button>
-        </div>
+        <span class="dot" /> <strong>Monis' Grok Test Bot</strong>
+        <button class="ghost" onClick={reset} disabled={!messages.length && !busy}>
+          Clear
+        </button>
       </header>
 
       <div class="scroll" ref={scroller}>
