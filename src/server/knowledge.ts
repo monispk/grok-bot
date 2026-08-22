@@ -29,6 +29,7 @@ Pehle ka tajurba chahiye: Nahi, koi tajurba zaroori nahi.
 Agar smartphone theek na ho: Phir aap kaam nahi kar saktay. App ke liye iPhone iOS 9.0 ya Android 7.0 ya us se naya phone chahiye.
 Kya auratein apply kar sakti hain: Ji haan.
 Interview hota hai: Nahi.
+Kya ye pakki ya sarkari naukri hai: Nahi. Ye freelancer kaam hai, mulazmat nahi hai. Aap apne kaam ke ghante khud chuntay hain.
 WhatsApp par kaghzaat bhejnay ke baad kya hota hai: Rider ko apni branch office jana hota hai, Peer se Juma, dopahar 12 baje se shaam 6 baje tak, taake registration mukammal ho.
 
 === FAIDAY ===
