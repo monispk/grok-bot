@@ -52,7 +52,9 @@ stateDiagram-v2
 | `has_cnic` | must be true | stop |
 | `has_license` | learner's or full | stop |
 
-Stopping is not a rejection — record the reason and leave the door open.
+Stopping is not a rejection. Record the reason and keep the session
+re-contactable — someone who turns 18, or buys a bike, becomes eligible without
+having to start over. Nothing is ever hard-closed.
 
 ### 2. Details
 
@@ -81,9 +83,9 @@ compares them, and the model is only asked to phrase the outcome:
 
 | Field | Notes |
 | --- | --- |
-| `deposit_paid` | Rs. 2,500 — **see open question** — via easypaisa / JazzCash / HBL Konnect |
-| `deposit_proof` | screenshot, stored and checked by a human |
-| `appointment` | branch visit, Mon–Fri, 12 PM–6 PM |
+| `deposit_paid` | Rs. 2,500 via easypaisa / JazzCash / HBL Konnect |
+| `deposit_proof` | screenshot → OCR → amount, date and reference checked in code |
+| `appointment` | no booking. Tell the rider the window: Mon–Fri, 12 PM–6 PM |
 
 ## What happens on each rider message
 
@@ -121,10 +123,32 @@ leaks. That means, before the first real rider:
 - never log field values or OCR output
 - the existing rule stays absolute: never ask for a PIN, password or OTP
 
-## Open questions
+## Decisions (settled 2026-08-22)
 
-1. **Security deposit: Rs. 1,500 or Rs. 2,500?** The FAQ says both. Rs. 2,500 is
-   implemented. This is money riders hand over before earning anything.
-2. Is a rider who fails a gate re-contactable later, or closed permanently?
-3. Who reviews deposit proofs and document mismatches, and where do they see them?
-4. Does the branch appointment need real slot booking, or is "Mon–Fri 12–6" enough?
+1. **Security deposit is Rs. 2,500.** The Rs. 1,500 in the source documents list
+   was wrong. Implemented and confirmed.
+2. **A rider who fails a gate stays re-contactable.** Store the reason, keep the
+   session open, allow a later restart from where they stopped.
+3. **No human review queue.** Deposit proofs and document mismatches are handled
+   in-conversation. See the caveat below — "handled by AI" still means OCR reads
+   the image and code decides; the model phrases the outcome.
+4. **No slot booking.** The rider is simply told the window: Mon–Fri, 12 PM–6 PM.
+
+### Caveat on in-conversation document handling
+
+gpt-oss-120b has no vision. It cannot look at a CNIC photo or a payment
+screenshot, so "the AI checks it" has to mean the same pipeline as every other
+document: OCR extracts the fields, code compares them against what is expected,
+and the model turns the verdict into a Roman Urdu sentence. A deposit screenshot
+needs amount, date and transaction reference pulled out and checked — that is an
+OCR job, not a judgement.
+
+The alternative is routing image steps to a vision-capable model, which means a
+second provider and a second latency budget. Worth deciding before that step is
+built, not during.
+
+### Scale, for now
+
+Beta runs on the Groq free tier: 8,000 TPM, roughly one conversation at a time.
+Fine for testing, not for launch. Moving to the Dev tier is a prerequisite for
+real riders, not an optimisation.

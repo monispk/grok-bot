@@ -3,10 +3,8 @@
  * reproduce approved answers almost verbatim rather than translating on the fly —
  * less generation means less room to invent.
  *
- * CONFLICT IN SOURCE: the documents list says the security deposit is Rs. 1,500,
- * while the onboarding steps, compensation section and objection-handling all say
- * Rs. 2,500. Rs. 2,500 is used here (three mentions to one). Confirm before this
- * goes to real riders — it is the number they are asked to hand over.
+ * The source FAQ gave the security deposit as both Rs. 1,500 (documents list)
+ * and Rs. 2,500 (three other sections). Confirmed 2026-08-22: it is Rs. 2,500.
  */
 export const KNOWLEDGE = `
 === JOB KI MAALOOMAT ===
