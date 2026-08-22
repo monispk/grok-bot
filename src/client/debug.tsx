@@ -26,6 +26,36 @@ const LABELS: Record<string, string> = {
   accuracyMetres: 'Accuracy (m)',
 }
 
+/**
+ * Google's embed without an API key. The keyed Embed API would need a key
+ * provisioned and billing enabled; this shows the same map today, and swapping
+ * to the keyed endpoint later is a one-line change.
+ */
+function MapView({ lat, lng, accuracy }: { lat: string; lng: string; accuracy?: string }) {
+  const q = `${lat},${lng}`
+  return (
+    <div class="mapwrap">
+      <iframe
+        class="map"
+        title="Rider location"
+        loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+        src={`https://maps.google.com/maps?q=${encodeURIComponent(q)}&z=16&output=embed`}
+      />
+      <div class="mapfoot">
+        <code>{q}{accuracy ? ` · ±${accuracy} m` : ''}</code>
+        <a
+          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open in Google Maps
+        </a>
+      </div>
+    </div>
+  )
+}
+
 type CheckState = 'pass' | 'fail' | 'pending'
 
 const ICON: Record<CheckState, string> = { pass: '✅', fail: '❌', pending: '⏳' }
@@ -94,7 +124,10 @@ function Checks({ d }: { d: Record<string, string> }) {
 }
 
 export function DebugPanel({ data }: { data: Record<string, string> }) {
-  const groups = GROUPS.map(([prefix, title]) => [
+  const lat = data['gps.latitude']
+  const lng = data['gps.longitude']
+
+  const groups = GROUPS.filter(([prefix]) => !(prefix === 'gps' && lat && lng)).map(([prefix, title]) => [
     title,
     Object.entries(data)
       .filter(([k]) => k.startsWith(`${prefix}.`))
@@ -117,6 +150,14 @@ export function DebugPanel({ data }: { data: Record<string, string> }) {
           ))}
         </div>
       ))}
+
+      {lat && lng && (
+        <div class="dgroup">
+          <h4>Location</h4>
+          <MapView lat={lat} lng={lng} accuracy={data['gps.accuracyMetres']} />
+        </div>
+      )}
+
       <Checks d={data} />
     </details>
   )

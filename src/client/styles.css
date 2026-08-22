@@ -374,6 +374,33 @@ header strong {
 
 .drow span { color: var(--muted); flex: none; }
 
+.mapwrap { margin-top: 4px; }
+
+.map {
+  display: block;
+  width: 100%;
+  height: 190px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.mapfoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 5px;
+}
+
+.mapfoot code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.mapfoot a { font-size: 11px; color: var(--accent); }
+
 .checks { margin-top: 14px; }
 
 .checks h4 {
