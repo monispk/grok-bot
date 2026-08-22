@@ -65,6 +65,32 @@ export function App() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streaming])
 
+  // Licence name against CNIC name — a comparison between two documents, which
+  // neither upload could make on its own.
+  useEffect(() => {
+    const a = collected['license.name']
+    const b = collected['cnic_front.name']
+    if (!a || !b || collected['checks.licenceVsCnic']) return
+    let cancelled = false
+    void fetch('/api/compare-names', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ a, b }),
+    })
+      .then((r) => r.json())
+      .then((r: { verdict?: string | null }) => {
+        if (cancelled || !r.verdict) return
+        setFlow((f) => ({
+          ...f,
+          collected: { ...f.collected, 'checks.licenceVsCnic': r.verdict! },
+        }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [collected])
+
   const say = useCallback((...lines: Message[]) => {
     setMessages((m) => [...m, ...lines])
   }, [])

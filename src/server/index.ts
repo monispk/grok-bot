@@ -235,6 +235,16 @@ app.post('/api/extract-name', guard, async (c) => {
   })
 })
 
+// Compares two names taken off documents — the licence against the CNIC.
+app.post('/api/compare-names', guard, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { a?: unknown; b?: unknown }
+  const a = typeof body.a === 'string' ? body.a.slice(0, 200) : ''
+  const b = typeof body.b === 'string' ? body.b.slice(0, 200) : ''
+  if (!a || !b) return c.json({ verdict: null })
+  const r = compareNames(a, b)
+  return c.json({ verdict: r.verdict, score: r.score, reason: r.reason })
+})
+
 app.post('/api/chat', guard, async (c) => {
   if (!allow(clientIp(c)))
     return c.json({ error: 'Slow down a moment — rate limited.' }, 429)

@@ -243,6 +243,10 @@ header strong {
   flex: none;
   width: var(--tap);
   height: var(--tap);
+  /* `footer button` sets side padding for Send. Left on these round buttons it
+     shrinks the content box to 8px, so the icon overflows and gets pushed off
+     centre instead of sitting in the middle. */
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
   background: var(--panel);
@@ -370,6 +374,37 @@ header strong {
 
 .drow span { color: var(--muted); flex: none; }
 
+.checks { margin-top: 14px; }
+
+.checks h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--accent);
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.check .tick { flex: none; font-size: 13px; line-height: 1.35; }
+.check .body { display: flex; flex-direction: column; min-width: 0; }
+.check strong { font-weight: 600; font-size: 12px; }
+
+.check code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.check.fail strong { color: var(--err); }
+
 .drow code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
@@ -421,6 +456,12 @@ textarea {
   min-height: var(--tap);
   max-height: 40dvh;
 }
+
+/* Android paints a permanent 2px scrollbar track here, which reads as a stray
+   grey line between the composer and Send. The box grows with its content and
+   still scrolls by drag, so the track earns nothing. */
+textarea { scrollbar-width: none; }
+textarea::-webkit-scrollbar { width: 0; height: 0; }
 
 textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
