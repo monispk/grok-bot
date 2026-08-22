@@ -213,6 +213,67 @@ header strong {
   font-variant-numeric: tabular-nums;
 }
 
+.hidden { display: none; }
+
+.attach {
+  flex: none;
+  width: var(--tap);
+  height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.attach:disabled { opacity: .45; cursor: default; }
+
+.photo.doc { max-width: 240px; }
+
+.filecard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 14px;
+  max-width: 280px;
+}
+
+.filecard .meta { display: flex; flex-direction: column; min-width: 0; }
+.filecard strong {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filecard small { font-size: 12px; color: var(--muted); }
+
+.gpsbar {
+  padding: 0 12px 8px;
+  display: flex;
+}
+
+.gpsbar button {
+  flex: 1;
+  min-height: var(--tap);
+  border: 0;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gpsbar button:disabled { opacity: .5; cursor: default; }
+
 .think { color: var(--muted); }
 .think::after { content: '…'; animation: blink 1.2s steps(1) infinite; }
 

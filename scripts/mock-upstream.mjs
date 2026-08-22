@@ -15,7 +15,26 @@ http
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end('{"data":[]}')
     }
-    for await (const _ of req) void _
+    let raw = ''
+    for await (const chunk of req) raw += chunk
+    let body = {}
+    try { body = JSON.parse(raw) } catch {}
+
+    // Non-streaming JSON calls (name extraction). Treat anything that is not a
+    // question as a name, which is enough to exercise the flow offline.
+    if (body.response_format?.type === 'json_object') {
+      const text = (body.messages?.at(-1)?.content ?? '').trim()
+      const isName = text.length > 0 && !text.includes('?')
+      const parts = text.replace(/^(mera naam|my name is)\s+/i, '').split(/\s+/)
+      res.writeHead(200, { 'content-type': 'application/json' })
+      return res.end(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          is_name: isName,
+          full_name: isName ? parts.join(' ') : null,
+          first_name: isName ? parts[0] : null,
+        }) } }],
+      }))
+    }
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',

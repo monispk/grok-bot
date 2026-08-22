@@ -4,7 +4,14 @@ import { Hono } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import { authRequired, grant, guard, isAuthed } from './auth.ts'
 import { allow } from './limit.ts'
-import { MODEL, startWarmer, type Effort, type Msg } from './provider.ts'
+import {
+  completeJson,
+  MODEL,
+  startWarmer,
+  type Effort,
+  type Msg,
+} from './provider.ts'
+import { accept, get as getUpload } from './uploads.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
 
 const app = new Hono()
@@ -110,6 +117,56 @@ async function relay(
   await drain()
   unsubscribe()
 }
+
+app.post('/api/upload', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+
+  const body = await c.req.parseBody().catch(() => null)
+  const file = body?.['file']
+  if (!(file instanceof File))
+    return c.json({ error: 'Koi file nahi mili.' }, 400)
+
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const result = accept(file.name, bytes)
+  if (!result.ok) return c.json({ error: result.reason }, 400)
+
+  const { id, name, mime, size } = result.upload
+  return c.json({ id, name, mime, size })
+})
+
+app.get('/api/upload/:id', guard, (c) => {
+  const u = getUpload(c.req.param('id') ?? '')
+  if (!u) return c.json({ error: 'Not found' }, 404)
+  c.header('content-type', u.mime)
+  c.header('cache-control', 'private, max-age=600')
+  c.header('content-disposition', `inline; filename="${encodeURIComponent(u.name)}"`)
+  return c.body(u.bytes as unknown as ArrayBuffer)
+})
+
+// Is this reply the rider's name, or a question they asked instead?
+const NAME_PROMPT = `You decide whether a message is a person's name.
+The user was asked: "Aapka poora naam jo CNIC par hai, kya hai?" (What is your full name as on your CNIC?)
+Reply with JSON only: {"is_name": true|false, "full_name": string|null, "first_name": string|null}
+If the message is a question, a greeting, or anything other than their own name, set is_name to false and the names to null.
+Names may be written in Roman Urdu. Strip words like "mera naam hai" / "my name is". Keep the name's own spelling.`
+
+app.post('/api/extract-name', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
+  const text = typeof body.text === 'string' ? body.text.slice(0, 500) : ''
+  if (!text) return c.json({ is_name: false })
+
+  const out = await completeJson(NAME_PROMPT, text)
+  if (!out) return c.json({ is_name: false, unavailable: true })
+
+  const full = typeof out.full_name === 'string' ? out.full_name.trim() : ''
+  const first = typeof out.first_name === 'string' ? out.first_name.trim() : ''
+  return c.json({
+    is_name: out.is_name === true && full.length > 0,
+    full_name: full || null,
+    first_name: first || full.split(/\s+/)[0] || null,
+  })
+})
 
 app.post('/api/chat', guard, async (c) => {
   if (!allow(clientIp(c)))

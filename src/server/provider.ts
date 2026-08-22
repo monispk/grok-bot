@@ -51,7 +51,9 @@ MAALOOMAT (sirf inhi se jawab dein):
 ${KNOWLEDGE}
 ${'```'}
 
-Aap pehle hi user ko salam kar chuki hain, apna taaruf kara chuki hain, aur un ka poora naam (jo CNIC par hai) pooch chuki hain.`
+AAP KA KAAM SIRF SAWAL KA JAWAB DENA HAI:
+- Application ke marhalay (naam, license, CNIC, bill ki tasveerein, location) aik alag system sambhal raha hai. Aap khud kabhi kisi tasveer, document, CNIC number ya location ka mutalba NA karein.
+- Sirf user ke sawal ka jawab dein. Jawab ke baad apni taraf se koi naya sawal na poochein. Agla sawal system khud poochay ga.`
 
 const SYSTEM = process.env.SYSTEM_PROMPT ?? DEFAULT_SYSTEM
 
@@ -94,6 +96,45 @@ const OUTPUT_BUDGET: Record<Effort, number> = {
   low: 400,
   medium: 1200,
   high: 2500,
+}
+
+/** One-shot JSON call for small structured tasks. Kept separate from the chat
+ *  prompt so it stays cheap: no FAQ, no persona, just the task. */
+export async function completeJson(
+  system: string,
+  user: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`${BASE}/chat/completions`, {
+      method: 'POST',
+      dispatcher: agent,
+      signal: AbortSignal.timeout(20_000),
+      headers: {
+        authorization: `Bearer ${KEY}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: 0,
+        max_completion_tokens: 400,
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
+        response_format: { type: 'json_object' },
+      }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      choices?: { message?: { content?: string } }[]
+    }
+    const text = json.choices?.[0]?.message?.content
+    return text ? (JSON.parse(text) as Record<string, unknown>) : null
+  } catch {
+    return null
+  }
 }
 
 export async function openCompletion(

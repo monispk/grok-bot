@@ -89,3 +89,42 @@ export function Picture({ src, alt }: { src: string; alt: string }) {
   if (failed) return null
   return <img class="photo" src={src} alt={alt} onError={() => setFailed(true)} />
 }
+
+const kb = (n: number) =>
+  n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`
+
+/** A document the rider sent: images preview, PDFs show as a card. */
+export function DocumentBubble({
+  src,
+  name,
+  mime,
+  size,
+}: {
+  src: string
+  name: string
+  mime: string
+  size: number
+}) {
+  const [failed, setFailed] = useState(false)
+
+  if (mime.startsWith('image/') && !failed)
+    return <img class="photo doc" src={src} alt={name} onError={() => setFailed(true)} />
+
+  return (
+    <a class="filecard" href={src} target="_blank" rel="noopener noreferrer">
+      <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+        <path
+          d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <span class="meta">
+        <strong>{name}</strong>
+        <small>{mime === 'application/pdf' ? 'PDF' : mime} · {kb(size)}</small>
+      </span>
+    </a>
+  )
+}

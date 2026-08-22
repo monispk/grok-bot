@@ -1,32 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { render as renderMarkdown } from './markdown.ts'
+import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
 import { runTurn, warm } from './stream.ts'
-import { Picture, VoiceNote } from './media.tsx'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
-// Only the tail is sent upstream: prompt length drives time-to-first-token
-// linearly, and the round trip to Groq's US origin is already ~175ms.
 const HISTORY_WINDOW = 12
+const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.gif,.pdf'
+
+const bot = (content: string): Message => ({ role: 'assistant', content })
 
 export function App() {
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = store.load()
     return saved.length ? saved : WELCOME
   })
+  const [{ step, firstName }, setFlow] = useState(() => store.loadState())
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
+  const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [gate, setGate] = useState<{ required: boolean; authed: boolean }>({
-    required: false,
-    authed: true,
-  })
+  const [gate, setGate] = useState({ required: false, authed: true })
   const [password, setPassword] = useState('')
 
   const abort = useRef<AbortController | null>(null)
   const scroller = useRef<HTMLDivElement | null>(null)
-  const busy = streaming !== null
+  const picker = useRef<HTMLInputElement | null>(null)
+
+  const busy = streaming !== null || working
+  const current = STEPS[step]
 
   useEffect(() => {
     fetch('/api/session')
@@ -38,8 +42,8 @@ export function App() {
   }, [])
 
   useEffect(() => store.save(messages), [messages])
+  useEffect(() => store.saveState({ step, firstName }), [step, firstName])
 
-  // Idle keepalive so the edge connection never goes cold between turns.
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === 'visible') warm()
@@ -52,59 +56,208 @@ export function App() {
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, streaming])
 
-  // Takes the text from the event target rather than the closed-over draft, so a
-  // keystroke and an Enter landing in the same frame can't send a stale value.
-  const send = useCallback(
-    (override?: string) => {
-    const text = (override ?? draft).trim()
-    if (!text || busy) return
+  const say = useCallback((...lines: Message[]) => {
+    setMessages((m) => [...m, ...lines])
+  }, [])
 
-    const next = [...messages, { role: 'user' as const, content: text }]
-    setMessages(next)
-    setDraft('')
-    setError(null)
-    setStreaming('')
-
-    const controller = new AbortController()
-    abort.current = controller
-    let acc = ''
-
-    void runTurn(
-      forModel(next).slice(-HISTORY_WINDOW),
-      {
-        onDelta: (t) => {
-          acc += t
-          setStreaming(acc)
-        },
-        onDone: () => {
-          setMessages((m) => [...m, { role: 'assistant', content: acc }])
-          setStreaming(null)
-          abort.current = null
-        },
-        onError: (message) => {
-          if (acc)
-            setMessages((m) => [...m, { role: 'assistant', content: acc }])
-          setStreaming(null)
-          setError(message)
-          abort.current = null
-        },
-        onUnauthorized: () => {
-          setStreaming(null)
-          setGate({ required: true, authed: false })
-          abort.current = null
-        },
-      },
-      controller.signal,
-    )
+  /** Move to the next step, or finish. Called only once the input was accepted. */
+  const advanceFrom = useCallback(
+    (i: number, extra: Message[], name: string) => {
+      const next = STEPS[i + 1]
+      setMessages((m) => [...m, ...extra, ...(next ? [bot(next.ask)] : finished(name))])
+      setFlow({ step: i + 1, firstName: name })
     },
-    [draft, busy, messages],
+    [],
   )
+
+  /** Answer a question from the FAQ. Resolves when the reply is complete. */
+  const runFaq = useCallback(
+    (history: Message[]) =>
+      new Promise<void>((resolve) => {
+        const controller = new AbortController()
+        abort.current = controller
+        let acc = ''
+        setStreaming('')
+        void runTurn(
+          forModel(history).slice(-HISTORY_WINDOW),
+          {
+            onDelta: (t) => {
+              acc += t
+              setStreaming(acc)
+            },
+            onDone: () => {
+              setMessages((m) => [...m, bot(acc)])
+              setStreaming(null)
+              abort.current = null
+              resolve()
+            },
+            onError: (message) => {
+              if (acc) setMessages((m) => [...m, bot(acc)])
+              setStreaming(null)
+              setError(message)
+              abort.current = null
+              resolve()
+            },
+            onUnauthorized: () => {
+              setStreaming(null)
+              setGate({ required: true, authed: false })
+              abort.current = null
+              resolve()
+            },
+          },
+          controller.signal,
+        )
+      }),
+    [],
+  )
+
+  const onSend = useCallback(
+    async (override?: string) => {
+      const text = (override ?? draft).trim()
+      if (!text || busy) return
+      setDraft('')
+      setError(null)
+
+      const withUser: Message[] = [...messages, { role: 'user', content: text }]
+      setMessages(withUser)
+
+      // Flow complete — from here the bot is purely a question answerer.
+      if (!current) return void (await runFaq(withUser))
+
+      if (current.kind !== 'text') {
+        // A document or location was asked for. Text cannot satisfy it, so treat
+        // it as a question, answer it, then ask again. The step does not move.
+        await runFaq(withUser)
+        say(bot(current.wrong))
+        return
+      }
+
+      setWorking(true)
+      let named: { is_name?: boolean; first_name?: string; full_name?: string } = {}
+      try {
+        const res = await fetch('/api/extract-name', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        named = await res.json()
+      } catch {
+        named = {}
+      }
+      setWorking(false)
+
+      if (named.is_name) {
+        const first = (named.first_name ?? '').trim()
+        advanceFrom(step, [thanksName(first)], first)
+      } else {
+        await runFaq(withUser)
+        say(bot(current.ask))
+      }
+    },
+    [draft, busy, messages, current, step, runFaq, say, advanceFrom],
+  )
+
+  const onFile = useCallback(
+    async (file: File) => {
+      setError(null)
+      if (!current || current.kind !== 'upload') {
+        say(
+          bot(
+            current
+              ? current.wrong
+              : 'Aap ki application mukammal ho chuki hai, ab kisi tasveer ki zaroorat nahi.',
+          ),
+        )
+        return
+      }
+
+      setWorking(true)
+      try {
+        const body = new FormData()
+        body.append('file', file)
+        const res = await fetch('/api/upload', { method: 'POST', body })
+        const data = (await res.json()) as {
+          id?: string
+          name?: string
+          mime?: string
+          size?: number
+          error?: string
+        }
+        if (!res.ok || !data.id) {
+          setError(data.error ?? 'File bhejne mein masla hua. Dobara koshish karein.')
+          return
+        }
+
+        // Verification APIs slot in here. Until then every document is accepted,
+        // but a document must genuinely have arrived for the step to move.
+        advanceFrom(
+          step,
+          [
+            {
+              role: 'user',
+              content: '',
+              kind: 'document',
+              src: `/api/upload/${data.id}`,
+              doc: {
+                name: data.name ?? file.name,
+                mime: data.mime ?? file.type,
+                size: data.size ?? file.size,
+              },
+            },
+            thanksDoc(),
+          ],
+          firstName,
+        )
+      } catch {
+        setError('File bhejne mein masla hua. Dobara koshish karein.')
+      } finally {
+        setWorking(false)
+      }
+    },
+    [current, step, firstName, say, advanceFrom],
+  )
+
+  const onGps = useCallback(() => {
+    setError(null)
+    if (!current || current.kind !== 'gps') return
+    if (!navigator.geolocation) {
+      say(bot('Is phone mein location ki suvidha nahi hai.'))
+      return
+    }
+    setWorking(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setWorking(false)
+        const { latitude, longitude } = pos.coords
+        advanceFrom(
+          step,
+          [
+            {
+              role: 'user',
+              content: `Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+            },
+            thanksGps(),
+          ],
+          firstName,
+        )
+      },
+      () => {
+        setWorking(false)
+        say(
+          bot(
+            'Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara button dabayein.',
+          ),
+        )
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
+    )
+  }, [current, step, firstName, say, advanceFrom])
 
   const stop = useCallback(() => {
     abort.current?.abort()
     abort.current = null
     setStreaming((acc) => {
-      if (acc) setMessages((m) => [...m, { role: 'assistant', content: acc }])
+      if (acc) setMessages((m) => [...m, bot(acc)])
       return null
     })
   }, [])
@@ -113,8 +266,11 @@ export function App() {
     abort.current?.abort()
     abort.current = null
     setStreaming(null)
+    setWorking(false)
     store.clear()
+    store.clearState()
     setMessages(WELCOME)
+    setFlow({ step: 0, firstName: '' })
     setError(null)
   }, [])
 
@@ -130,9 +286,7 @@ export function App() {
         setGate({ required: true, authed: true })
         setPassword('')
         setError(null)
-      } else {
-        setError('Wrong password')
-      }
+      } else setError('Wrong password')
     },
     [password],
   )
@@ -170,19 +324,12 @@ export function App() {
     <div class="shell">
       <header>
         <span class="dot" /> <strong>Monis' Grok Test Bot</strong>
-        <button class="ghost" onClick={reset} disabled={!messages.length && !busy}>
+        <button class="ghost" onClick={reset} disabled={busy}>
           Clear
         </button>
       </header>
 
       <div class="scroll" ref={scroller}>
-        {!messages.length && !busy && (
-          <div class="empty">
-            <p>Ask anything.</p>
-            <small>gpt-oss-120b on Groq · Singapore edge</small>
-          </div>
-        )}
-
         {messages.map((m, i) => {
           if (m.kind === 'image')
             return (
@@ -194,6 +341,17 @@ export function App() {
             return (
               <div key={i} class="msg bot media">
                 <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
+              </div>
+            )
+          if (m.kind === 'document')
+            return (
+              <div key={i} class="msg user media">
+                <DocumentBubble
+                  src={m.src ?? ''}
+                  name={m.doc?.name ?? 'document'}
+                  mime={m.doc?.mime ?? ''}
+                  size={m.doc?.size ?? 0}
+                />
               </div>
             )
           return m.role === 'user' ? (
@@ -214,7 +372,7 @@ export function App() {
             {streaming ? (
               <span dangerouslySetInnerHTML={{ __html: renderMarkdown(streaming) }} />
             ) : (
-              <span class="think">thinking</span>
+              <span class="think">soch rahi hoon</span>
             )}
           </div>
         )}
@@ -222,7 +380,45 @@ export function App() {
         {error && <div class="err banner">{error}</div>}
       </div>
 
+      {current?.kind === 'gps' && (
+        <div class="gpsbar">
+          <button onClick={onGps} disabled={busy}>
+            📍 Location bhejein
+          </button>
+        </div>
+      )}
+
       <footer>
+        <input
+          ref={picker}
+          class="hidden"
+          type="file"
+          accept={ACCEPT}
+          onChange={(e) => {
+            const el = e.target as HTMLInputElement
+            const f = el.files?.[0]
+            el.value = ''
+            if (f) void onFile(f)
+          }}
+        />
+        <button
+          class="attach"
+          aria-label="Tasveer ya file bhejein"
+          disabled={busy}
+          onClick={() => picker.current?.click()}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3l8-8"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+
         <textarea
           value={draft}
           rows={1}
@@ -237,16 +433,17 @@ export function App() {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              send((e.target as HTMLTextAreaElement).value)
+              void onSend((e.target as HTMLTextAreaElement).value)
             }
           }}
         />
-        {busy ? (
+
+        {streaming !== null ? (
           <button class="stop" onClick={stop}>
             Stop
           </button>
         ) : (
-          <button class="send" onClick={() => send()} disabled={!draft.trim()}>
+          <button class="send" onClick={() => void onSend()} disabled={!draft.trim() || busy}>
             Send
           </button>
         )}

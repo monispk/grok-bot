@@ -1,6 +1,17 @@
-# Rider onboarding flow — design sketch
+# Rider onboarding flow
 
-Not built yet. This is the shape to agree on first.
+## Built so far
+
+Name → licence front → CNIC front → CNIC back → utility bill → GPS → accepted.
+The sequence lives in `src/client/flow.ts` and is walked by code, so no model
+behaviour can skip, reorder or invent a step: a step advances only when the right
+kind of input actually arrives. Questions asked mid-flow are answered from the
+FAQ and the pending question is repeated.
+
+Verification is stubbed — every document is accepted — but a document must
+genuinely have been uploaded. Uploads are validated by their bytes, not their
+filename, and held in memory only. Screening gates and the OCR/face-match calls
+below are not built yet.
 
 ## The one principle
 

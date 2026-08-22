@@ -1,5 +1,5 @@
 export type Role = 'user' | 'assistant'
-export type Kind = 'text' | 'image' | 'audio'
+export type Kind = 'text' | 'image' | 'audio' | 'document'
 export type Message = {
   role: Role
   content: string
@@ -7,6 +7,41 @@ export type Message = {
   kind?: Kind
   src?: string
   sources?: { src: string; type: string }[]
+  doc?: { name: string; mime: string; size: number }
+}
+
+export type FlowState = { step: number; firstName: string }
+
+const STATE_KEY = 'grok-bot:flow'
+
+export function loadState(): FlowState {
+  try {
+    const raw = localStorage.getItem(STATE_KEY)
+    if (!raw) return { step: 0, firstName: '' }
+    const v = JSON.parse(raw) as Partial<FlowState>
+    return {
+      step: typeof v.step === 'number' && v.step >= 0 ? v.step : 0,
+      firstName: typeof v.firstName === 'string' ? v.firstName : '',
+    }
+  } catch {
+    return { step: 0, firstName: '' }
+  }
+}
+
+export function saveState(state: FlowState) {
+  try {
+    localStorage.setItem(STATE_KEY, JSON.stringify(state))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearState() {
+  try {
+    localStorage.removeItem(STATE_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 const KEY = 'grok-bot:history'
