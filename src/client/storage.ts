@@ -19,6 +19,8 @@ export type FlowState = {
   firstName: string
   fullName: string
   cnic: string
+  /** Everything pulled off the documents, for the summary at the end. */
+  collected: Record<string, string>
 }
 
 const STATE_KEY = 'grok-bot:flow'
@@ -26,16 +28,17 @@ const STATE_KEY = 'grok-bot:flow'
 export function loadState(): FlowState {
   try {
     const raw = localStorage.getItem(STATE_KEY)
-    if (!raw) return { step: 0, firstName: '', fullName: '', cnic: '' }
+    if (!raw) return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
     const v = JSON.parse(raw) as Partial<FlowState>
     return {
       step: typeof v.step === 'number' && v.step >= 0 ? v.step : 0,
       firstName: typeof v.firstName === 'string' ? v.firstName : '',
       fullName: typeof v.fullName === 'string' ? v.fullName : '',
       cnic: typeof v.cnic === 'string' ? v.cnic : '',
+      collected: v.collected && typeof v.collected === 'object' ? v.collected : {},
     }
   } catch {
-    return { step: 0, firstName: '', fullName: '', cnic: '' }
+    return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
   }
 }
 

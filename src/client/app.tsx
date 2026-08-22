@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { DebugPanel } from './debug.tsx'
 import { finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
@@ -18,7 +19,9 @@ export function App() {
     const saved = store.load()
     return saved.length ? saved : WELCOME
   })
-  const [{ step, firstName, fullName, cnic }, setFlow] = useState(() => store.loadState())
+  const [{ step, firstName, fullName, cnic, collected }, setFlow] = useState(() =>
+    store.loadState(),
+  )
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -30,6 +33,7 @@ export function App() {
   const scroller = useRef<HTMLDivElement | null>(null)
   const picker = useRef<HTMLInputElement | null>(null)
   const camera = useRef<HTMLInputElement | null>(null)
+  const selfieCam = useRef<HTMLInputElement | null>(null)
 
   const busy = streaming !== null || working
   const current = STEPS[step]
@@ -45,8 +49,8 @@ export function App() {
 
   useEffect(() => store.save(messages), [messages])
   useEffect(
-    () => store.saveState({ step, firstName, fullName, cnic }),
-    [step, firstName, fullName, cnic],
+    () => store.saveState({ step, firstName, fullName, cnic, collected }),
+    [step, firstName, fullName, cnic, collected],
   )
 
   useEffect(() => {
@@ -74,7 +78,9 @@ export function App() {
         setMessages((m) => [
           ...m,
           ...extra,
-          ...(next ? [bot(next.ask)] : finished(merged.firstName)),
+          ...(next
+            ? [bot(next.ask)]
+            : finished(merged.firstName, merged.collected['bill.billAddress'])),
         ])
         return merged
       })
@@ -175,6 +181,10 @@ export function App() {
   const onFile = useCallback(
     async (file: File) => {
       setError(null)
+      if (current?.imageOnly && !file.type.startsWith('image/')) {
+        say(bot(current.wrong))
+        return
+      }
       if (!current || current.kind !== 'upload') {
         say(
           bot(
@@ -227,6 +237,7 @@ export function App() {
           verification?: {
             pass?: boolean
             reason?: string | null
+            nameVerdict?: string | null
             fields?: Record<string, string | null>
           }
         }
@@ -254,7 +265,17 @@ export function App() {
         // Remember the CNIC from the first document that carries one, so every
         // later document is checked against it.
         const seen = data.verification?.fields?.cnic
-        advanceFrom(step, [thanksDoc()], seen && !cnic ? { cnic: seen } : {})
+        const gathered: Record<string, string> = {}
+        for (const [k, v] of Object.entries(data.verification?.fields ?? {}))
+          if (v) gathered[`${current.doc ?? current.id}.${k}`] = v
+        if (data.verification?.nameVerdict)
+          gathered[`${current.doc ?? current.id}.nameMatch`] = data.verification.nameVerdict
+        if (current.id === 'selfie') gathered['selfie.captured'] = 'yes'
+
+        advanceFrom(step, [thanksDoc()], {
+          ...(seen && !cnic ? { cnic: seen } : {}),
+          collected: { ...collected, ...gathered },
+        })
       } catch {
         settle(undefined)
         setError('File bhejne mein masla hua. Dobara koshish karein.')
@@ -262,7 +283,7 @@ export function App() {
         setWorking(false)
       }
     },
-    [current, step, fullName, cnic, say, advanceFrom],
+    [current, step, fullName, cnic, collected, say, advanceFrom],
   )
 
   const onGps = useCallback(() => {
@@ -286,6 +307,14 @@ export function App() {
             },
             thanksGps(),
           ],
+          {
+            collected: {
+              ...collected,
+              'gps.latitude': latitude.toFixed(6),
+              'gps.longitude': longitude.toFixed(6),
+              'gps.accuracyMetres': String(Math.round(pos.coords.accuracy)),
+            },
+          },
         )
       },
       () => {
@@ -298,7 +327,7 @@ export function App() {
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
     )
-  }, [current, step, say, advanceFrom])
+  }, [current, step, collected, say, advanceFrom])
 
   const stop = useCallback(() => {
     abort.current?.abort()
@@ -317,7 +346,7 @@ export function App() {
     store.clear()
     store.clearState()
     setMessages(WELCOME)
-    setFlow({ step: 0, firstName: '', fullName: '', cnic: '' })
+    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {} })
     setError(null)
   }, [])
 
@@ -428,6 +457,8 @@ export function App() {
           </div>
         )}
 
+        {!current && <DebugPanel data={collected} />}
+
         {error && <div class="err banner">{error}</div>}
       </div>
 
@@ -467,11 +498,26 @@ export function App() {
             if (f) void onFile(f)
           }}
         />
+        <input
+          ref={selfieCam}
+          class="hidden"
+          type="file"
+          accept={CAMERA_ACCEPT}
+          capture="user"
+          onChange={(e) => {
+            const el = e.target as HTMLInputElement
+            const f = el.files?.[0]
+            el.value = ''
+            if (f) void onFile(f)
+          }}
+        />
         <button
           class="camera"
-          aria-label="Tasveer khenchein"
+          aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
           disabled={busy}
-          onClick={() => camera.current?.click()}
+          onClick={() =>
+            (current?.facing === 'user' ? selfieCam : camera).current?.click()
+          }
         >
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
             <path

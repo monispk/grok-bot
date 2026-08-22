@@ -335,6 +335,48 @@ header strong {
   .spinner { animation-duration: 2.4s; }
 }
 
+.debug {
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.debug summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+
+.dgroup { margin-top: 10px; }
+
+.dgroup h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--accent);
+}
+
+.drow {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.drow span { color: var(--muted); flex: none; }
+
+.drow code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .think { color: var(--muted); }
 .think::after { content: '…'; animation: blink 1.2s steps(1) infinite; }
 
