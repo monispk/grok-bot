@@ -12,9 +12,13 @@ import {
   type Msg,
 } from './provider.ts'
 import { accept, get as getUpload } from './uploads.ts'
-import { inspect, type DocKind } from './fields.ts'
+import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
-import { read, SPARSE_WORDS, warmOcr } from './ocr.ts'
+import { warmOcr } from './ocr.ts'
+import { extractName } from './extract.ts'
+import { verifyDocument } from './verify.ts'
+import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
+import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
 
 const app = new Hono()
@@ -26,7 +30,82 @@ const clientIp = (c: { req: { header: (k: string) => string | undefined } }) =>
   c.req.header('x-real-ip') ??
   'unknown'
 
-app.get('/healthz', (c) => c.json({ ok: true, model: MODEL }))
+app.get('/healthz', (c) => c.json({ ok: true, model: MODEL, whatsapp: whatsappReady }))
+
+// ---------------------------------------------------------------- WhatsApp --
+// Meta calls these, so they sit outside the password gate. Authenticity comes
+// from the signature instead.
+
+/** Meta's subscription handshake: echo the challenge if the token matches. */
+app.get('/webhook/whatsapp', (c) => {
+  const mode = c.req.query('hub.mode')
+  const token = c.req.query('hub.verify_token')
+  const challenge = c.req.query('hub.challenge') ?? ''
+  if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN)
+    return c.text(challenge, 200)
+  return c.text('Forbidden', 403)
+})
+
+// Meta retries anything it does not see acknowledged quickly, and it redelivers
+// on retry, so ids are remembered to avoid running a step twice.
+const handled = new Set<string>()
+setInterval(() => handled.clear(), 30 * 60_000).unref()
+
+app.post('/webhook/whatsapp', async (c) => {
+  const raw = await c.req.text()
+  if (!validSignature(raw, c.req.header('x-hub-signature-256'))) {
+    console.error('whatsapp: rejected a webhook with a bad signature')
+    return c.text('Forbidden', 403)
+  }
+
+  let body: unknown
+  try {
+    body = JSON.parse(raw)
+  } catch {
+    return c.text('Bad Request', 400)
+  }
+
+  const incoming = parseWebhook(body)
+
+  // Acknowledge first: OCR and a model call take longer than Meta will wait.
+  void (async () => {
+    for (const msg of incoming) {
+      if (handled.has(msg.id)) continue
+      handled.add(msg.id)
+      try {
+        await handleIncoming(msg)
+      } catch (err) {
+        console.error('whatsapp: handler failed', err instanceof Error ? err.message : err)
+      }
+    }
+  })()
+
+  return c.text('EVENT_RECEIVED', 200)
+})
+
+function parseWebhook(body: unknown): Incoming[] {
+  const out: Incoming[] = []
+  const b = body as {
+    entry?: { changes?: { value?: { messages?: Record<string, any>[] } }[] }[]
+  }
+  for (const entry of b.entry ?? [])
+    for (const change of entry.changes ?? [])
+      for (const m of change.value?.messages ?? []) {
+        if (!m.from || !m.id || !m.type) continue
+        out.push({
+          from: String(m.from),
+          id: String(m.id),
+          type: String(m.type),
+          text: m.text?.body ? String(m.text.body) : undefined,
+          mediaId: m.image?.id ?? m.document?.id ?? m.audio?.id ?? undefined,
+          mime: m.image?.mime_type ?? m.document?.mime_type ?? undefined,
+          latitude: m.location?.latitude,
+          longitude: m.location?.longitude,
+        })
+      }
+  return out
+}
+// -------------------------------------------------------------- /WhatsApp --
 
 // Cheap endpoint the client hits on composer focus and on an idle timer, purely
 // to keep the browser's TLS connection to Railway's edge warm. A cold handshake
@@ -143,60 +222,13 @@ app.post('/api/upload', guard, async (c) => {
   const expectedCnic =
     typeof body?.['expectedCnic'] === 'string' ? body['expectedCnic'].replace(/\D/g, '') : ''
 
-  // Verification never blocks on its own failure. If OCR is off, or the upload
-  // is a PDF we cannot rasterise, the document is accepted and the branch checks
-  // the original — the rider is not punished for our pipeline.
-  let verification: Record<string, unknown> = { pass: true, checked: false }
-
-  if (kind) {
-    const reading = await read(bytes, mime)
-
-    // Almost nothing was read. That is a tilted, blurred or dark photo, and
-    // guessing from a partial read is worse than asking for another one.
-    if (reading && reading.words.length > 0 && reading.words.length < SPARSE_WORDS) {
-      return c.json({
-        id, name, mime, size,
-        verification: {
-          pass: false,
-          checked: true,
-          reason:
-            'Tasveer saaf nahi aayi. Camera ko seedha rakh kar, achi roshni mein dobara khenchein.',
-          missing: ['unreadable'],
-          fields: {},
-        },
-      })
-    }
-
-    if (reading) {
-      const found = inspect(kind, reading)
-      let pass = found.pass
-      let reason = found.reason
-
-      const cnic = typeof found.fields.cnic === 'string' ? found.fields.cnic : null
-      if (pass && expectedCnic && cnic && cnic !== expectedCnic) {
-        // 13 exact digits either match or they do not — worth blocking on.
-        pass = false
-        reason =
-          'Is document par CNIC number aap ke CNIC se match nahi kar raha. Baraye meherbani sahi document bhejein.'
-      }
-
-      // Names are never blocking: Roman Urdu spelling varies too much to refuse
-      // a rider over it. Recorded so the branch can look.
-      const docName = typeof found.fields.name === 'string' ? found.fields.name : null
-      const nameCheck =
-        expectedName && docName ? compareNames(expectedName, docName) : null
-
-      verification = {
-        pass,
-        checked: true,
-        reason,
-        missing: found.missing,
-        fields: found.fields,
-        nameVerdict: nameCheck?.verdict ?? null,
-        nameScore: nameCheck?.score ?? null,
-      }
-    }
-  }
+  const verification = await verifyDocument({
+    kind,
+    bytes,
+    mime,
+    expectedName,
+    expectedCnic,
+  })
 
   return c.json({ id, name, mime, size, verification })
 })
@@ -210,28 +242,15 @@ app.get('/api/upload/:id', guard, (c) => {
   return c.body(u.bytes as unknown as ArrayBuffer)
 })
 
-// Is this reply the rider's name, or a question they asked instead?
-const NAME_PROMPT = `You decide whether a message is a person's name.
-The user was asked: "Aapka poora naam jo CNIC par hai, kya hai?" (What is your full name as on your CNIC?)
-Reply with JSON only: {"is_name": true|false, "full_name": string|null, "first_name": string|null}
-If the message is a question, a greeting, or anything other than their own name, set is_name to false and the names to null.
-Names may be written in Roman Urdu. Strip words like "mera naam hai" / "my name is". Keep the name's own spelling.`
-
 app.post('/api/extract-name', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
-  const text = typeof body.text === 'string' ? body.text.slice(0, 500) : ''
-  if (!text) return c.json({ is_name: false })
-
-  const out = await completeJson(NAME_PROMPT, text)
-  if (!out) return c.json({ is_name: false, unavailable: true })
-
-  const full = typeof out.full_name === 'string' ? out.full_name.trim() : ''
-  const first = typeof out.first_name === 'string' ? out.first_name.trim() : ''
+  const text = typeof body.text === 'string' ? body.text : ''
+  const guess = await extractName(text)
   return c.json({
-    is_name: out.is_name === true && full.length > 0,
-    full_name: full || null,
-    first_name: first || full.split(/\s+/)[0] || null,
+    is_name: guess.isName,
+    full_name: guess.fullName,
+    first_name: guess.firstName,
   })
 })
 

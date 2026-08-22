@@ -137,6 +137,31 @@ export async function completeJson(
   }
 }
 
+/** One complete reply, no streaming. WhatsApp messages are atomic. */
+export async function completeText(messages: Msg[]): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/chat/completions`, {
+      method: 'POST',
+      dispatcher: agent,
+      signal: AbortSignal.timeout(45_000),
+      headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'system', content: SYSTEM }, ...messages],
+        temperature: 0.7,
+        max_completion_tokens: OUTPUT_BUDGET.low,
+        reasoning_effort: 'low',
+        reasoning_format: 'hidden',
+      }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+    return json.choices?.[0]?.message?.content?.trim() || null
+  } catch {
+    return null
+  }
+}
+
 export async function openCompletion(
   messages: Msg[],
   effort: Effort,
