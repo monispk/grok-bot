@@ -7,6 +7,8 @@
  * camera button, WhatsApp has its own attachment menu, and telling a WhatsApp
  * user to press a button that isn't there would be worse than saying nothing.
  */
+import { SAY } from './messages.ts'
+
 export type StepKind = 'text' | 'upload' | 'gps'
 export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
 
@@ -123,8 +125,7 @@ export const WA_ASK: Record<string, string> = {
  * the one answer that has to be typed — it is matched against the CNIC and the
  * licence, so it has to exist as text.
  */
-export const TYPE_NAME_PLEASE =
-  'Baraye meherbani apna naam likh kar bhejein — voice note ya tasveer nahi. Baaqi sawalon ke jawab aap voice note se bhi de saktay hain, lekin naam likhna zaroori hai.'
+export const TYPE_NAME_PLEASE = SAY.typeName.text
 
 /**
  * The model, shown a pending question in the history, often just repeats it. The

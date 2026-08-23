@@ -1,3 +1,4 @@
+import { SAY } from '../shared/messages.ts'
 import { inspect, type DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { read, SPARSE_WORDS } from './ocr.ts'
@@ -45,12 +46,16 @@ export async function verifyDocument(opts: {
 
   // Almost nothing was read: a tilted, blurred or dark photo. Guessing from a
   // partial read is worse than asking for another one.
-  if (reading.words.length > 0 && reading.words.length < SPARSE_WORDS)
+  //
+  // Photos only. A PDF's text layer either extracts or it does not, and a short
+  // one is not a bad photograph — treating it as one told a rider their bill was
+  // blurred when the real answer was that it had expired.
+  const isPhoto = mime !== 'application/pdf'
+  if (isPhoto && reading.words.length > 0 && reading.words.length < SPARSE_WORDS)
     return {
       pass: false,
       checked: true,
-      reason:
-        'Tasveer saaf nahi aayi. Camera ko seedha rakh kar, achi roshni mein dobara khenchein.',
+      reason: SAY.photoUnclear.text,
       missing: ['unreadable'],
       fields: {},
       nameVerdict: null,
@@ -66,8 +71,7 @@ export async function verifyDocument(opts: {
   if (pass && wanted && cnic && cnic !== wanted) {
     // Thirteen exact digits either match or they do not — worth blocking on.
     pass = false
-    reason =
-      'Is document par CNIC number aap ke CNIC se match nahi kar raha. Baraye meherbani sahi document bhejein.'
+    reason = SAY.cnicMismatch.text
   }
 
   // Names never block: Roman Urdu spelling varies too much to refuse a rider

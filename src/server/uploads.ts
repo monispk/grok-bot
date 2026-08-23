@@ -6,6 +6,8 @@
  * exists, nothing outlives the process. When the verification APIs land, this is
  * where the bytes get forwarded to them.
  */
+import { SAY } from '../shared/messages.ts'
+
 export type Upload = {
   id: string
   name: string
@@ -44,13 +46,13 @@ export type Rejected = { ok: false; reason: string }
 export function accept(name: string, bytes: Uint8Array): Accepted | Rejected {
   if (bytes.length === 0) return { ok: false, reason: 'File khali hai.' }
   if (bytes.length > MAX_FILE)
-    return { ok: false, reason: 'File bohat bari hai. 10 MB se choti file bhejein.' }
+    return { ok: false, reason: SAY.fileTooBig.text }
 
   const mime = sniff(bytes)
   if (!mime)
     return {
       ok: false,
-      reason: 'Ye file qabool nahi ho saki. Sirf JPG, PNG, GIF ya PDF bhejein.',
+      reason: SAY.badFileType.text,
     }
 
   sweep()

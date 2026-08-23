@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
+import { audioSources } from '../shared/steps.ts'
+import { audioForText, SAY } from '../shared/messages.ts'
 import { dropRepeat, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
@@ -15,13 +17,21 @@ const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
-/** Appends, skipping any bot line that just repeats the one before it. */
+/**
+ * Appends, skipping any bot line that just repeats the one before it, and
+ * attaching the recording for any message that has one.
+ */
 function append(existing: Message[], incoming: Message[]): Message[] {
   const out = [...existing]
   for (const m of incoming) {
     const prev = [...out].reverse().find((x) => x.role === 'assistant' && !x.kind)
     if (m.role === 'assistant' && !m.kind && dropRepeat(prev?.content, m.content)) continue
     out.push(m)
+    if (m.role === 'assistant' && !m.kind) {
+      const spoken = audioForText(m.content)
+      if (spoken)
+        out.push({ role: 'assistant', content: '', kind: 'audio', sources: audioSources(spoken) })
+    }
   }
   return out
 }
@@ -289,7 +299,7 @@ export function App() {
         }
         if (!res.ok || !data.id) {
           settle(undefined)
-          setError(data.error ?? 'File bhejne mein masla hua. Dobara koshish karein.')
+          setError(data.error ?? SAY.uploadFailed.text)
           return
         }
 
@@ -324,7 +334,7 @@ export function App() {
         })
       } catch {
         settle(undefined)
-        setError('File bhejne mein masla hua. Dobara koshish karein.')
+        setError(SAY.uploadFailed.text)
       } finally {
         setWorking(false)
       }
@@ -365,11 +375,7 @@ export function App() {
       },
       () => {
         setWorking(false)
-        say(
-          bot(
-            'Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara button dabayein.',
-          ),
-        )
+        say(bot(SAY.locationDenied.text))
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
     )

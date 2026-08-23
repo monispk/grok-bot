@@ -1,3 +1,4 @@
+import { SAY } from '../shared/messages.ts'
 import type { Reading, Word } from './ocr.ts'
 
 export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
@@ -165,14 +166,10 @@ export function columnUnder(words: Word[], labels: string[], maxDyFactor = 4): s
 const BILL_MAX_AGE_DAYS = 92
 
 const RETRY: Record<DocKind, string> = {
-  cnic_front:
-    'Ye CNIC ke saamne wali tasveer nahi lag rahi. Baraye meherbani CNIC ka front, achi roshni mein, dobara bhejein.',
-  cnic_back:
-    'Ye CNIC ke peechay wali tasveer nahi lag rahi. Baraye meherbani CNIC ka back, achi roshni mein, dobara bhejein.',
-  license:
-    'Ye driving license ki tasveer nahi lag rahi. Baraye meherbani license ka front, achi roshni mein, dobara bhejein.',
-  bill:
-    'Is bill par due date nahi mil saki. Baraye meherbani poora bill, achi roshni mein, dobara bhejein.',
+  cnic_front: SAY.notCnicFront.text,
+  cnic_back: SAY.notCnicBack.text,
+  license: SAY.notLicense.text,
+  bill: SAY.billNoDate.text,
 }
 
 export function inspect(kind: DocKind, reading: Reading): Inspection {
@@ -250,8 +247,7 @@ export function inspect(kind: DocKind, reading: Reading): Inspection {
       fields.billAgeDays = String(Math.round(ageDays))
       if (ageDays > BILL_MAX_AGE_DAYS) {
         missing.push('bill older than three months')
-        override =
-          'Ye bill teen mahine se purana hai. Baraye meherbani pichlay teen mahine ka bill bhejein.'
+        override = SAY.billTooOld.text
       }
     }
   }

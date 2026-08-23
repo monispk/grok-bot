@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { audioForText, SAY } from '../../shared/messages.ts'
 import {
   closing,
   STEP_SPECS,
@@ -33,7 +34,7 @@ const HISTORY = 12
  * not there yet stays text-only rather than firing a send Meta cannot fulfil.
  */
 const audioCache = new Map<string, boolean>()
-function audioLink(base: string | undefined): string | null {
+function audioLink(base: string | undefined | null): string | null {
   if (!base || !PUBLIC_URL) return null
   let ok = audioCache.get(base)
   if (ok === undefined) {
@@ -61,6 +62,10 @@ async function say(to: string, session: Session, ...lines: (string | null)[]) {
     if (dropRepeat(prev?.content, line)) continue
     await sendText(to, line)
     session.history.push({ role: 'assistant', content: line })
+
+    // Speak the refusal too, when it has been recorded.
+    const spoken = audioLink(audioForText(line))
+    if (spoken) await sendAudio(to, spoken)
   }
   session.history = session.history.slice(-HISTORY)
 }
@@ -203,7 +208,7 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
 
     const media = msg.mediaId ? await downloadMedia(msg.mediaId) : null
     if (!media) {
-      await say(to, session, 'Tasveer nahi mil saki. Baraye meherbani dobara bhejein.')
+      await say(to, session, SAY.uploadFailed.text)
       await sessions.save(session)
       return
     }
