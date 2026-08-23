@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import {
   closing,
   STEP_SPECS,
+  dropRepeat,
   stripEcho,
   TYPE_NAME_PLEASE,
   WA_ASK,
@@ -56,6 +57,8 @@ const retry = (i: number) => {
 async function say(to: string, session: Session, ...lines: (string | null)[]) {
   for (const line of lines) {
     if (!line) continue
+    const prev = [...session.history].reverse().find((m) => m.role === 'assistant')
+    if (dropRepeat(prev?.content, line)) continue
     await sendText(to, line)
     session.history.push({ role: 'assistant', content: line })
   }

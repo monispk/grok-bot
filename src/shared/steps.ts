@@ -132,12 +132,34 @@ export const TYPE_NAME_PLEASE =
  * against this is unreliable, so the echo is detected and dropped instead — the
  * canned one is authoritative and carries the recording.
  */
+/** Edit distance, so a paraphrase is still recognised as the same question. */
+function similarity(a: string, b: string): number {
+  if (a === b) return 1
+  if (!a.length || !b.length) return 0
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i]
+    for (let j = 1; j <= b.length; j++)
+      curr[j] = Math.min(
+        prev[j]! + 1,
+        curr[j - 1]! + 1,
+        prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+    prev = curr
+  }
+  return 1 - prev[b.length]! / Math.max(a.length, b.length)
+}
+
 export function echoesQuestion(reply: string, question: string): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
   const r = norm(reply)
   const q = norm(question)
   if (!r || !q) return false
-  return r === q || (r.includes(q) && r.length < q.length * 2.2)
+  if (r === q) return true
+  if (r.includes(q) && r.length < q.length * 2.2) return true
+  // The model rewords as often as it repeats: "CNIC par hai" becomes "CNIC par
+  // likha hai". Close enough to the pending question is still the same question.
+  return similarity(r, q) >= 0.8
 }
 
 /**
@@ -150,6 +172,15 @@ export function stripEcho(reply: string, question: string): string {
   const parts = reply.split(/(?<=[.?!。])\s+|\n+/).filter((p) => p.trim())
   const kept = parts.filter((p) => !echoesQuestion(p, question))
   return kept.join(' ').trim()
+}
+
+/**
+ * Last line of defence against the same thing being said twice in a row,
+ * whatever produced it — the model, the canned question, or both.
+ */
+export function dropRepeat(previous: string | undefined, next: string): boolean {
+  if (!previous || !next) return false
+  return echoesQuestion(next, previous)
 }
 
 export const WELCOME_LINES = [

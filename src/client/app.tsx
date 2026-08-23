@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
-import { stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
+import { dropRepeat, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
@@ -14,6 +14,17 @@ const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.
 const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
+
+/** Appends, skipping any bot line that just repeats the one before it. */
+function append(existing: Message[], incoming: Message[]): Message[] {
+  const out = [...existing]
+  for (const m of incoming) {
+    const prev = [...out].reverse().find((x) => x.role === 'assistant' && !x.kind)
+    if (m.role === 'assistant' && !m.kind && dropRepeat(prev?.content, m.content)) continue
+    out.push(m)
+  }
+  return out
+}
 
 export function App() {
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -93,7 +104,7 @@ export function App() {
   }, [collected])
 
   const say = useCallback((...lines: Message[]) => {
-    setMessages((m) => [...m, ...lines])
+    setMessages((m) => append(m, lines))
   }, [])
 
   /** Move to the next step, or finish. Called only once the input was accepted. */
@@ -102,13 +113,14 @@ export function App() {
       const next = STEPS[i + 1]
       setFlow((f) => {
         const merged = { ...f, ...patch, step: i + 1 }
-        setMessages((m) => [
-          ...m,
-          ...extra,
-          ...(next
-            ? askMessages(next)
-            : finished(merged.firstName, merged.collected['bill.billAddress'])),
-        ])
+        setMessages((m) =>
+          append(m, [
+            ...extra,
+            ...(next
+              ? askMessages(next)
+              : finished(merged.firstName, merged.collected['bill.billAddress'])),
+          ]),
+        )
         return merged
       })
     },
@@ -134,7 +146,7 @@ export function App() {
               // Strip the repeated question; we ask it again ourselves, with the
               // recording attached.
               const kept = pending ? stripEcho(acc, pending) : acc
-              if (kept) setMessages((m) => [...m, bot(kept)])
+              if (kept) setMessages((m) => append(m, [bot(kept)]))
               setStreaming(null)
               abort.current = null
               resolve()
