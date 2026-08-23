@@ -313,7 +313,27 @@ app.get('/api/chat/resume', guard, async (c) => {
   })
 })
 
-app.use('/*', serveStatic({ root: './dist/client' }))
+/**
+ * The voice note has to be served as audio/ogg: Meta accepts opus only in an ogg
+ * container and checks the content type when it fetches the link, and iOS will
+ * not play an m4a delivered as application/octet-stream.
+ */
+const AUDIO_TYPES: Record<string, string> = {
+  '.opus': 'audio/ogg',
+  '.m4a': 'audio/mp4',
+}
+
+app.use(
+  '/*',
+  serveStatic({
+    root: './dist/client',
+    onFound: (path, c) => {
+      const ext = path.slice(path.lastIndexOf('.'))
+      const type = AUDIO_TYPES[ext]
+      if (type) c.header('content-type', type)
+    },
+  }),
+)
 app.get('*', serveStatic({ path: './dist/client/index.html' }))
 
 startWarmer()
