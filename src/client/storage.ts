@@ -21,6 +21,8 @@ export type FlowState = {
   cnic: string
   /** Everything pulled off the documents, for the summary at the end. */
   collected: Record<string, string>
+  /** Screened out — no smartphone. Kept, so they can resume if that changes. */
+  ineligible?: boolean
 }
 
 const STATE_KEY = 'grok-bot:flow'

@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { audioSources } from '../shared/steps.ts'
 import { audioForText, SAY } from '../shared/messages.ts'
-import { dropRepeat, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
+import { dropRepeat, readYesNo, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
@@ -12,6 +19,18 @@ import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
 const HISTORY_WINDOW = 12
+
+/**
+ * Messages the bot sends arrive as a batch — the welcome is six at once — which
+ * lands as a wall of text nobody reads. They are revealed one at a time instead,
+ * words appearing quickly, so the eye follows the newest line rather than having
+ * to find it. Fast enough not to be a wait; slow enough to be noticed.
+ */
+const WORD_MS = 18
+const GAP_MS = 110
+const MEDIA_MS = 190
+/** Long messages reveal several words a tick so none outstays this budget. */
+const MAX_TICKS = 14
 const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.gif,.pdf'
 const CAMERA_ACCEPT = 'image/*'
 
@@ -37,12 +56,18 @@ function append(existing: Message[], incoming: Message[]): Message[] {
 }
 
 export function App() {
-  const [messages, setMessages] = useState<Message[]>(() => {
+  const [boot] = useState(() => {
     const saved = store.load()
-    return saved.length ? saved : WELCOME
+    // Returning riders see their history at once; a fresh one watches it arrive.
+    return saved.length
+      ? { msgs: saved, revealed: saved.length }
+      : { msgs: WELCOME, revealed: 0 }
   })
-  const [{ step, firstName, fullName, cnic, collected }, setFlow] = useState(() =>
-    store.loadState(),
+  const [messages, setMessages] = useState<Message[]>(boot.msgs)
+  const [revealed, setRevealed] = useState(boot.revealed)
+  const [typed, setTyped] = useState(0)
+  const [{ step, firstName, fullName, cnic, collected, ineligible }, setFlow] = useState(
+    () => store.loadState(),
   )
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
@@ -52,6 +77,7 @@ export function App() {
   const [password, setPassword] = useState('')
 
   const abort = useRef<AbortController | null>(null)
+  const messagesRef = useRef(messages)
   const scroller = useRef<HTMLDivElement | null>(null)
   const picker = useRef<HTMLInputElement | null>(null)
   const camera = useRef<HTMLInputElement | null>(null)
@@ -69,10 +95,53 @@ export function App() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => store.save(messages), [messages])
+  useEffect(() => {
+    messagesRef.current = messages
+    store.save(messages)
+  }, [messages])
+
+  // Reveals the next message: instantly if the rider sent it, after a beat for
+  // an image or a voice note, word by word for anything the bot says.
+  useEffect(() => {
+    if (revealed >= messages.length) return
+    const m = messages[revealed]
+    if (!m) return
+
+    if (m.role === 'user') {
+      setRevealed((r) => r + 1)
+      return
+    }
+
+    if (m.kind && m.kind !== 'text') {
+      const t = setTimeout(() => setRevealed((r) => r + 1), MEDIA_MS)
+      return () => clearTimeout(t)
+    }
+
+    const words = m.content.split(/\s+/).filter(Boolean)
+    if (!words.length) {
+      setRevealed((r) => r + 1)
+      return
+    }
+
+    const chunk = Math.max(1, Math.ceil(words.length / MAX_TICKS))
+    let shown = 0
+    setTyped(0)
+    const id = setInterval(() => {
+      shown = Math.min(words.length, shown + chunk)
+      setTyped(shown)
+      if (shown >= words.length) {
+        clearInterval(id)
+        setTimeout(() => {
+          setTyped(0)
+          setRevealed((r) => r + 1)
+        }, GAP_MS)
+      }
+    }, WORD_MS)
+    return () => clearInterval(id)
+  }, [revealed, messages])
   useEffect(
-    () => store.saveState({ step, firstName, fullName, cnic, collected }),
-    [step, firstName, fullName, cnic, collected],
+    () => store.saveState({ step, firstName, fullName, cnic, collected, ineligible }),
+    [step, firstName, fullName, cnic, collected, ineligible],
   )
 
   useEffect(() => {
@@ -82,10 +151,20 @@ export function App() {
     return () => clearInterval(id)
   }, [])
 
-  useEffect(() => {
+  // Keep the newest line just above the composer as it is written. This runs
+  // after layout and again on the next frame: measuring before the new words
+  // are laid out leaves the thread short of the bottom, which is exactly the
+  // scrolling the rider should never have to do.
+  useLayoutEffect(() => {
     const el = scroller.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages, streaming])
+    if (!el) return
+    const pin = () => {
+      el.scrollTop = el.scrollHeight
+    }
+    pin()
+    const id = requestAnimationFrame(pin)
+    return () => cancelAnimationFrame(id)
+  }, [messages, streaming, revealed, typed])
 
   // Licence name against CNIC name — a comparison between two documents, which
   // neither upload could make on its own.
@@ -128,7 +207,9 @@ export function App() {
             ...extra,
             ...(next
               ? askMessages(next)
-              : finished(merged.firstName, merged.collected['bill.billAddress'])),
+              : merged.ineligible
+                ? []
+                : finished(merged.firstName, merged.collected['bill.billAddress'])),
           ]),
         )
         return merged
@@ -156,7 +237,11 @@ export function App() {
               // Strip the repeated question; we ask it again ourselves, with the
               // recording attached.
               const kept = pending ? stripEcho(acc, pending) : acc
-              if (kept) setMessages((m) => append(m, [bot(kept)]))
+              if (kept) {
+                const next = append(messagesRef.current, [bot(kept)])
+                setMessages(next)
+                setRevealed(next.length)
+              }
               setStreaming(null)
               abort.current = null
               resolve()
@@ -193,6 +278,22 @@ export function App() {
 
       // Flow complete — from here the bot is purely a question answerer.
       if (!current) return void (await runFaq(withUser))
+
+      if (current.kind === 'confirm') {
+        const answer = readYesNo(text)
+        if (answer === 'yes') {
+          advanceFrom(step, [bot('Theek hai.')], {})
+        } else if (answer === 'no') {
+          // A smartphone is not optional for this job. Say so plainly and stop
+          // rather than walking them through an application they cannot finish.
+          setFlow((f) => ({ ...f, step: STEPS.length, ineligible: true }))
+          say(bot(SAY.needSmartphone.text))
+        } else {
+          await runFaq(withUser, current.ask)
+          say(...askMessages(current))
+        }
+        return
+      }
 
       if (current.kind !== 'text') {
         // A document or location was asked for. Text cannot satisfy it, so treat
@@ -398,7 +499,7 @@ export function App() {
     store.clear()
     store.clearState()
     setMessages(WELCOME)
-    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {} })
+    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {}, ineligible: false })
     setError(null)
   }, [])
 
@@ -459,7 +560,7 @@ export function App() {
       </header>
 
       <div class="scroll" ref={scroller}>
-        {messages.map((m, i) => {
+        {messages.slice(0, revealed).map((m, i) => {
           if (m.kind === 'image')
             return (
               <div key={i} class="msg bot media">
@@ -498,6 +599,18 @@ export function App() {
             />
           )
         })}
+
+        {revealed < messages.length && typed > 0 && messages[revealed] && (
+          <div class="msg bot">
+            <span
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdown(
+                  messages[revealed]!.content.split(/\s+/).filter(Boolean).slice(0, typed).join(' '),
+                ),
+              }}
+            />
+          </div>
+        )}
 
         {streaming !== null && (
           <div class="msg bot">

@@ -9,7 +9,7 @@
  */
 import { SAY } from './messages.ts'
 
-export type StepKind = 'text' | 'upload' | 'gps'
+export type StepKind = 'text' | 'confirm' | 'upload' | 'gps'
 export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
 
 export type StepSpec = {
@@ -51,6 +51,13 @@ export const STEP_SPECS: StepSpec[] = [
     audio: '/ask-name',
     ask: 'Aapka poora naam jo CNIC par hai, kya hai?',
     need: 'Baraye meherbani apna poora naam likh kar bhejein.',
+  },
+  {
+    id: 'smartphone',
+    kind: 'confirm',
+    audio: '/ask-smartphone',
+    ask: 'Kya aap ke paas apna baray screen wala touch phone hai? Touch phone foodpanda rider job ke liye zaroori hai.',
+    need: 'Baraye meherbani "haan" ya "nahi" likh kar bataein.',
   },
   {
     id: 'selfie',
@@ -182,6 +189,19 @@ export function stripEcho(reply: string, question: string): string {
 export function dropRepeat(previous: string | undefined, next: string): boolean {
   if (!previous || !next) return false
   return echoesQuestion(next, previous)
+}
+
+/**
+ * Reads yes or no from a rider's reply. Deterministic rather than a model call:
+ * it is one word, it must be reliable, and a wrong reading here either turns
+ * away someone eligible or walks someone through an application they cannot
+ * finish. A negative word anywhere wins, so "ji nahi" is a no.
+ */
+export function readYesNo(text: string): 'yes' | 'no' | null {
+  const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
+  if (/\s(nahi|nahin|nahen|nai|nhi|no|nope|na)\s/.test(t)) return 'no'
+  if (/\s(haan|han|hann|ji|jee|g|yes|yep|bilkul|zaroor|hai)\s/.test(t)) return 'yes'
+  return null
 }
 
 export const WELCOME_LINES = [

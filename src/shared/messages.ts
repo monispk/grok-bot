@@ -54,6 +54,10 @@ export const SAY = {
     'File bhejne mein masla hua. Dobara koshish karein.',
     '/say-upload-failed',
   ),
+  needSmartphone: say(
+    'Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge.',
+    '/say-need-smartphone',
+  ),
   // Worded without reference to a button, so one recording serves both the web
   // app and WhatsApp.
   locationDenied: say(

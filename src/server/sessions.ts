@@ -19,6 +19,8 @@ export type Session = {
   cnic: string
   collected: Record<string, string>
   history: Msg[]
+  /** Screened out — no smartphone. Kept, so they can resume if that changes. */
+  ineligible: boolean
   updatedAt: number
 }
 
@@ -40,6 +42,7 @@ export const blank = (phone: string): Session => ({
   cnic: '',
   collected: {},
   history: [],
+  ineligible: false,
   updatedAt: Date.now(),
 })
 

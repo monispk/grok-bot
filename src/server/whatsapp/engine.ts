@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { audioForText, SAY } from '../../shared/messages.ts'
 import {
   closing,
+  readYesNo,
   STEP_SPECS,
   dropRepeat,
   stripEcho,
@@ -123,6 +124,10 @@ async function advance(to: string, session: Session, confirm: string) {
     await askStep(to, session, session.step)
     return
   }
+  if (session.ineligible) {
+    await say(to, session, confirm)
+    return
+  }
   await say(to, session, confirm, ...closing(session.firstName, session.collected['bill.billAddress']))
 }
 
@@ -150,6 +155,25 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
       session.history.push({ role: 'user', content: msg.text })
       const reply = await completeText(session.history.slice(-HISTORY))
       await say(to, session, reply ?? 'Maazrat, abhi jawab nahi mil saka.')
+    }
+    await sessions.save(session)
+    return
+  }
+
+  if (msg.type === 'text' && msg.text && step.kind === 'confirm') {
+    const answer = readYesNo(msg.text)
+    if (answer === 'yes') {
+      session.history.push({ role: 'user', content: msg.text })
+      await advance(to, session, 'Theek hai.')
+    } else if (answer === 'no') {
+      session.history.push({ role: 'user', content: msg.text })
+      // A smartphone is not optional for this job. Say so plainly and stop
+      // rather than walking them through an application they cannot finish.
+      session.step = STEP_SPECS.length
+      session.ineligible = true
+      await say(to, session, SAY.needSmartphone.text)
+    } else {
+      await answerThenReask(to, session, msg.text)
     }
     await sessions.save(session)
     return
