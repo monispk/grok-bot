@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import {
   closing,
   STEP_SPECS,
+  stripEcho,
   TYPE_NAME_PLEASE,
   WA_ASK,
   WELCOME_LINES,
@@ -88,11 +89,16 @@ async function welcome(to: string, session: Session) {
 async function answerThenReask(to: string, session: Session, question: string) {
   session.history.push({ role: 'user', content: question })
   const reply = await completeText(session.history.slice(-HISTORY))
-  await say(
-    to,
-    session,
-    reply ?? 'Maazrat, abhi jawab nahi mil saka. Baraye meherbani dobara poochein.',
-  )
+  const pending = askText(session.step)
+
+  // Strip the repeated question; askStep asks it again below, with its recording.
+  if (!reply) {
+    await say(to, session, 'Maazrat, abhi jawab nahi mil saka. Baraye meherbani dobara poochein.')
+  } else {
+    const kept = pending ? stripEcho(reply, pending) : reply
+    if (kept) await say(to, session, kept)
+  }
+
   await askStep(to, session, session.step)
 }
 

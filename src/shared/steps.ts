@@ -126,6 +126,32 @@ export const WA_ASK: Record<string, string> = {
 export const TYPE_NAME_PLEASE =
   'Baraye meherbani apna naam likh kar bhejein — voice note ya tasveer nahi. Baaqi sawalon ke jawab aap voice note se bhi de saktay hain, lekin naam likhna zaroori hai.'
 
+/**
+ * The model, shown a pending question in the history, often just repeats it. The
+ * canned question is then appended too and the rider sees it twice. Prompting
+ * against this is unreliable, so the echo is detected and dropped instead — the
+ * canned one is authoritative and carries the recording.
+ */
+export function echoesQuestion(reply: string, question: string): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const r = norm(reply)
+  const q = norm(question)
+  if (!r || !q) return false
+  return r === q || (r.includes(q) && r.length < q.length * 2.2)
+}
+
+/**
+ * Removes the repeated question but keeps the rest of the answer, because a
+ * reply often answers properly and *then* repeats the question — dropping the
+ * whole thing would throw away the answer the rider asked for.
+ * Returns an empty string when nothing but the echo was there.
+ */
+export function stripEcho(reply: string, question: string): string {
+  const parts = reply.split(/(?<=[.?!。])\s+|\n+/).filter((p) => p.trim())
+  const kept = parts.filter((p) => !echoesQuestion(p, question))
+  return kept.join(' ').trim()
+}
+
 export const WELCOME_LINES = [
   'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',
   'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',

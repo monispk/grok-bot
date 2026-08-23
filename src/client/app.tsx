@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
-import { TYPE_NAME_PLEASE } from '../shared/steps.ts'
+import { stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
@@ -117,7 +117,7 @@ export function App() {
 
   /** Answer a question from the FAQ. Resolves when the reply is complete. */
   const runFaq = useCallback(
-    (history: Message[]) =>
+    (history: Message[], pending?: string) =>
       new Promise<void>((resolve) => {
         const controller = new AbortController()
         abort.current = controller
@@ -131,7 +131,10 @@ export function App() {
               setStreaming(acc)
             },
             onDone: () => {
-              setMessages((m) => [...m, bot(acc)])
+              // Strip the repeated question; we ask it again ourselves, with the
+              // recording attached.
+              const kept = pending ? stripEcho(acc, pending) : acc
+              if (kept) setMessages((m) => [...m, bot(kept)])
               setStreaming(null)
               abort.current = null
               resolve()
@@ -172,7 +175,7 @@ export function App() {
       if (current.kind !== 'text') {
         // A document or location was asked for. Text cannot satisfy it, so treat
         // it as a question, answer it, then ask again. The step does not move.
-        await runFaq(withUser)
+        await runFaq(withUser, current.ask)
         say(bot(current.wrong), ...(current.audio ? askMessages(current).slice(1) : []))
         return
       }
@@ -198,7 +201,7 @@ export function App() {
           fullName: (named.full_name ?? text).trim(),
         })
       } else {
-        await runFaq(withUser)
+        await runFaq(withUser, current.ask)
         say(...askMessages(current))
       }
     },

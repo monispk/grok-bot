@@ -27,6 +27,8 @@ Pehle ka tajurba chahiye: Nahi, koi tajurba zaroori nahi.
 Agar smartphone theek na ho: Phir aap kaam nahi kar saktay. App ke liye iPhone iOS 9.0 ya Android 7.0 ya us se naya phone chahiye.
 Kya auratein apply kar sakti hain: Ji haan.
 Interview hota hai: Nahi.
+Foodpanda ka office kahan hai: Do office hain. Aik F8 Markaz, Islamabad mein, aur doosra Rawalpindi mein. Aap Peer se Juma, dopahar 12 baje se shaam 6 baje tak ja saktay hain.
+Mujhe kis office jana hoga: Jo office aap ke ghar se qareeb ho, F8 Markaz Islamabad ya Rawalpindi.
 Kya ye pakki ya sarkari naukri hai: Nahi. Ye freelancer kaam hai, mulazmat nahi hai. Aap apne kaam ke ghante khud chuntay hain.
 WhatsApp par kaghzaat bhejnay ke baad kya hota hai: Rider ko apni branch office jana hota hai, Peer se Juma, dopahar 12 baje se shaam 6 baje tak, taake registration mukammal ho.
 

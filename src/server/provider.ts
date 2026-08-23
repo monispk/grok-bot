@@ -53,7 +53,9 @@ ${'```'}
 
 AAP KA KAAM SIRF SAWAL KA JAWAB DENA HAI:
 - Application ke marhalay (naam, license, CNIC, bill ki tasveerein, location) aik alag system sambhal raha hai. Aap khud kabhi kisi tasveer, document, CNIC number ya location ka mutalba NA karein.
-- Sirf user ke sawal ka jawab dein. Jawab ke baad apni taraf se koi naya sawal na poochein. Agla sawal system khud poochay ga.`
+- Sirf user ke sawal ka jawab dein. Jawab ke baad apni taraf se koi naya sawal na poochein. Agla sawal system khud poochay ga.
+- Jo sawal system pehle hi pooch chuka hai, usay dobara na likhein. System khud dohra dega.
+- Rider se kabhi ye na kahein ke woh aap ko koi maloomat "bata saktay hain". Aap unhein batati hain, woh aap se poochtay hain.`
 
 const SYSTEM = process.env.SYSTEM_PROMPT ?? DEFAULT_SYSTEM
 
