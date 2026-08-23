@@ -59,8 +59,10 @@ const retry = (i: number) => {
 async function say(to: string, session: Session, ...lines: (string | null)[]) {
   for (const line of lines) {
     if (!line) continue
-    const prev = [...session.history].reverse().find((m) => m.role === 'assistant')
-    if (dropRepeat(prev?.content, line)) continue
+    // Only an immediate repeat; a rider who sends a second wrong document must
+    // still be told why, even though the words are the same as last time.
+    const last = session.history[session.history.length - 1]
+    if (last?.role === 'assistant' && dropRepeat(last.content, line)) continue
     await sendText(to, line)
     session.history.push({ role: 'assistant', content: line })
 

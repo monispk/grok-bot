@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks'
+import { useMemo, useRef, useState } from 'preact/hooks'
 
 const mmss = (s: number, roundUp = false) => {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -12,15 +12,31 @@ export function VoiceNote({ sources }: { sources: { src: string; type: string }[
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
   const [pos, setPos] = useState(0)
-  const [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
-  // If neither format can play, drop the bubble rather than show a dead control.
-  if (failed) return null
+  /**
+   * The source is chosen here and set as `src`, rather than listing <source>
+   * children. A player created mid-conversation could fire `error` before its
+   * children were attached, and the bubble removed itself over a file that was
+   * perfectly fine — it then appeared correctly on the next page load, because
+   * then the whole tree rendered at once.
+   */
+  const ordered = useMemo(() => {
+    const probe = typeof Audio === 'undefined' ? null : new Audio()
+    const playable = probe ? sources.filter((s) => probe.canPlayType(s.type)) : []
+    return playable.length ? playable : sources
+  }, [sources])
+
+  // Only after every candidate has genuinely failed is the bubble dropped.
+  const current = ordered[attempt]
+  if (!current) return null
 
   const toggle = () => {
     const a = ref.current
     if (!a) return
-    if (a.paused) void a.play().catch(() => setFailed(true))
+    // A rejected play() is usually an autoplay policy, not a broken file, so it
+    // must never remove the player.
+    if (a.paused) void a.play().catch(() => {})
     else a.pause()
   }
 
@@ -73,12 +89,9 @@ export function VoiceNote({ sources }: { sources: { src: string; type: string }[
           setPlaying(false)
           setPos(0)
         }}
-        onError={() => setFailed(true)}
-      >
-        {sources.map((s) => (
-          <source key={s.src} src={s.src} type={s.type} />
-        ))}
-      </audio>
+        onError={() => setAttempt((a) => a + 1)}
+        src={current.src}
+      />
     </div>
   )
 }

@@ -43,8 +43,13 @@ const bot = (content: string): Message => ({ role: 'assistant', content })
 function append(existing: Message[], incoming: Message[]): Message[] {
   const out = [...existing]
   for (const m of incoming) {
-    const prev = [...out].reverse().find((x) => x.role === 'assistant' && !x.kind)
-    if (m.role === 'assistant' && !m.kind && dropRepeat(prev?.content, m.content)) continue
+    // Only an *immediate* repeat is suppressed. Looking back past the rider's
+    // own messages meant a second wrong upload got no answer at all, because the
+    // refusal matched the one from the previous attempt.
+    const last = out[out.length - 1]
+    const repeats =
+      last?.role === 'assistant' && !last.kind && dropRepeat(last.content, m.content)
+    if (m.role === 'assistant' && !m.kind && repeats) continue
     out.push(m)
     if (m.role === 'assistant' && !m.kind) {
       const spoken = audioForText(m.content)
