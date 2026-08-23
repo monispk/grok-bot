@@ -1,4 +1,4 @@
-import { STEP_SPECS, type StepSpec } from '../shared/steps.ts'
+import { audioSources, STEP_SPECS, type StepSpec } from '../shared/steps.ts'
 import type { Message } from './storage.ts'
 
 export type { StepKind, DocKind } from '../shared/steps.ts'
@@ -15,6 +15,19 @@ export const STEPS: Step[] = STEP_SPECS.map((s) => ({
 }))
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
+
+const voice = (base: string): Message => ({
+  role: 'assistant',
+  content: '',
+  kind: 'audio',
+  sources: audioSources(base),
+})
+
+/** A step's question, plus its spoken version when it has one. */
+export const askMessages = (step: Step): Message[] => [
+  bot(step.ask),
+  ...(step.audio ? [voice(step.audio)] : []),
+]
 
 /**
  * Closing messages. The office line is a placeholder — the nearest branch will

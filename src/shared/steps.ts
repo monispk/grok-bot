@@ -25,7 +25,18 @@ export type StepSpec = {
   webHint?: string
   /** How to send it, in WhatsApp. */
   waHint?: string
+  /**
+   * Base path of a spoken version of `ask`, without extension. Many riders read
+   * Roman Urdu poorly, so the important questions are also asked aloud.
+   */
+  audio?: string
 }
+
+/** Opus for Android and WhatsApp, AAC because iOS Safari will not play Ogg. */
+export const audioSources = (base: string) => [
+  { src: `${base}.opus`, type: 'audio/ogg; codecs=opus' },
+  { src: `${base}.m4a`, type: 'audio/mp4' },
+]
 
 const WEB_CLIP =
   'Neeche camera ka nishan daba kar tasveer khenchein, ya clip ka nishan daba kar file chunein.'
@@ -35,11 +46,13 @@ export const STEP_SPECS: StepSpec[] = [
   {
     id: 'name',
     kind: 'text',
+    audio: '/ask-name',
     ask: 'Aapka poora naam jo CNIC par hai, kya hai?',
     need: 'Baraye meherbani apna poora naam likh kar bhejein.',
   },
   {
     id: 'selfie',
+    audio: '/ask-selfie',
     kind: 'upload',
     facing: 'user',
     imageOnly: true,
@@ -50,6 +63,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'license_front',
+    audio: '/ask-license-front',
     kind: 'upload',
     doc: 'license',
     ask: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.',
@@ -59,6 +73,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'cnic_front',
+    audio: '/ask-cnic-front',
     kind: 'upload',
     doc: 'cnic_front',
     ask: 'Ab apne CNIC ke saamne wale hissay (front) ki tasveer bhejein.',
@@ -68,6 +83,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'cnic_back',
+    audio: '/ask-cnic-back',
     kind: 'upload',
     doc: 'cnic_back',
     ask: 'Ab apne CNIC ke peechay wale hissay (back) ki tasveer bhejein.',
@@ -77,6 +93,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'utility_bill',
+    audio: '/ask-utility-bill',
     kind: 'upload',
     doc: 'bill',
     ask: 'Ab apne ghar ka utility bill (bijli, gas ya paani) ki tasveer bhejein jis par aap ke rehne ka pata likha ho. Bill pichlay teen mahine ke andar ka hona chahiye. Bill kisi aur ke naam par ho to bhi theek hai.',
@@ -86,6 +103,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'gps',
+    audio: '/ask-gps',
     kind: 'gps',
     ask: 'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Neeche "Location bhejein" ka button dabayein.',
     need: 'Iske liye aap ki location chahiye.',
@@ -99,6 +117,14 @@ export const WA_ASK: Record<string, string> = {
   gps: 'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Attach (📎) daba kar "Location" chunein.',
   selfie: 'Ab apni aik selfie khenchein aur bhejein. Apna chehra saaf dikhayein.',
 }
+
+/**
+ * Sent when a voice note or attachment arrives at the name question. The name is
+ * the one answer that has to be typed — it is matched against the CNIC and the
+ * licence, so it has to exist as text.
+ */
+export const TYPE_NAME_PLEASE =
+  'Baraye meherbani apna naam likh kar bhejein — voice note ya tasveer nahi. Baaqi sawalon ke jawab aap voice note se bhi de saktay hain, lekin naam likhna zaroori hai.'
 
 export const WELCOME_LINES = [
   'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',

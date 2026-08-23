@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
-import { finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
+import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
+import { TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
@@ -105,7 +106,7 @@ export function App() {
           ...m,
           ...extra,
           ...(next
-            ? [bot(next.ask)]
+            ? askMessages(next)
             : finished(merged.firstName, merged.collected['bill.billAddress'])),
         ])
         return merged
@@ -172,7 +173,7 @@ export function App() {
         // A document or location was asked for. Text cannot satisfy it, so treat
         // it as a question, answer it, then ask again. The step does not move.
         await runFaq(withUser)
-        say(bot(current.wrong))
+        say(bot(current.wrong), ...(current.audio ? askMessages(current).slice(1) : []))
         return
       }
 
@@ -198,7 +199,7 @@ export function App() {
         })
       } else {
         await runFaq(withUser)
-        say(bot(current.ask))
+        say(...askMessages(current))
       }
     },
     [draft, busy, messages, current, step, runFaq, say, advanceFrom],
@@ -209,6 +210,10 @@ export function App() {
       setError(null)
       if (current?.imageOnly && !file.type.startsWith('image/')) {
         say(bot(current.wrong))
+        return
+      }
+      if (current?.kind === 'text') {
+        say(bot(TYPE_NAME_PLEASE))
         return
       }
       if (!current || current.kind !== 'upload') {

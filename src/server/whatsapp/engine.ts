@@ -1,4 +1,11 @@
-import { closing, STEP_SPECS, WA_ASK, WELCOME_LINES } from '../../shared/steps.ts'
+import { existsSync } from 'node:fs'
+import {
+  closing,
+  STEP_SPECS,
+  TYPE_NAME_PLEASE,
+  WA_ASK,
+  WELCOME_LINES,
+} from '../../shared/steps.ts'
 import { extractName } from '../extract.ts'
 import { completeText } from '../provider.ts'
 import { blank, sessions, type Session } from '../sessions.ts'
@@ -18,7 +25,23 @@ export type Incoming = {
 }
 
 const HISTORY = 12
-const ask = (i: number) => {
+
+/**
+ * Recordings are dropped into public/ as they are made. A step whose file is
+ * not there yet stays text-only rather than firing a send Meta cannot fulfil.
+ */
+const audioCache = new Map<string, boolean>()
+function audioLink(base: string | undefined): string | null {
+  if (!base || !PUBLIC_URL) return null
+  let ok = audioCache.get(base)
+  if (ok === undefined) {
+    ok = existsSync(`./dist/client${base}.opus`)
+    audioCache.set(base, ok)
+    if (!ok) console.log(`whatsapp: no recording for ${base}, asking in text only`)
+  }
+  return ok ? `${PUBLIC_URL}${base}.opus` : null
+}
+const askText = (i: number) => {
   const step = STEP_SPECS[i]
   if (!step) return null
   return WA_ASK[step.id] ?? step.ask
@@ -39,12 +62,25 @@ async function say(to: string, session: Session, ...lines: (string | null)[]) {
 }
 
 /** The scripted first contact: the branded image, the voice note, then the script. */
+/**
+ * Asks a step, and plays it aloud when it has a recording. Many riders read
+ * Roman Urdu poorly, so the question is spoken as well as written.
+ */
+async function askStep(to: string, session: Session, i: number) {
+  const step = STEP_SPECS[i]
+  if (!step) return
+  await say(to, session, askText(i))
+  const link = audioLink(step.audio)
+  if (link) await sendAudio(to, link)
+}
+
 async function welcome(to: string, session: Session) {
   if (PUBLIC_URL) {
     await sendImage(to, `${PUBLIC_URL}/welcome.jpg`)
     await sendAudio(to, `${PUBLIC_URL}/welcome.opus`)
   }
-  await say(to, session, ...WELCOME_LINES, ask(0))
+  await say(to, session, ...WELCOME_LINES)
+  await askStep(to, session, 0)
   session.greeted = true
 }
 
@@ -56,15 +92,21 @@ async function answerThenReask(to: string, session: Session, question: string) {
     to,
     session,
     reply ?? 'Maazrat, abhi jawab nahi mil saka. Baraye meherbani dobara poochein.',
-    ask(session.step),
   )
+  await askStep(to, session, session.step)
+}
+
+async function sayRetry(to: string, session: Session, i: number) {
+  await say(to, session, retry(i))
+  const link = audioLink(STEP_SPECS[i]?.audio)
+  if (link) await sendAudio(to, link)
 }
 
 async function advance(to: string, session: Session, confirm: string) {
   session.step += 1
-  const next = ask(session.step)
-  if (next) {
-    await say(to, session, confirm, next)
+  if (STEP_SPECS[session.step]) {
+    await say(to, session, confirm)
+    await askStep(to, session, session.step)
     return
   }
   await say(to, session, confirm, ...closing(session.firstName, session.collected['bill.billAddress']))
@@ -122,9 +164,18 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
     return
   }
 
+  // A voice note, photo or file sent at the name question. Say why it has to be
+  // typed before falling through to the media handling below.
+  if (step.kind === 'text' && msg.type !== 'text') {
+    await say(to, session, TYPE_NAME_PLEASE)
+    await askStep(to, session, session.step)
+    await sessions.save(session)
+    return
+  }
+
   if (msg.type === 'location') {
     if (step.kind !== 'gps') {
-      await say(to, session, retry(session.step))
+      await sayRetry(to, session, session.step)
     } else {
       session.collected['gps.latitude'] = String(msg.latitude ?? '')
       session.collected['gps.longitude'] = String(msg.longitude ?? '')
@@ -135,13 +186,8 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
   }
 
   if (msg.type === 'image' || msg.type === 'document') {
-    if (step.kind !== 'upload') {
-      await say(to, session, retry(session.step))
-      await sessions.save(session)
-      return
-    }
-    if (step.imageOnly && msg.type !== 'image') {
-      await say(to, session, retry(session.step))
+    if (step.kind !== 'upload' || (step.imageOnly && msg.type !== 'image')) {
+      await sayRetry(to, session, session.step)
       await sessions.save(session)
       return
     }
@@ -194,6 +240,6 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
   }
 
   // Anything else — a voice note, a sticker, a contact card.
-  await say(to, session, retry(session.step))
+  await sayRetry(to, session, session.step)
   await sessions.save(session)
 }

@@ -1,10 +1,8 @@
+import { audioSources } from '../shared/steps.ts'
+import { askMessages, STEPS } from './flow.ts'
 import type { Message } from './storage.ts'
 
-/** opus first (smaller, plays on Android/Chrome), AAC fallback for iOS Safari. */
-export const VOICE_SOURCES = [
-  { src: '/welcome.opus', type: 'audio/ogg; codecs=opus' },
-  { src: '/welcome.m4a', type: 'audio/mp4' },
-]
+export const VOICE_SOURCES = audioSources('/welcome')
 
 /**
  * The scripted first-contact sequence — fixed content, not generated. It renders
@@ -28,7 +26,8 @@ export const WELCOME: Message[] = [
       'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',
   },
   { role: 'assistant', content: 'Main aapki madad karungi. Chalein shuru karte hain.' },
-  { role: 'assistant', content: 'Aapka poora naam jo CNIC par hai, kya hai?' },
+  // The name question and its spoken version, straight from the shared step.
+  ...askMessages(STEPS[0]!),
 ]
 
 /** Only real text turns reach the model; attachments are UI-only. */
