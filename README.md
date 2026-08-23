@@ -98,6 +98,32 @@ cp .env.example .env   # add your GROQ_API_KEY
 npm install && npm run build && npm start
 ```
 
+## Tests
+
+```bash
+npm test
+```
+
+Unit tests for name matching, the yes/no reader and the message lookup.
+
+Browser tests need a browser once, then a running app:
+
+```bash
+npx playwright install chromium
+```
+
+```bash
+npm run e2e
+```
+
+These cover what unit tests cannot see — that messages arrive one at a time,
+that the newest line stays against the composer, and that a rider who sends the
+wrong document twice is answered twice. The last two were real bugs, invisible
+both to unit tests and to an embedded preview, whose page is always backgrounded
+and so throttles timers to about a second a tick.
+
+Installing `playwright` does not download a browser; only the command above does.
+
 ## Deploy
 
 The service is connected to this repo, so **pushing to `main` deploys**:

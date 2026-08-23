@@ -13,7 +13,8 @@
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
     "dev:mock": "npm run build && concurrently -k -n mock,app -c gray,cyan \"node scripts/mock-upstream.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 PORT=3099 node dist/server/index.js\"",
-    "test": "tsx --test src/server/*.test.ts"
+    "test": "tsx --test src/server/*.test.ts",
+    "e2e": "node e2e/flow.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
@@ -30,6 +31,7 @@
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.0",
     "esbuild": "^0.25.12",
+    "playwright": "^1.56.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
