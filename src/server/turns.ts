@@ -113,7 +113,7 @@ async function pump(turn: Turn, messages: Msg[], effort: Effort) {
     if (turn.chunks.length === 0) {
       const message =
         finishReason === 'length'
-          ? 'Maazrat, jawab poora nahi ho saka. Baraye meherbani "Fast" chun kar dobara poochein.'
+          ? 'Maazrat, jawab poora nahi ho saka. Baraye meherbani chota sawal kar ke dobara poochein.'
           : 'Maazrat, jawab nahi mil saka. Baraye meherbani dobara koshish karein.'
       turn.error = message
       turn.done = true
