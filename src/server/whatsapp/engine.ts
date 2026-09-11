@@ -14,6 +14,7 @@ import { extractName } from '../extract.ts'
 import { completeText } from '../provider.ts'
 import { blank, sessions, type Session } from '../sessions.ts'
 import { accept } from '../uploads.ts'
+import { transcribe } from '../transcribe.ts'
 import { verifyDocument } from '../verify.ts'
 import { downloadMedia, markRead, PUBLIC_URL, sendAudio, sendImage, sendText } from './client.ts'
 
@@ -137,7 +138,10 @@ async function advance(to: string, session: Session, confirm: string) {
  * The same state machine the web app runs, driven by WhatsApp messages instead of
  * clicks. Code owns the sequence; the model only answers questions.
  */
-export async function handleIncoming(msg: Incoming): Promise<void> {
+export async function handleIncoming(raw: Incoming): Promise<void> {
+  // Shadowed so a spoken answer can be rewritten as a typed one and fall
+  // through the handling below untouched.
+  let msg = raw
   const to = msg.from
   const session = (await sessions.get(to)) ?? blank(to)
 
@@ -150,6 +154,28 @@ export async function handleIncoming(msg: Incoming): Promise<void> {
   }
 
   const step = STEP_SPECS[session.step]
+
+  if (msg.type === 'audio' || msg.type === 'voice') {
+    // The name is matched against the CNIC and the licence, so it has to exist
+    // as text. Refused before transcribing, since the answer cannot be used.
+    if (step?.kind === 'text') {
+      await say(to, session, TYPE_NAME_PLEASE)
+      await askStep(to, session, session.step)
+      await sessions.save(session)
+      return
+    }
+
+    const media = msg.mediaId ? await downloadMedia(msg.mediaId) : null
+    const heard = media ? await transcribe(media.bytes, media.mime) : null
+
+    if (!heard?.ok) {
+      await say(to, session, SAY.voiceUnclear.text)
+      await askStep(to, session, session.step)
+      await sessions.save(session)
+      return
+    }
+    msg = { ...msg, type: 'text', text: heard.text }
+  }
 
   // The application is finished; from here the bot is purely a question answerer.
   if (!step) {

@@ -198,6 +198,10 @@ export function dropRepeat(previous: string | undefined, next: string): boolean 
  * finish. A negative word anywhere wins, so "ji nahi" is a no.
  */
 export function readYesNo(text: string): 'yes' | 'no' | null {
+  // A spoken answer comes back from Whisper in Urdu script, so both are read.
+  if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
+  if (/ہاں|جی|بالکل|ضرور/.test(text)) return 'yes'
+
   const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
   if (/\s(nahi|nahin|nahen|nai|nhi|no|nope|na)\s/.test(t)) return 'no'
   if (/\s(haan|han|hann|ji|jee|g|yes|yep|bilkul|zaroor|hai)\s/.test(t)) return 'yes'

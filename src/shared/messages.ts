@@ -5,69 +5,93 @@
  * and its audio cannot drift apart. A rider who cannot read the question cannot
  * read why they were turned back either, which is what these recordings fix.
  */
-export type Spoken = { text: string; audio: string }
+export type Spoken = { text: string; audio: string; recorded: boolean };
 
-const say = (text: string, audio: string): Spoken => ({ text, audio })
+/**
+ * `recorded: false` marks a line that is written but not yet voiced. It is sent
+ * as text only, so the rider never sees a player that cannot play: a missing
+ * file 404s, and the bubble would remove itself and leave a gap.
+ */
+const say = (text: string, audio: string, recorded = true): Spoken => ({
+  text,
+  audio,
+  recorded,
+});
 
 export const SAY = {
   photoUnclear: say(
-    'Tasveer saaf nahi aayi. Camera ko seedha rakh kar, achi roshni mein dobara khenchein.',
-    '/say-photo-unclear',
+    "Tasveer saaf nahi aayi. Camera ko seedha rakh kar, achi roshni mein dobara khenchein.",
+    "/say-photo-unclear",
   ),
   billTooOld: say(
-    'Ye bill teen mahine se purana hai. Baraye meherbani pichlay teen mahine ka bill bhejein.',
-    '/say-bill-too-old',
+    "Ye bill teen mahine se purana hai. Baraye meherbani pichlay teen mahine ka bill bhejein.",
+    "/say-bill-too-old",
   ),
   cnicMismatch: say(
-    'Is document par CNIC number aap ke CNIC se match nahi kar raha. Baraye meherbani sahi document bhejein.',
-    '/say-cnic-mismatch',
+    "Is document par CNIC number aap ke CNIC se match nahi kar raha. Baraye meherbani sahi document bhejein.",
+    "/say-cnic-mismatch",
   ),
   notCnicFront: say(
-    'Ye CNIC ke saamne wali tasveer nahi lag rahi. Baraye meherbani CNIC ka front, achi roshni mein, dobara bhejein.',
-    '/say-not-cnic-front',
+    "Ye CNIC ke saamne wali tasveer nahi lag rahi. Baraye meherbani CNIC ka front, achi roshni mein, dobara bhejein.",
+    "/say-not-cnic-front",
   ),
   notCnicBack: say(
-    'Ye CNIC ke peechay wali tasveer nahi lag rahi. Baraye meherbani CNIC ka back, achi roshni mein, dobara bhejein.',
-    '/say-not-cnic-back',
+    "Ye CNIC ke peechay wali tasveer nahi lag rahi. Baraye meherbani CNIC ka back, achi roshni mein, dobara bhejein.",
+    "/say-not-cnic-back",
   ),
   notLicense: say(
-    'Ye driving license ki tasveer nahi lag rahi. Baraye meherbani license ka front, achi roshni mein, dobara bhejein.',
-    '/say-not-license',
+    "Ye driving license ki tasveer nahi lag rahi. Baraye meherbani license ka front, achi roshni mein, dobara bhejein.",
+    "/say-not-license",
   ),
   billNoDate: say(
-    'Is bill par due date nahi mil saki. Baraye meherbani poora bill, achi roshni mein, dobara bhejein.',
-    '/say-bill-no-date',
+    "Is bill par due date nahi mil saki. Baraye meherbani poora bill, achi roshni mein, dobara bhejein.",
+    "/say-bill-no-date",
   ),
   typeName: say(
-    'Baraye meherbani apna naam likh kar bhejein, voice note ya tasveer nahi. Baaqi sawalon ke jawab aap voice note se bhi de saktay hain, lekin naam likhna zaroori hai.',
-    '/say-type-name',
+    "Baraye meherbani apna naam likh kar bhejein, voice note ya tasveer nahi. Baaqi sawalon ke jawab aap voice note se bhi de saktay hain, lekin naam likhna zaroori hai.",
+    "/say-type-name",
   ),
   badFileType: say(
-    'Ye file qabool nahi ho saki. Sirf JPG, PNG, GIF ya PDF bhejein.',
-    '/say-bad-file-type',
+    "Ye file qabool nahi ho saki. Sirf JPG, PNG, GIF ya PDF bhejein.",
+    "/say-bad-file-type",
   ),
   fileTooBig: say(
-    'File bohat bari hai. 10 MB se choti file bhejein.',
-    '/say-file-too-big',
+    "File bohat bari hai. 10 MB se choti file bhejein.",
+    "/say-file-too-big",
   ),
   uploadFailed: say(
-    'File bhejne mein masla hua. Dobara koshish karein.',
-    '/say-upload-failed',
+    "File bhejne mein masla hua. Dobara koshish karein.",
+    "/say-upload-failed",
+  ),
+  voiceUnclear: say(
+    "Aap ki awaaz saaf nahi aayi. Baraye meherbani dobara bolein, ya likh kar bhejein.",
+    "/say-voice-unclear",
+    false,
+  ),
+  micDenied: say(
+    "Microphone ki ijazat nahi mili. Baraye meherbani apne phone mein microphone ki ijazat dein, ya apna jawab likh kar bhejein.",
+    "/say-mic-denied",
+    false,
   ),
   needSmartphone: say(
-    'Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge.',
-    '/say-need-smartphone',
+    "Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge.",
+    "/say-need-smartphone",
+    false,
   ),
   // Worded without reference to a button, so one recording serves both the web
   // app and WhatsApp.
   locationDenied: say(
-    'Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara koshish karein.',
-    '/say-location-denied',
+    "Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara koshish karein.",
+    "/say-location-denied",
   ),
-} as const
+} as const;
 
-const BY_TEXT = new Map(Object.values(SAY).map((s) => [s.text, s.audio]))
+const BY_TEXT = new Map(
+  Object.values(SAY)
+    .filter((s) => s.recorded)
+    .map((s) => [s.text, s.audio]),
+);
 
 /** The recording for a message, if one has been made. */
 export const audioForText = (text: string): string | null =>
-  BY_TEXT.get(text.trim()) ?? null
+  BY_TEXT.get(text.trim()) ?? null;

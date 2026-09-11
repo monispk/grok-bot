@@ -139,6 +139,19 @@ export async function completeJson(
   }
 }
 
+/**
+ * A request to Groq carrying our credentials and, crucially, our connection
+ * pool. Anything else talking to Groq goes through here so it inherits the warm
+ * socket rather than paying a fresh handshake.
+ */
+export function groqFetch(path: string, init: Parameters<typeof fetch>[1] = {}) {
+  return fetch(`${BASE}${path}`, {
+    ...init,
+    dispatcher: agent,
+    headers: { authorization: `Bearer ${KEY}`, ...(init?.headers ?? {}) },
+  })
+}
+
 /** One complete reply, no streaming. WhatsApp messages are atomic. */
 export async function completeText(messages: Msg[]): Promise<string | null> {
   try {

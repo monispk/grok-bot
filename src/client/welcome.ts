@@ -30,6 +30,10 @@ export const WELCOME: Message[] = [
   ...askMessages(STEPS[0]!),
 ]
 
-/** Only real text turns reach the model; attachments are UI-only. */
+/**
+ * What the model sees. Images, documents and the scripted voice notes all carry
+ * empty content and drop out; a transcribed voice note carries the rider's words
+ * and stays, because it is their message.
+ */
 export const forModel = (messages: Message[]): Message[] =>
-  messages.filter((m) => (!m.kind || m.kind === 'text') && m.content.trim().length > 0)
+  messages.filter((m) => m.content.trim().length > 0)

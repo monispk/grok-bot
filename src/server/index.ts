@@ -16,6 +16,7 @@ import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
 import { extractName } from './extract.ts'
+import { transcribe } from './transcribe.ts'
 import { verifyDocument } from './verify.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
@@ -97,8 +98,13 @@ function parseWebhook(body: unknown): Incoming[] {
           id: String(m.id),
           type: String(m.type),
           text: m.text?.body ? String(m.text.body) : undefined,
-          mediaId: m.image?.id ?? m.document?.id ?? m.audio?.id ?? undefined,
-          mime: m.image?.mime_type ?? m.document?.mime_type ?? undefined,
+          mediaId: m.image?.id ?? m.document?.id ?? m.audio?.id ?? m.voice?.id ?? undefined,
+          mime:
+            m.image?.mime_type ??
+            m.document?.mime_type ??
+            m.audio?.mime_type ??
+            m.voice?.mime_type ??
+            undefined,
           latitude: m.location?.latitude,
           longitude: m.location?.longitude,
         })
@@ -240,6 +246,19 @@ app.get('/api/upload/:id', guard, (c) => {
   c.header('cache-control', 'private, max-age=600')
   c.header('content-disposition', `inline; filename="${encodeURIComponent(u.name)}"`)
   return c.body(u.bytes as unknown as ArrayBuffer)
+})
+
+/** Turns a spoken answer into text, so the rest of the flow can treat it as one. */
+app.post('/api/transcribe', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+
+  const body = await c.req.parseBody().catch(() => null)
+  const file = body?.['file']
+  if (!(file instanceof File)) return c.json({ ok: false, reason: 'empty' }, 400)
+
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const result = await transcribe(bytes, file.type || 'audio/webm')
+  return c.json(result)
 })
 
 app.post('/api/extract-name', guard, async (c) => {

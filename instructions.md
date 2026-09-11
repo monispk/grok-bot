@@ -96,6 +96,23 @@ riders read Roman Urdu poorly. A rider who cannot read the question could not
 read why they were turned back either — which is why the refusals are recorded
 too, not only the questions.
 
+It goes both ways: a rider who reads poorly usually writes poorly too, so they
+can **answer by voice as well**. The composer shows a microphone whenever the
+text box is empty; holding a recording sends it to Whisper
+(`whisper-large-v3` on Groq, `language: ur`), and the transcript is then treated
+exactly as if it had been typed — same guard rails, same yes/no reading, same
+model. The clip appears in the thread straight away with a spinner, and what was
+heard is printed beneath it, so a mistranscription is visible rather than
+silently acted on. WhatsApp voice notes are transcribed the same way.
+
+The name is the one exception: it must be **typed**, because a misheard name
+would be checked against the CNIC and fail for the wrong reason.
+
+Nothing is written to disk — the audio is held in memory only for the round trip
+to Whisper. Recognition is steered with a short vocabulary prompt (CNIC, bijli
+ka bill, haan, nahi and so on), and Whisper returns Urdu script, so the yes/no
+reader accepts both scripts.
+
 ### Interface
 
 - Foodpanda magenta `#D70F64`, panda mark in the header, app icons, "Powered by
@@ -110,10 +127,17 @@ too, not only the questions.
 
 ### Tests
 
-`npm test` — 20 unit tests: name matching, the yes/no reader, message lookups.
-`npm run e2e` — 5 browser tests: staged arrival, scroll pinning, history not
-replayed, a refused document keeping its voice note, and a second wrong document
-still being answered. The last two are regression guards for bugs that shipped.
+`npm test` — 23 unit tests: name matching, the yes/no reader in both scripts,
+message lookups, and a check that every recording the bot promises is actually
+in `public/`.
+`npm run e2e` — 8 browser tests: staged arrival, scroll pinning, history not
+replayed, a refused document keeping its voice note, a second wrong document
+still being answered, a spoken answer being transcribed and acted on, the
+transcript surviving a reload, and a spoken name being sent back. Two of them are
+regression guards for bugs that shipped.
+
+The microphone tests run Chromium with `--use-fake-device-for-media-capture`, so
+they record a synthetic tone through the real `MediaRecorder` path.
 
 ---
 
@@ -232,6 +256,10 @@ and on WhatsApp:
 | `/say-upload-failed` | Transfer failed | File bhejne mein masla hua. Dobara koshish karein. |
 | `/say-location-denied` | Location permission refused | Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara koshish karein. |
 | `/say-need-smartphone` | No smartphone — ends the flow | Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge. |
+| `/say-voice-unclear` | Nothing could be heard in the voice note | Aap ki awaaz saaf nahi aayi. Baraye meherbani dobara bolein, ya likh kar bhejein. |
+| `/say-mic-denied` | Microphone permission refused | Microphone ki ijazat nahi mili. Baraye meherbani apne phone mein microphone ki ijazat dein, ya apna jawab likh kar bhejein. |
+
+The last three have **no recording yet**, so they are sent as text only.
 
 ---
 
@@ -300,7 +328,7 @@ serves both.
 
 | | |
 | --- | --- |
-| `say-need-smartphone` | The one missing recording; that message is text-only |
+| Three missing recordings | `say-need-smartphone`, `say-voice-unclear` and `say-mic-denied` are written but not voiced, so those three are sent as text only. They are marked `recorded: false` in `src/shared/messages.ts`; drop the files into `public/` and flip the flag |
 | Face match | The selfie is collected but nothing compares it to the CNIC photo. The debug panel shows this check as pending rather than passed |
 | Nearest office | The closing message names both offices; it does not yet pick one from the GPS fix |
 | Verification fail path | Verification is real, but there is no separate "go to the branch to be verified manually" branch yet |

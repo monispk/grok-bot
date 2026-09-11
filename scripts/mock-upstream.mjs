@@ -11,6 +11,16 @@ const PORT = Number(process.env.MOCK_PORT ?? 4010)
 
 http
   .createServer(async (req, res) => {
+    // Stands in for Whisper. Returns a fixed transcript so the flow can be run
+    // without spending on speech, and MOCK_TRANSCRIPT steers what it "hears".
+    if (req.url?.includes('/audio/transcriptions')) {
+      for await (const _ of req) void _
+      res.writeHead(200, { 'content-type': 'application/json' })
+      return res.end(
+        JSON.stringify({ text: process.env.MOCK_TRANSCRIPT ?? 'kitne paise milenge' }),
+      )
+    }
+
     if (req.url?.startsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end('{"data":[]}')

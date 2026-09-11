@@ -15,6 +15,7 @@ import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
+import { useRecorder, type Recording } from './recorder.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
@@ -271,16 +272,12 @@ export function App() {
     [],
   )
 
-  const onSend = useCallback(
-    async (override?: string) => {
-      const text = (override ?? draft).trim()
-      if (!text || busy) return
-      setDraft('')
-      setError(null)
-
-      const withUser: Message[] = [...messages, { role: 'user', content: text }]
-      setMessages(withUser)
-
+  /**
+   * Everything that happens once the rider's words are in the thread, however
+   * they arrived. Typed and spoken answers are the same from here on.
+   */
+  const processText = useCallback(
+    async (text: string, withUser: Message[]) => {
       // Flow complete — from here the bot is purely a question answerer.
       if (!current) return void (await runFaq(withUser))
 
@@ -333,8 +330,83 @@ export function App() {
         say(...askMessages(current))
       }
     },
-    [draft, busy, messages, current, step, runFaq, say, advanceFrom],
+    [current, step, runFaq, say, advanceFrom],
   )
+
+  const onSend = useCallback(
+    async (override?: string) => {
+      const text = (override ?? draft).trim()
+      if (!text || busy) return
+      setDraft('')
+      setError(null)
+      const withUser: Message[] = [...messages, { role: 'user', content: text }]
+      setMessages(withUser)
+      await processText(text, withUser)
+    },
+    [draft, busy, messages, processText],
+  )
+
+  /** A spoken answer: play it back, transcribe it, then treat it as typed. */
+  const onVoice = useCallback(
+    async ({ blob, mime }: Recording) => {
+      if (busy) return
+      setError(null)
+
+      // The name is matched against the CNIC and the licence, so it has to exist
+      // as text. This is the one question a recording cannot answer.
+      if (current?.kind === 'text') {
+        say(bot(SAY.typeName.text))
+        return
+      }
+
+      const src = URL.createObjectURL(blob)
+      const tmp = crypto.randomUUID()
+      const withVoice: Message[] = [
+        ...messages,
+        {
+          role: 'user',
+          content: '',
+          kind: 'audio',
+          src,
+          tmp,
+          pending: true,
+          sources: [{ src, type: mime }],
+        },
+      ]
+      setMessages(withVoice)
+
+      setWorking(true)
+      let heard = ''
+      try {
+        const body = new FormData()
+        body.append('file', new File([blob], 'speech', { type: mime }))
+        const res = await fetch('/api/transcribe', { method: 'POST', body })
+        const data = (await res.json()) as { ok?: boolean; text?: string }
+        if (data.ok && data.text) heard = data.text.trim()
+      } catch {
+        /* handled below */
+      }
+      setWorking(false)
+
+      const settle = (content: string) =>
+        withVoice.map((x) =>
+          x.tmp === tmp ? { ...x, content, pending: false, tmp: undefined } : x,
+        )
+
+      if (!heard) {
+        setMessages(settle(''))
+        say(bot(SAY.voiceUnclear.text))
+        return
+      }
+
+      const settled = settle(heard)
+      setMessages(settled)
+      await processText(heard, settled)
+    },
+    [busy, current, messages, say, processText],
+  )
+
+  const recorder = useRecorder(onVoice, () => say(bot(SAY.micDenied.text)))
 
   const onFile = useCallback(
     async (file: File) => {
@@ -572,12 +644,22 @@ export function App() {
                 <Picture src={m.src ?? ''} alt="Foodpanda delivery rider" />
               </div>
             )
-          if (m.kind === 'audio')
+          if (m.kind === 'audio') {
+            const mine = m.role === 'user'
             return (
-              <div key={i} class="msg bot media">
+              <div
+                key={i}
+                class={`msg ${mine ? 'user' : 'bot'} media${m.pending ? ' pending' : ''}`}
+              >
+                {m.pending && (
+                  <span class="spinner" role="status" aria-label="Awaaz sun rahe hain" />
+                )}
                 <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
+                {/* Show what was heard, so a mistranscription is obvious. */}
+                {mine && m.content && <span class="transcript">{m.content}</span>}
               </div>
             )
+          }
           if (m.kind === 'document')
             return (
               <div key={i} class={`msg user media${m.pending ? ' pending' : ''}`}>
@@ -640,6 +722,20 @@ export function App() {
         </div>
       )}
 
+      {recorder.state === 'recording' ? (
+        <footer class="recbar">
+          <button class="ghost" onClick={recorder.cancel} aria-label="Mansookh karein">
+            ✕
+          </button>
+          <span class="reclive">
+            <span class="recdot" />
+            {`${Math.floor(recorder.seconds / 60)}:${String(recorder.seconds % 60).padStart(2, '0')}`}
+          </span>
+          <button class="send" onClick={recorder.stop}>
+            Bhejein
+          </button>
+        </footer>
+      ) : (
       <footer>
         <input
           ref={picker}
@@ -742,12 +838,31 @@ export function App() {
           <button class="stop" onClick={stop}>
             Stop
           </button>
-        ) : (
-          <button class="send" onClick={() => void onSend()} disabled={!draft.trim() || busy}>
+        ) : draft.trim() ? (
+          <button class="send" onClick={() => void onSend()} disabled={busy}>
             Send
+          </button>
+        ) : (
+          <button
+            class="mic"
+            aria-label="Awaaz mein jawab dein"
+            disabled={busy}
+            onClick={() => void recorder.start()}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+              <path
+                d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+              />
+            </svg>
           </button>
         )}
       </footer>
+      )}
 
       <div class="credit">
         <span>Powered by</span>

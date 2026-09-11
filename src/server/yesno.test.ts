@@ -21,3 +21,14 @@ test('anything unclear is not guessed', () => {
   for (const t of ['kitne paise milenge?', 'Monis Ur Rahmaan', ''])
     assert.equal(readYesNo(t), null, t)
 })
+
+test('reads a spoken answer in Urdu script', () => {
+  for (const t of ['جی ہاں', 'ہاں', 'بالکل', 'جی'])
+    assert.equal(readYesNo(t), 'yes', t)
+  for (const t of ['نہیں', 'جی نہیں', 'نہیں ہے'])
+    assert.equal(readYesNo(t), 'no', t)
+})
+
+test('an Urdu negative still wins over a positive', () => {
+  assert.equal(readYesNo('جی نہیں'), 'no')
+})
