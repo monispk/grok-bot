@@ -17,7 +17,9 @@ const SYSTEM = `You rewrite Roman Urdu into mixed script so a text-to-speech eng
 Every Urdu word MUST be rewritten in Urdu script. English words and brand names MUST stay in Latin script. Never leave an Urdu word in Latin letters.
 
 Keep English as-is: foodpanda, rider, CNIC, license, selfie, GPS, location, smartphone, touch phone, office, training, uniform, WhatsApp, app, PDF, JPG, camera.
-Keep numbers, currency and dates exactly: Rs. 15,000 stays Rs. 15,000.
+Digits and dates stay as digits: 15,000 stays 15,000, 12 stays 12.
+Money is said the Urdu way: the amount, then روپے. "Rs. 15,000" becomes
+"15,000 روپے"; "15000 rupay" becomes "15,000 روپے". Never leave "Rs." in.
 Translate nothing. Add nothing. Remove nothing. Keep the word order and punctuation.
 
 Example
@@ -27,6 +29,10 @@ output: آپ کا پورا نام کیا ہے؟ وہی نام لکھیں جو آ
 Example
 input:  Nahi, ye freelancer ka kaam hai, mulazmat nahi.
 output: نہیں، یہ freelancer کا کام ہے، ملازمت نہیں۔
+
+Example
+input:  Hafte mein Rs. 15,000 aur mahine mein Rs. 60,000 mil sakte hain.
+output: ہفتے میں 15,000 روپے اور مہینے میں 60,000 روپے مل سکتے ہیں۔
 
 Spell these the standard way. A near-miss changes the vowel and is read aloud
 wrong: وعدہ (waada, not واعدہ), برائے (baraye), مہربانی (meherbani), معذرت
