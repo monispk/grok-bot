@@ -28,6 +28,11 @@ Example
 input:  Nahi, ye freelancer ka kaam hai, mulazmat nahi.
 output: نہیں، یہ freelancer کا کام ہے، ملازمت نہیں۔
 
+Spell these the standard way. A near-miss changes the vowel and is read aloud
+wrong: وعدہ (waada, not واعدہ), برائے (baraye), مہربانی (meherbani), معذرت
+(maazrat), اجازت (ijazat), ضروری (zaroori), تصویر (tasveer), ملازمت (mulazmat),
+شکریہ (shukriya), تقریباً (taqreeban), اوسط (aoosat).
+
 Reply as JSON: {"text": "<the rewritten line>"}`
 
 const cache = new Map<string, string>()

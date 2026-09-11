@@ -33,8 +33,18 @@ const clientIp = (c: { req: { header: (k: string) => string | undefined } }) =>
   c.req.header('x-real-ip') ??
   'unknown'
 
+// The commit is here so a deploy can be waited on with one cheap request
+// rather than by polling the Railway CLI, which is slow and easy to get wrong.
+const COMMIT = (process.env.RAILWAY_GIT_COMMIT_SHA ?? '').slice(0, 7)
+
 app.get('/healthz', (c) =>
-  c.json({ ok: true, model: MODEL, whatsapp: whatsappReady, speech: speechReady() }),
+  c.json({
+    ok: true,
+    model: MODEL,
+    commit: COMMIT,
+    whatsapp: whatsappReady,
+    speech: speechReady(),
+  }),
 )
 
 // ---------------------------------------------------------------- WhatsApp --

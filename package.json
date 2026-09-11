@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "dev:mock": "npm run build && concurrently -k -n mock,app -c gray,cyan \"node scripts/mock-upstream.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 PORT=3099 node dist/server/index.js\"",
     "test": "tsx --test src/server/*.test.ts",
-    "e2e": "node e2e/flow.mjs"
+    "e2e": "node e2e/flow.mjs",
+    "await-deploy": "node scripts/await-deploy.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
