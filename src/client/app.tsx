@@ -9,7 +9,7 @@ import {
 import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { audioSources } from '../shared/steps.ts'
-import { audioForText, SAY } from '../shared/messages.ts'
+import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
 import { asksSomething, dropRepeat, readYesNo, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
@@ -38,6 +38,17 @@ const CAMERA_ACCEPT = 'image/*'
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
 /**
+ * The model's own words. Marked, because a scripted line may already have a
+ * recording travelling with it — a step's question arrives as the words plus
+ * its voice note — and reading those aloud as well gave every question two.
+ */
+const fromModel = (content: string): Message => ({
+  role: 'assistant',
+  content,
+  unscripted: true,
+})
+
+/**
  * Appends, skipping any bot line that just repeats the one before it, and
  * attaching the recording for any message that has one.
  */
@@ -56,9 +67,9 @@ function append(existing: Message[], incoming: Message[]): Message[] {
       const spoken = audioForText(m.content)
       if (spoken)
         out.push({ role: 'assistant', content: '', kind: 'audio', sources: audioSources(spoken) })
-      // Nobody could record what the model had not written yet. Uplift reads it
-      // in the same voice, so the bot does not change voice mid-conversation.
-      else if (m.content.trim())
+      // Only what nobody could have recorded: what the model just wrote, and the
+      // handful of our own lines still waiting for a recording.
+      else if (m.content.trim() && (m.unscripted || awaitingVoice(m.content)))
         out.push({ role: 'assistant', content: '', kind: 'audio', speak: m.content, pending: true })
     }
   }
@@ -285,7 +296,7 @@ export function App() {
               // recording attached.
               const kept = pending ? stripEcho(acc, pending) : acc
               if (kept) {
-                const next = append(messagesRef.current, [bot(kept)])
+                const next = append(messagesRef.current, [fromModel(kept)])
                 setMessages(next)
                 setRevealed(next.length)
               }
@@ -294,7 +305,7 @@ export function App() {
               resolve()
             },
             onError: (message) => {
-              if (acc) setMessages((m) => [...m, bot(acc)])
+              if (acc) setMessages((m) => [...m, fromModel(acc)])
               setStreaming(null)
               setError(message)
               abort.current = null
@@ -621,7 +632,7 @@ export function App() {
     abort.current?.abort()
     abort.current = null
     setStreaming((acc) => {
-      if (acc) setMessages((m) => [...m, bot(acc)])
+      if (acc) setMessages((m) => [...m, fromModel(acc)])
       return null
     })
   }, [])

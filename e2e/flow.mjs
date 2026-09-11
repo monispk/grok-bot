@@ -334,6 +334,44 @@ await spoken('an answer the bot invents is spoken too', async () => {
   assert.ok(!spinning, 'a spinner was left behind after the voice arrived')
 })
 
+await spoken('a line with a recording is not also read by Uplift', async () => {
+  // Every step question already travels with its own voice note. Reading it
+  // aloud as well gave each question two players, one under the other.
+  await page.goto(APP)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await settle(async () => (await stored()).length >= 7)
+  await page.waitForTimeout(2500)
+
+  const shape = await page.evaluate(() =>
+    [...document.querySelector('.scroll').children].map((c) =>
+      c.querySelector('img.photo') ? 'IMG' : c.querySelector('.voice') ? 'AUD' : 'TXT',
+    ),
+  )
+  assert.deepEqual(
+    shape,
+    ['IMG', 'AUD', 'TXT', 'TXT', 'TXT', 'TXT', 'AUD'],
+    `the welcome gained voice notes it did not need: ${shape.join(',')}`,
+  )
+
+  // And the same at a step, which is where it was noticed. The question has to
+  // arrive through the flow: priming writes history straight to storage, which
+  // never runs the code that attaches a voice note.
+  await primeAt(1, [
+    { role: 'assistant', content: 'Kya aap ke paas apna baray screen wala touch phone hai?' },
+  ])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'haan')
+  await page.click('footer button.send')
+
+  await settle(async () => (await stored()).some((m) => (m.content || '').includes('selfie')))
+  await page.waitForTimeout(2500)
+  const players = await page.evaluate(
+    () => document.querySelectorAll('.msg.bot .voice').length,
+  )
+  assert.equal(players, 1, `the selfie question had ${players} voice notes, not one`)
+})
+
 await browser.close()
 console.log(results.join('\n'))
 console.log(process.exitCode ? '\n  some browser tests failed' : '\n  all browser tests passed')

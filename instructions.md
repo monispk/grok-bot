@@ -110,8 +110,8 @@ would be checked against the CNIC and fail for the wrong reason.
 
 Answers are spoken as well. The scripted lines have recordings, but nobody could
 record an answer the model had not written yet, so a rider who reads poorly
-heard every question and none of the replies. Anything without a recording is
-now read by **Uplift AI** (the `helpdesk-agent` voice, matching the recordings)
+heard every question and none of the replies. Anything the model writes, and the handful of our
+own lines still waiting to be recorded, are read by **Uplift AI** (the `helpdesk-agent` voice, matching the recordings)
 so the bot does not change voice mid-conversation.
 
 The rider reads Roman Urdu; Uplift is given **mixed script**. A voice engine
@@ -146,12 +146,13 @@ reader accepts both scripts.
 `npm test` — 29 unit tests: name matching, the yes/no reader in both scripts,
 message lookups, a check that every recording the bot promises is actually in
 `public/`, and a check that nothing but a role and words ever goes upstream.
-`npm run e2e` — 10 browser tests: staged arrival, scroll pinning, history not
+`npm run e2e` — 11 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the
 transcript surviving a reload, a spoken name being sent back, a question tucked
-inside an answer still being answered, and an invented answer being read aloud.
-Four of them are regression guards for bugs that shipped. The last is skipped
+inside an answer still being answered, an invented answer being read aloud, and
+a question with a recording not being read a second time. Five of them are
+regression guards for bugs that shipped. The last is skipped
 when `UPLIFT_API_KEY` is unset.
 
 The microphone tests run Chromium with `--use-fake-device-for-media-capture`, so

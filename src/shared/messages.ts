@@ -92,6 +92,18 @@ const BY_TEXT = new Map(
     .map((s) => [s.text, s.audio]),
 )
 
+const UNRECORDED = new Set(
+  Object.values(SAY)
+    .filter((s) => !s.recorded)
+    .map((s) => s.text),
+)
+
+/**
+ * A line that is ours but has no recording yet. Those are read aloud by Uplift
+ * instead, so the rider hears them like everything else.
+ */
+export const awaitingVoice = (text: string): boolean => UNRECORDED.has(text.trim())
+
 /** The recording for a message, if one has been made. */
 export const audioForText = (text: string): string | null =>
   BY_TEXT.get(text.trim()) ?? null

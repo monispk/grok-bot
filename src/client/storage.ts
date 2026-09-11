@@ -8,6 +8,8 @@ export type Message = {
   src?: string
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
+  /** The model wrote these words just now, so no recording of them can exist. */
+  unscripted?: boolean
   /** Words still waiting to be spoken, once Uplift has read them. */
   speak?: string
   /** Transient: identifies an optimistic bubble so it can be updated in place. */
