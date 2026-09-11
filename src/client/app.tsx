@@ -10,7 +10,7 @@ import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { audioSources } from '../shared/steps.ts'
 import { audioForText, SAY } from '../shared/messages.ts'
-import { dropRepeat, readYesNo, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
+import { asksSomething, dropRepeat, readYesNo, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
@@ -56,6 +56,10 @@ function append(existing: Message[], incoming: Message[]): Message[] {
       const spoken = audioForText(m.content)
       if (spoken)
         out.push({ role: 'assistant', content: '', kind: 'audio', sources: audioSources(spoken) })
+      // Nobody could record what the model had not written yet. Uplift reads it
+      // in the same voice, so the bot does not change voice mid-conversation.
+      else if (m.content.trim())
+        out.push({ role: 'assistant', content: '', kind: 'audio', speak: m.content, pending: true })
     }
   }
   return out
@@ -161,6 +165,43 @@ export function App() {
   // after layout and again on the next frame: measuring before the new words
   // are laid out leaves the thread short of the bottom, which is exactly the
   // scrolling the rider should never have to do.
+  /**
+   * Has Uplift read any answer still waiting for a voice. The id comes back
+   * from the words themselves, so a line already read costs nothing the second
+   * time and keeps the same URL across a reload.
+   */
+  const spoken = useRef(new Set<string>())
+  useEffect(() => {
+    const waiting = messages.filter((m) => m.kind === 'audio' && m.speak && !m.sources)
+    for (const m of waiting) {
+      const words = m.speak!
+      if (spoken.current.has(words)) continue
+      spoken.current.add(words)
+      void (async () => {
+        let sources: { src: string; type: string }[] | null = null
+        try {
+          const res = await fetch('/api/speak', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: words }),
+          })
+          const data = (await res.json()) as { ok?: boolean; id?: string }
+          if (data.ok && data.id)
+            sources = [{ src: `/api/speak/${data.id}`, type: 'audio/mpeg' }]
+        } catch {
+          /* no voice for this one; the words are still on screen */
+        }
+        setMessages((list) =>
+          list.flatMap((x) => {
+            if (x.speak !== words || x.sources) return [x]
+            // Without audio the bubble is an empty box, so drop it entirely.
+            return sources ? [{ ...x, sources, pending: false }] : []
+          }),
+        )
+      })()
+    }
+  }, [messages])
+
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
@@ -283,11 +324,21 @@ export function App() {
 
       if (current.kind === 'confirm') {
         const answer = readYesNo(text)
+        // An answer can carry a question with it — "haan mere paas hai, magar
+        // pehle bataein salary kitni milegi?". Acknowledge, answer, then move on.
+        const also = asksSomething(text)
         if (answer === 'yes') {
-          advanceFrom(step, [bot('Theek hai.')], {})
+          if (also) {
+            say(bot('Theek hai.'))
+            await runFaq(withUser)
+            advanceFrom(step, [], {})
+          } else {
+            advanceFrom(step, [bot('Theek hai.')], {})
+          }
         } else if (answer === 'no') {
           // A smartphone is not optional for this job. Say so plainly and stop
           // rather than walking them through an application they cannot finish.
+          if (also) await runFaq(withUser)
           setFlow((f) => ({ ...f, step: STEPS.length, ineligible: true }))
           say(bot(SAY.needSmartphone.text))
         } else {
@@ -321,10 +372,17 @@ export function App() {
 
       if (named.is_name) {
         const first = (named.first_name ?? '').trim()
-        advanceFrom(step, [thanksName(first)], {
+        const patch = {
           firstName: first,
           fullName: (named.full_name ?? text).trim(),
-        })
+        }
+        if (asksSomething(text)) {
+          say(thanksName(first))
+          await runFaq(withUser)
+          advanceFrom(step, [], patch)
+        } else {
+          advanceFrom(step, [thanksName(first)], patch)
+        }
       } else {
         await runFaq(withUser, current.ask)
         say(...askMessages(current))
@@ -654,7 +712,7 @@ export function App() {
                 {m.pending && (
                   <span class="spinner" role="status" aria-label="Awaaz sun rahe hain" />
                 )}
-                <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
+                {(m.sources || !m.speak) && <VoiceNote sources={m.sources ?? VOICE_SOURCES} />}
                 {/* Show what was heard, so a mistranscription is obvious. */}
                 {mine && m.content && <span class="transcript">{m.content}</span>}
               </div>

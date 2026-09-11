@@ -197,6 +197,26 @@ export function dropRepeat(previous: string | undefined, next: string): boolean 
  * away someone eligible or walks someone through an application they cannot
  * finish. A negative word anywhere wins, so "ji nahi" is a no.
  */
+/**
+ * Whether the rider slipped a question into an answer — "haan mere paas hai,
+ * magar pehle bataein salary kitni milegi?". Answering the step and dropping
+ * the question leaves them asking it twice, which is what happened.
+ *
+ * A question word is enough on its own; a bare question mark is not, so "haan
+ * hai na?" does not send a stray turn to the model.
+ */
+export function asksSomething(text: string): boolean {
+  const urdu = /کیا|کیسے|کتنا|کتنی|کتنے|کتنی|کب|کہاں|کیوں|کون|سیلری|تنخواہ/
+  if (urdu.test(text)) return true
+
+  const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
+  const asks =
+    /\s(kya|kia|kaise|kaisay|kitna|kitni|kitne|kitnay|kab|kahan|kahaan|kyun|kyu|kiun|kaun|kon|kaunsa|konsa|bataein|batayein|batao)\s/
+  if (asks.test(t)) return true
+
+  return /[?؟]/.test(text) && t.trim().split(/\s+/).length >= 4
+}
+
 export function readYesNo(text: string): 'yes' | 'no' | null {
   // A spoken answer comes back from Whisper in Urdu script, so both are read.
   if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'

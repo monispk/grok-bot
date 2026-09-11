@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { audioForText, SAY } from '../../shared/messages.ts'
 import {
+  asksSomething,
   closing,
   readYesNo,
   STEP_SPECS,
@@ -11,6 +12,7 @@ import {
   WELCOME_LINES,
 } from '../../shared/steps.ts'
 import { extractName } from '../extract.ts'
+import { speak, speechReady } from '../speak.ts'
 import { completeText } from '../provider.ts'
 import { blank, sessions, type Session } from '../sessions.ts'
 import { accept } from '../uploads.ts'
@@ -67,9 +69,15 @@ async function say(to: string, session: Session, ...lines: (string | null)[]) {
     await sendText(to, line)
     session.history.push({ role: 'assistant', content: line })
 
-    // Speak the refusal too, when it has been recorded.
-    const spoken = audioLink(audioForText(line))
-    if (spoken) await sendAudio(to, spoken)
+    // Speak it too: the recording when there is one, otherwise have Uplift read
+    // it, so an answer the model wrote is heard like everything else.
+    const recorded = audioLink(audioForText(line))
+    if (recorded) {
+      await sendAudio(to, recorded)
+    } else if (speechReady() && PUBLIC_URL) {
+      const id = await speak(line)
+      if (id) await sendAudio(to, `${PUBLIC_URL}/api/speak/${id}`)
+    }
   }
   session.history = session.history.slice(-HISTORY)
 }
@@ -97,20 +105,28 @@ async function welcome(to: string, session: Session) {
   session.greeted = true
 }
 
-/** Answers a question from the FAQ, then repeats whatever is still outstanding. */
-async function answerThenReask(to: string, session: Session, question: string) {
-  session.history.push({ role: 'user', content: question })
+/**
+ * Answers a question from the FAQ. The rider's words are assumed to be in the
+ * history already when `pushed` is false, which is the case when their answer
+ * to a step also carried a question.
+ */
+async function answerOnly(to: string, session: Session, question: string, pushed = true) {
+  if (!pushed) session.history.push({ role: 'user', content: question })
   const reply = await completeText(session.history.slice(-HISTORY))
   const pending = askText(session.step)
 
-  // Strip the repeated question; askStep asks it again below, with its recording.
+  // Strip the repeated question; the step asks it again itself, with its recording.
   if (!reply) {
     await say(to, session, 'Maazrat, abhi jawab nahi mil saka. Baraye meherbani dobara poochein.')
-  } else {
-    const kept = pending ? stripEcho(reply, pending) : reply
-    if (kept) await say(to, session, kept)
+    return
   }
+  const kept = pending ? stripEcho(reply, pending) : reply
+  if (kept) await say(to, session, kept)
+}
 
+/** Answers a question from the FAQ, then repeats whatever is still outstanding. */
+async function answerThenReask(to: string, session: Session, question: string) {
+  await answerOnly(to, session, question, false)
   await askStep(to, session, session.step)
 }
 
@@ -190,11 +206,21 @@ export async function handleIncoming(raw: Incoming): Promise<void> {
 
   if (msg.type === 'text' && msg.text && step.kind === 'confirm') {
     const answer = readYesNo(msg.text)
+    // An answer can carry a question with it — "haan mere paas hai, magar pehle
+    // bataein salary kitni milegi?". Acknowledge, answer, then move on.
+    const also = asksSomething(msg.text)
     if (answer === 'yes') {
       session.history.push({ role: 'user', content: msg.text })
-      await advance(to, session, 'Theek hai.')
+      if (also) {
+        await say(to, session, 'Theek hai.')
+        await answerOnly(to, session, msg.text)
+        await advance(to, session, '')
+      } else {
+        await advance(to, session, 'Theek hai.')
+      }
     } else if (answer === 'no') {
       session.history.push({ role: 'user', content: msg.text })
+      if (also) await answerOnly(to, session, msg.text)
       // A smartphone is not optional for this job. Say so plainly and stop
       // rather than walking them through an application they cannot finish.
       session.step = STEP_SPECS.length

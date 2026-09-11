@@ -8,6 +8,8 @@ export type Message = {
   src?: string
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
+  /** Words still waiting to be spoken, once Uplift has read them. */
+  speak?: string
   /** Transient: identifies an optimistic bubble so it can be updated in place. */
   tmp?: string
   /** Transient: the upload is still in flight. */
@@ -91,6 +93,8 @@ export function save(messages: Message[]) {
       // A clip nothing could be heard in leaves no transcript, so it would come
       // back as an empty bubble. It was answered at the time; drop it.
       .filter((m) => !(m.role === 'user' && m.kind === 'audio' && !m.content.trim()))
+      // A line that was never actually spoken is a spinner, not a voice note.
+      .filter((m) => !(m.kind === 'audio' && m.speak && !m.sources))
       // A rider's own voice note lives in a blob URL that dies with the page.
       // Keep what was heard as plain text rather than a player pointing nowhere.
       .map((m) =>

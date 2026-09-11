@@ -108,6 +108,15 @@ silently acted on. WhatsApp voice notes are transcribed the same way.
 The name is the one exception: it must be **typed**, because a misheard name
 would be checked against the CNIC and fail for the wrong reason.
 
+Answers are spoken as well. The scripted lines have recordings, but nobody could
+record an answer the model had not written yet, so a rider who reads poorly
+heard every question and none of the replies. Anything without a recording is
+now read by **Uplift AI** in the same voice as the recordings, so the bot does
+not change voice mid-conversation. Synthesis is gated and costs one call per
+distinct line; the id is derived from the words, so a repeated line is free and
+keeps the same URL across a reload. With no `UPLIFT_API_KEY` set the answer is
+simply text, as before.
+
 Nothing is written to disk — the audio is held in memory only for the round trip
 to Whisper. Recognition is steered with a short vocabulary prompt (CNIC, bijli
 ka bill, haan, nahi and so on), and Whisper returns Urdu script, so the yes/no
@@ -127,14 +136,16 @@ reader accepts both scripts.
 
 ### Tests
 
-`npm test` — 27 unit tests: name matching, the yes/no reader in both scripts,
+`npm test` — 29 unit tests: name matching, the yes/no reader in both scripts,
 message lookups, a check that every recording the bot promises is actually in
 `public/`, and a check that nothing but a role and words ever goes upstream.
-`npm run e2e` — 8 browser tests: staged arrival, scroll pinning, history not
+`npm run e2e` — 10 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the
-transcript surviving a reload, and a spoken name being sent back. Two of them are
-regression guards for bugs that shipped.
+transcript surviving a reload, a spoken name being sent back, a question tucked
+inside an answer still being answered, and an invented answer being read aloud.
+Four of them are regression guards for bugs that shipped. The last is skipped
+when `UPLIFT_API_KEY` is unset.
 
 The microphone tests run Chromium with `--use-fake-device-for-media-capture`, so
 they record a synthetic tone through the real `MediaRecorder` path.
@@ -334,5 +345,6 @@ serves both.
 | Verification fail path | Verification is real, but there is no separate "go to the branch to be verified manually" branch yet |
 | WhatsApp credentials | The webhook is built and tested against a stubbed Graph API. `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` and `PUBLIC_BASE_URL` are needed to bring it up |
 | Session storage | WhatsApp sessions are held in memory, so a redeploy loses anyone mid-application. This is also where CNIC data would live, so it needs the encryption, access control and retention rules in `docs/onboarding-flow.md` |
+| Uplift credentials | Spoken answers need `UPLIFT_API_KEY` and `UPLIFT_VOICE_ID` (the helpdesk voice, to match the recordings). Optional: `UPLIFT_OUTPUT_FORMAT` (default `MP3_22050_128`). Without them answers are text-only |
 | Groq tier | The free tier allows 8,000 tokens a minute across **all** riders at once. A turn costs about 2,740 — the system prompt carries the whole FAQ — so that is roughly **two or three messages a minute in total**. Over it, the rider is told in Roman Urdu that the bot is busy and to try again shortly; the upstream detail goes to the logs. Voice notes do not draw on this budget: Whisper is metered separately, in audio seconds |
 | Other utilities | The bill rules are proven against LESCO. SNGPL, K-Electric, MEPCO and others are untested and may use different labels |

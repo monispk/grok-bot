@@ -262,6 +262,78 @@ await check('the name must be typed, not spoken', async () => {
   assert.ok(!named, `what was heard was taken as the rider's name (${named})`)
 })
 
+await check('a question tucked into an answer is not dropped', async () => {
+  // The rider answered the smartphone question and asked about pay in the same
+  // breath. The answer was taken, the question thrown away, and they had to ask
+  // it a second time.
+  await primeAt(1, [
+    { role: 'assistant', content: 'Kya aap ke paas apna baray screen wala touch phone hai?' },
+  ])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'haan mere paas hai magar pehle bataein ke salary kitni mile gi?')
+  await page.click('footer button.send')
+
+  const answered = await settle(async () =>
+    (await stored()).some((m) => (m.content || '').includes('mock upstream')),
+  )
+  assert.ok(answered, 'the question inside the answer went unanswered')
+
+  const moved = await settle(async () => {
+    const h = await stored()
+    return (
+      h.some((m) => (m.content || '').includes('Theek hai')) &&
+      h.some((m) => (m.content || '').includes('selfie'))
+    )
+  })
+  assert.ok(moved, 'answering the question stalled the flow')
+
+  const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
+  assert.equal(step, 2, `the flow did not advance past the smartphone question (step ${step})`)
+})
+
+const speechOn = await fetch(`${APP}/healthz`)
+  .then((r) => r.json())
+  .then((h) => !!h.speech)
+  .catch(() => false)
+
+const spoken = speechOn ? check : async (name) => results.push(`  skip  ${name} (no UPLIFT_API_KEY)`)
+
+await spoken('an answer the bot invents is spoken too', async () => {
+  // The scripted questions have recordings; nobody could record an answer that
+  // had not been written yet, so a rider who reads poorly heard every question
+  // and none of the replies.
+  await primeAt(3, [
+    { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
+  ])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'salary kitni milti hai')
+  await page.click('footer button.send')
+
+  const read = await settle(async () =>
+    page.evaluate(() => {
+      const players = [...document.querySelectorAll('.msg.bot .voice audio')]
+      return players.some((a) => a.currentSrc.includes('/api/speak/'))
+    }),
+  )
+  assert.ok(read, 'the answer was never read out')
+
+  // And it must be a real, playable file rather than a bubble pointing nowhere.
+  const plays = await settle(async () =>
+    page.evaluate(() => {
+      const a = [...document.querySelectorAll('.msg.bot .voice audio')].find((x) =>
+        x.currentSrc.includes('/api/speak/'),
+      )
+      return !!a && a.readyState > 0 && !a.error
+    }),
+  )
+  assert.ok(plays, 'the spoken answer would not play')
+
+  const spinning = await page.evaluate(
+    () => !!document.querySelector('.msg.bot.media.pending .spinner'),
+  )
+  assert.ok(!spinning, 'a spinner was left behind after the voice arrived')
+})
+
 await browser.close()
 console.log(results.join('\n'))
 console.log(process.exitCode ? '\n  some browser tests failed' : '\n  all browser tests passed')

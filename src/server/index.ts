@@ -17,6 +17,7 @@ import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
 import { extractName } from './extract.ts'
 import { transcribe } from './transcribe.ts'
+import { audioFor, speak, speechReady } from './speak.ts'
 import { verifyDocument } from './verify.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
@@ -32,7 +33,9 @@ const clientIp = (c: { req: { header: (k: string) => string | undefined } }) =>
   c.req.header('x-real-ip') ??
   'unknown'
 
-app.get('/healthz', (c) => c.json({ ok: true, model: MODEL, whatsapp: whatsappReady }))
+app.get('/healthz', (c) =>
+  c.json({ ok: true, model: MODEL, whatsapp: whatsappReady, speech: speechReady() }),
+)
 
 // ---------------------------------------------------------------- WhatsApp --
 // Meta calls these, so they sit outside the password gate. Authenticity comes
@@ -248,6 +251,28 @@ app.get('/api/upload/:id', guard, (c) => {
   c.header('cache-control', 'private, max-age=600')
   c.header('content-disposition', `inline; filename="${encodeURIComponent(u.name)}"`)
   return c.body(u.bytes as unknown as ArrayBuffer)
+})
+
+// Asking for a line to be spoken costs an Uplift call, so it is gated.
+app.post('/api/speak', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  if (!speechReady()) return c.json({ ok: false, reason: 'unavailable' })
+
+  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
+  const text = typeof body.text === 'string' ? body.text : ''
+  const id = await speak(text)
+  return id ? c.json({ ok: true, id }) : c.json({ ok: false, reason: 'unavailable' })
+})
+
+// Fetching one is open: WhatsApp audio is collected by Meta, not by the rider,
+// and the id cannot be guessed without already knowing the words.
+app.get('/api/speak/:id', (c) => {
+  const found = audioFor(c.req.param('id'))
+  if (!found) return c.text('Not found', 404)
+  return c.body(found.bytes as unknown as ArrayBuffer, 200, {
+    'content-type': found.mime,
+    'cache-control': 'public, max-age=86400',
+  })
 })
 
 app.post('/api/transcribe', guard, async (c) => {
