@@ -111,8 +111,15 @@ would be checked against the CNIC and fail for the wrong reason.
 Answers are spoken as well. The scripted lines have recordings, but nobody could
 record an answer the model had not written yet, so a rider who reads poorly
 heard every question and none of the replies. Anything without a recording is
-now read by **Uplift AI** in the same voice as the recordings, so the bot does
-not change voice mid-conversation. Synthesis is gated and costs one call per
+now read by **Uplift AI** (the `helpdesk-agent` voice, matching the recordings)
+so the bot does not change voice mid-conversation.
+
+The rider reads Roman Urdu; Uplift is given **mixed script**. A voice engine
+reading Latin letters guesses, and guesses with an English accent, so Urdu words
+are converted to Urdu script while English words and brand names stay in Latin
+and numbers stay as they are — *"Aap ko hafte mein taqreeban Rs. 15,000"* becomes
+*"آپ کو ہفتے میں تقریباً Rs. 15,000"*. Each is then pronounced by the rules it
+belongs to. The conversion is cached against the original line. Synthesis is gated and costs one call per
 distinct line; the id is derived from the words, so a repeated line is free and
 keeps the same URL across a reload. With no `UPLIFT_API_KEY` set the answer is
 simply text, as before.
@@ -345,6 +352,6 @@ serves both.
 | Verification fail path | Verification is real, but there is no separate "go to the branch to be verified manually" branch yet |
 | WhatsApp credentials | The webhook is built and tested against a stubbed Graph API. `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` and `PUBLIC_BASE_URL` are needed to bring it up |
 | Session storage | WhatsApp sessions are held in memory, so a redeploy loses anyone mid-application. This is also where CNIC data would live, so it needs the encryption, access control and retention rules in `docs/onboarding-flow.md` |
-| Uplift credentials | Spoken answers need `UPLIFT_API_KEY` and `UPLIFT_VOICE_ID` (the helpdesk voice, to match the recordings). Optional: `UPLIFT_OUTPUT_FORMAT` (default `MP3_22050_128`). Without them answers are text-only |
+| Uplift cost | Each new line costs one Groq call to convert the script and one Uplift call to read it; both are cached, so a repeated line is free. `UPLIFT_API_KEY` and `UPLIFT_VOICE_ID` are set; optional `UPLIFT_OUTPUT_FORMAT` defaults to `MP3_22050_128`. Without the key, answers are text-only |
 | Groq tier | The free tier allows 8,000 tokens a minute across **all** riders at once. A turn costs about 2,740 — the system prompt carries the whole FAQ — so that is roughly **two or three messages a minute in total**. Over it, the rider is told in Roman Urdu that the bot is busy and to try again shortly; the upstream detail goes to the logs. Voice notes do not draw on this budget: Whisper is metered separately, in audio seconds |
 | Other utilities | The bill rules are proven against LESCO. SNGPL, K-Electric, MEPCO and others are untested and may use different labels |

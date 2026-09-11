@@ -105,6 +105,7 @@ const OUTPUT_BUDGET: Record<Effort, number> = {
 export async function completeJson(
   system: string,
   user: string,
+  budget = 400,
 ): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${BASE}/chat/completions`, {
@@ -122,7 +123,7 @@ export async function completeJson(
           { role: 'user', content: user },
         ],
         temperature: 0,
-        max_completion_tokens: 400,
+        max_completion_tokens: budget,
         reasoning_effort: 'low',
         reasoning_format: 'hidden',
         response_format: { type: 'json_object' },

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { forSpeech } from './script.ts'
 
 /**
  * Spoken answers, from Uplift AI.
@@ -48,6 +49,9 @@ export async function speak(text: string): Promise<string | null> {
   const id = digest(t)
   if (cache.has(id)) return id
 
+  // Uplift is given mixed script; the rider still reads the Roman Urdu.
+  const spoken = await forSpeech(t)
+
   try {
     const res = await fetch(`${BASE}/synthesis/text-to-speech`, {
       method: 'POST',
@@ -55,7 +59,7 @@ export async function speak(text: string): Promise<string | null> {
         authorization: `Bearer ${KEY}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ voiceId: VOICE, text: t, outputFormat: FORMAT }),
+      body: JSON.stringify({ voiceId: VOICE, text: spoken, outputFormat: FORMAT }),
       signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) {
