@@ -89,6 +89,16 @@ checkLicense(doc, against?)     checkBill(doc)
 The steps, prompts, FAQ, verification and name matching are shared. Only the
 transport differs. WhatsApp is inert until its credentials are set.
 
+### Plain words
+
+The FAQ and the persona rules are written in **everyday spoken Urdu**, not the
+written register. A rider reading at a basic level does not know *aoosatan*,
+*mulazmat*, *kaghzaat*, *adaigi* or *tasdeeq*, and a voice engine reading them
+aloud does not help. Those are named in the prompt as words to avoid, with the
+plain replacement for each — *documents*, *paise*, *check karna*, *naukri* — and
+English words riders hear every day (app, bike, bonus, license, office,
+training) are left in English rather than translated into something formal.
+
 ### Spoken, not just written
 
 Every question and every refusal is **spoken as well as written**, because many
