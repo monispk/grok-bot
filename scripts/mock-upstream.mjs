@@ -21,6 +21,21 @@ http
       )
     }
 
+    // MOCK_STATUS=429 exercises the rate-limited path, which is the failure a
+    // real rider on the free tier is most likely to meet.
+    if (process.env.MOCK_STATUS && !req.url?.startsWith('/models')) {
+      for await (const _ of req) void _
+      res.writeHead(Number(process.env.MOCK_STATUS), { 'content-type': 'application/json' })
+      return res.end(
+        JSON.stringify({
+          error: {
+            message:
+              'Rate limit reached for model `openai/gpt-oss-120b` in organization `org_secret` on tokens per minute (TPM): Limit 8000. Upgrade to Dev Tier at https://console.groq.com/settings/billing',
+          },
+        }),
+      )
+    }
+
     if (req.url?.startsWith('/models')) {
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end('{"data":[]}')

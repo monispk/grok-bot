@@ -334,5 +334,5 @@ serves both.
 | Verification fail path | Verification is real, but there is no separate "go to the branch to be verified manually" branch yet |
 | WhatsApp credentials | The webhook is built and tested against a stubbed Graph API. `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` and `PUBLIC_BASE_URL` are needed to bring it up |
 | Session storage | WhatsApp sessions are held in memory, so a redeploy loses anyone mid-application. This is also where CNIC data would live, so it needs the encryption, access control and retention rules in `docs/onboarding-flow.md` |
-| Groq tier | The free tier allows roughly three messages a minute across all riders |
+| Groq tier | The free tier allows 8,000 tokens a minute across **all** riders at once. A turn costs about 2,740 — the system prompt carries the whole FAQ — so that is roughly **two or three messages a minute in total**. Over it, the rider is told in Roman Urdu that the bot is busy and to try again shortly; the upstream detail goes to the logs. Voice notes do not draw on this budget: Whisper is metered separately, in audio seconds |
 | Other utilities | The bill rules are proven against LESCO. SNGPL, K-Electric, MEPCO and others are untested and may use different labels |
