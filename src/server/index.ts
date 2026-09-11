@@ -21,6 +21,7 @@ import { verifyDocument } from './verify.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
+import { forModel } from '../shared/wire.ts'
 
 const app = new Hono()
 const MAX_MESSAGES = 24
@@ -98,7 +99,8 @@ function parseWebhook(body: unknown): Incoming[] {
           id: String(m.id),
           type: String(m.type),
           text: m.text?.body ? String(m.text.body) : undefined,
-          mediaId: m.image?.id ?? m.document?.id ?? m.audio?.id ?? m.voice?.id ?? undefined,
+          mediaId:
+            m.image?.id ?? m.document?.id ?? m.audio?.id ?? m.voice?.id ?? undefined,
           mime:
             m.image?.mime_type ??
             m.document?.mime_type ??
@@ -248,7 +250,6 @@ app.get('/api/upload/:id', guard, (c) => {
   return c.body(u.bytes as unknown as ArrayBuffer)
 })
 
-/** Turns a spoken answer into text, so the rest of the flow can treat it as one. */
 app.post('/api/transcribe', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
 
@@ -295,16 +296,9 @@ app.post('/api/chat', guard, async (c) => {
   const incoming: unknown[] = Array.isArray(body.messages) ? body.messages : []
   if (!incoming.length) return c.json({ error: 'No messages' }, 400)
 
-  const clean: Msg[] = incoming
-    .filter((m): m is Msg => {
-      const v = m as Msg | null
-      return (
-        !!v &&
-        (v.role === 'user' || v.role === 'assistant') &&
-        typeof v.content === 'string'
-      )
-    })
-    .slice(-MAX_MESSAGES)
+  // Rebuilt, not merely checked: a message in the thread also carries how it is
+  // drawn, and Groq rejects the whole request if any of that reaches it.
+  const clean: Msg[] = forModel(incoming).slice(-MAX_MESSAGES)
 
   if (!clean.length) return c.json({ error: 'No usable messages' }, 400)
   const total = clean.reduce((n: number, m: Msg) => n + m.content.length, 0)

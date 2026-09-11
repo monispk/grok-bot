@@ -1,54 +1,52 @@
-export type Role = "user" | "assistant";
-export type Kind = "text" | "image" | "audio" | "document";
+export type Role = 'user' | 'assistant'
+export type Kind = 'text' | 'image' | 'audio' | 'document'
 export type Message = {
-  role: Role;
-  content: string;
+  role: Role
+  content: string
   /** Attachments render as bubbles but are never sent to the model. */
-  kind?: Kind;
-  src?: string;
-  sources?: { src: string; type: string }[];
-  doc?: { name: string; mime: string; size: number };
+  kind?: Kind
+  src?: string
+  sources?: { src: string; type: string }[]
+  doc?: { name: string; mime: string; size: number }
   /** Transient: identifies an optimistic bubble so it can be updated in place. */
-  tmp?: string;
+  tmp?: string
   /** Transient: the upload is still in flight. */
-  pending?: boolean;
-};
+  pending?: boolean
+}
 
 export type FlowState = {
-  step: number;
-  firstName: string;
-  fullName: string;
-  cnic: string;
+  step: number
+  firstName: string
+  fullName: string
+  cnic: string
   /** Everything pulled off the documents, for the summary at the end. */
-  collected: Record<string, string>;
+  collected: Record<string, string>
   /** Screened out — no smartphone. Kept, so they can resume if that changes. */
-  ineligible?: boolean;
-};
+  ineligible?: boolean
+}
 
-const STATE_KEY = "grok-bot:flow";
+const STATE_KEY = 'grok-bot:flow'
 
 export function loadState(): FlowState {
   try {
-    const raw = localStorage.getItem(STATE_KEY);
-    if (!raw)
-      return { step: 0, firstName: "", fullName: "", cnic: "", collected: {} };
-    const v = JSON.parse(raw) as Partial<FlowState>;
+    const raw = localStorage.getItem(STATE_KEY)
+    if (!raw) return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
+    const v = JSON.parse(raw) as Partial<FlowState>
     return {
-      step: typeof v.step === "number" && v.step >= 0 ? v.step : 0,
-      firstName: typeof v.firstName === "string" ? v.firstName : "",
-      fullName: typeof v.fullName === "string" ? v.fullName : "",
-      cnic: typeof v.cnic === "string" ? v.cnic : "",
-      collected:
-        v.collected && typeof v.collected === "object" ? v.collected : {},
-    };
+      step: typeof v.step === 'number' && v.step >= 0 ? v.step : 0,
+      firstName: typeof v.firstName === 'string' ? v.firstName : '',
+      fullName: typeof v.fullName === 'string' ? v.fullName : '',
+      cnic: typeof v.cnic === 'string' ? v.cnic : '',
+      collected: v.collected && typeof v.collected === 'object' ? v.collected : {},
+    }
   } catch {
-    return { step: 0, firstName: "", fullName: "", cnic: "", collected: {} };
+    return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
   }
 }
 
 export function saveState(state: FlowState) {
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    localStorage.setItem(STATE_KEY, JSON.stringify(state))
   } catch {
     /* ignore */
   }
@@ -56,31 +54,31 @@ export function saveState(state: FlowState) {
 
 export function clearState() {
   try {
-    localStorage.removeItem(STATE_KEY);
+    localStorage.removeItem(STATE_KEY)
   } catch {
     /* ignore */
   }
 }
 
-const KEY = "grok-bot:history";
-const MAX = 60;
+const KEY = 'grok-bot:history'
+const MAX = 60
 
 export function load(): Message[] {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    const raw = localStorage.getItem(KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
     return parsed.filter((m): m is Message => {
-      const v = m as Message | null;
+      const v = m as Message | null
       return (
         !!v &&
-        typeof v.content === "string" &&
-        (v.role === "user" || v.role === "assistant")
-      );
-    });
+        typeof v.content === 'string' &&
+        (v.role === 'user' || v.role === 'assistant')
+      )
+    })
   } catch {
-    return [];
+    return []
   }
 }
 
@@ -91,25 +89,18 @@ export function save(messages: Message[]) {
     const clean = messages
       .slice(-MAX)
       // A clip nothing could be heard in leaves no transcript, so it would come
-      // back as an empty bubble. It was already answered; drop it.
-      .filter(
-        (m) => !(m.role === "user" && m.kind === "audio" && !m.content.trim()),
+      // back as an empty bubble. It was answered at the time; drop it.
+      .filter((m) => !(m.role === 'user' && m.kind === 'audio' && !m.content.trim()))
+      // A rider's own voice note lives in a blob URL that dies with the page.
+      // Keep what was heard as plain text rather than a player pointing nowhere.
+      .map((m) =>
+        m.role === 'user' && m.kind === 'audio'
+          ? { role: m.role, content: m.content }
+          : m.src?.startsWith('blob:') || m.pending
+            ? { ...m, src: m.src?.startsWith('blob:') ? undefined : m.src, pending: false, tmp: undefined }
+            : m,
       )
-      .map((m) => {
-        // A rider's own voice note lives in a blob URL that dies with the page.
-        // Keep the transcript as plain text rather than a player pointing nowhere.
-        if (m.role === "user" && m.kind === "audio")
-          return { role: m.role, content: m.content };
-        if (m.src?.startsWith("blob:") || m.pending)
-          return {
-            ...m,
-            src: m.src?.startsWith("blob:") ? undefined : m.src,
-            pending: false,
-            tmp: undefined,
-          };
-        return m;
-      });
-    localStorage.setItem(KEY, JSON.stringify(clean));
+    localStorage.setItem(KEY, JSON.stringify(clean))
   } catch {
     /* private mode or quota — history is a convenience, not a requirement */
   }
@@ -117,7 +108,7 @@ export function save(messages: Message[]) {
 
 export function clear() {
   try {
-    localStorage.removeItem(KEY);
+    localStorage.removeItem(KEY)
   } catch {
     /* ignore */
   }

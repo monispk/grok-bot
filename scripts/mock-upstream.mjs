@@ -45,6 +45,22 @@ http
     let body = {}
     try { body = JSON.parse(raw) } catch {}
 
+    // Groq rejects the whole request if a message carries anything beyond role
+    // and content, and it once rejected a real rider's question that way. Be as
+    // strict here, so the offline tests can catch it.
+    const bad = (body.messages ?? []).findIndex(
+      (m) => Object.keys(m ?? {}).some((k) => k !== 'role' && k !== 'content'),
+    )
+    if (bad >= 0) {
+      const prop = Object.keys(body.messages[bad]).find(
+        (k) => k !== 'role' && k !== 'content',
+      )
+      res.writeHead(400, { 'content-type': 'application/json' })
+      return res.end(JSON.stringify({
+        error: { message: `'messages.${bad}' : property '${prop}' is unsupported` },
+      }))
+    }
+
     // Non-streaming JSON calls (name extraction). Treat anything that is not a
     // question as a name, which is enough to exercise the flow offline.
     if (body.response_format?.type === 'json_object') {

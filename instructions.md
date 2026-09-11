@@ -127,9 +127,9 @@ reader accepts both scripts.
 
 ### Tests
 
-`npm test` — 23 unit tests: name matching, the yes/no reader in both scripts,
-message lookups, and a check that every recording the bot promises is actually
-in `public/`.
+`npm test` — 27 unit tests: name matching, the yes/no reader in both scripts,
+message lookups, a check that every recording the bot promises is actually in
+`public/`, and a check that nothing but a role and words ever goes upstream.
 `npm run e2e` — 8 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the

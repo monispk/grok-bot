@@ -31,9 +31,8 @@ export const WELCOME: Message[] = [
 ]
 
 /**
- * What the model sees. Images, documents and the scripted voice notes all carry
- * empty content and drop out; a transcribed voice note carries the rider's words
- * and stays, because it is their message.
+ * What the model sees. A transcribed voice note is the rider's own words and
+ * must reach it, so this no longer turns attachments away by kind — it keeps
+ * whatever carries text. Shared with the server, which re-does the same work.
  */
-export const forModel = (messages: Message[]): Message[] =>
-  messages.filter((m) => m.content.trim().length > 0)
+export { forModel } from '../shared/wire.ts'
