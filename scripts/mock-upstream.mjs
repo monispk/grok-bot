@@ -7,6 +7,19 @@ const REPLY =
   + 'you can exercise the UI, the reconnect path and the markdown renderer '
   + 'without an API key.\n\n```js\nconsole.log("code blocks render too")\n```\n'
 
+/**
+ * The reply quotes the question, as a real model's would. Not decoration: the
+ * server caches synthesised speech against the words, so a reply that never
+ * varies is spoken instantly from the second run onwards — which silently
+ * removes the delay the interface is supposed to cope with, and with it any
+ * hope of a test noticing.
+ */
+const replyTo = (body) => {
+  const asked = (body?.messages ?? []).filter((m) => m?.role === 'user').at(-1)
+  const q = typeof asked?.content === 'string' ? asked.content.trim().slice(0, 120) : ''
+  return q ? `Aap ne poocha "${q}". ${REPLY}` : REPLY
+}
+
 const PORT = Number(process.env.MOCK_PORT ?? 4010)
 
 http
@@ -79,14 +92,16 @@ http
     // Non-streaming completions (the WhatsApp path) get a plain JSON reply.
     if (body.stream !== true) {
       res.writeHead(200, { 'content-type': 'application/json' })
-      return res.end(JSON.stringify({ choices: [{ message: { content: REPLY.trim() } }] }))
+      return res.end(
+        JSON.stringify({ choices: [{ message: { content: replyTo(body).trim() } }] }),
+      )
     }
 
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
     })
-    for (const word of REPLY.split(/(?<= )/)) {
+    for (const word of replyTo(body).split(/(?<= )/)) {
       res.write(
         `data: ${JSON.stringify({ choices: [{ delta: { content: word } }] })}\n\n`,
       )

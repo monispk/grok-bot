@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { enqueue, takeOver } from './autoplay.ts'
+import { register, takeOver } from './autoplay.ts'
 
 const mmss = (s: number, roundUp = false) => {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -10,10 +10,11 @@ const mmss = (s: number, roundUp = false) => {
 /** WhatsApp-style voice note: play/pause, scrub bar, elapsed time. */
 export function VoiceNote({
   sources,
-  autoplay = false,
+  playId,
 }: {
   sources: { src: string; type: string }[]
-  autoplay?: boolean
+  /** Present when this clip is the bot's and should play itself in turn. */
+  playId?: string
 }) {
   const ref = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
@@ -38,14 +39,12 @@ export function VoiceNote({
   const current = ordered[attempt]
   if (!current) return null
 
-  // Joins the queue once, when it first lands. A clip restored from history is
-  // not new and is never queued: nobody wants a returning visit read back to them.
-  const queued = useRef(false)
+  // Hands its player to the queue, which decides when — the thread's order,
+  // not the order things happened to finish loading in. A clip restored from
+  // history has no playId: nobody wants a returning visit read back to them.
   useEffect(() => {
-    if (!autoplay || queued.current || !ref.current) return
-    queued.current = true
-    enqueue(ref.current)
-  }, [autoplay])
+    if (playId && ref.current) register(playId, ref.current)
+  }, [playId, current.src])
 
   const toggle = () => {
     const a = ref.current

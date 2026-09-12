@@ -1,15 +1,17 @@
 // Offline stand-in for Uplift's text-to-speech, so the spoken-answer path can be
 // exercised without a key and without spending on speech.
 //
-// It answers slowly on purpose. The real thing takes a Groq call to convert the
-// script and then a second or so to read it, and the interface has to hold up
-// for that whole time — an instant mock hid a spinner that escaped its bubble
-// and span over the text beside it.
+// It answers slowly on purpose, and the delay is chosen to match reality: a Groq
+// call to convert the script plus a second or so for Uplift to read it, about
+// two and a half seconds all told. That is longer than the thread takes to
+// reveal the next question, which is the whole reason the answer and the
+// question can end up being played in the wrong order. A quicker mock hides
+// both that and the spinner that once escaped its bubble.
 import http from 'node:http'
 import { readFileSync } from 'node:fs'
 
 const PORT = Number(process.env.MOCK_UPLIFT_PORT ?? 4011)
-const DELAY = Number(process.env.MOCK_UPLIFT_DELAY ?? 1200)
+const DELAY = Number(process.env.MOCK_UPLIFT_DELAY ?? 2500)
 const audio = readFileSync('public/ask-cnic-back.m4a')
 
 http

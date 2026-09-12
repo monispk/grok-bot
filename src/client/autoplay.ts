@@ -1,57 +1,92 @@
 /**
- * Plays the bot's voice notes aloud as they arrive, one at a time.
+ * Plays the bot's voice notes aloud as they arrive, in the order they were
+ * said.
  *
- * A rider who cannot read well should not have to find and press play on every
- * bubble. But two clips talking over each other are worse than none, so they
- * queue: one plays, and the next waits for it to finish and then for a further
- * two seconds, which is about as long as a person leaves before speaking again.
+ * Arrival order is not thread order, which is the whole difficulty. A step's
+ * question has a recording sitting on disk and is ready at once; an answer the
+ * model just wrote has to be sent to Uplift and read, which takes a second or
+ * two. Queue them as they turn up and the rider hears the next question before
+ * the answer to the one they asked. So the thread decides the order, and a clip
+ * still being made holds its place — the queue waits for it rather than
+ * stepping over it.
  *
- * Two things this has to respect. A browser refuses to play sound until the page
- * has been touched, so a blocked clip is put back rather than dropped and the
- * queue starts at the rider's first tap. And if the rider presses play on
- * something themselves, that is an instruction: the queue gets out of the way.
+ * Two more things to respect. A browser refuses sound until the page has been
+ * touched, so a blocked clip is put back and the queue starts at the rider's
+ * first tap. And if the rider presses play on something themselves, that is an
+ * instruction: the queue gets out of the way.
  */
 const GAP_MS = 2000
+/** How long to hold the queue for a clip that may never arrive. */
+const PATIENCE_MS = 20_000
 
-let queue: HTMLAudioElement[] = []
+let order: string[] = []
+const players = new Map<string, HTMLAudioElement>()
+const finished = new Set<string>()
+
 let current: HTMLAudioElement | null = null
 let lastEnded = 0
-let timer: ReturnType<typeof setTimeout> | null = null
+let gapTimer: ReturnType<typeof setTimeout> | null = null
+let waitTimer: ReturnType<typeof setTimeout> | null = null
+let waitingFor: string | null = null
 let blocked = false
 
-function clearTimer() {
-  if (timer) clearTimeout(timer)
-  timer = null
+function clearTimers() {
+  if (gapTimer) clearTimeout(gapTimer)
+  if (waitTimer) clearTimeout(waitTimer)
+  gapTimer = waitTimer = null
+  waitingFor = null
 }
 
 function pump() {
-  if (current || blocked || timer) return
-  if (!queue.length) return
+  if (current || blocked || gapTimer) return
+
+  const next = order.find((id) => !finished.has(id))
+  if (!next) {
+    if (waitTimer) clearTimeout(waitTimer)
+    waitTimer = null
+    waitingFor = null
+    return
+  }
+
+  const el = players.get(next)
+  if (!el) {
+    // Still being read. Hold the rider's place, but not forever: if it never
+    // comes, the conversation has to keep moving.
+    if (waitingFor === next) return
+    if (waitTimer) clearTimeout(waitTimer)
+    waitingFor = next
+    waitTimer = setTimeout(() => {
+      waitTimer = null
+      waitingFor = null
+      finished.add(next)
+      pump()
+    }, PATIENCE_MS)
+    return
+  }
+
+  if (waitTimer) clearTimeout(waitTimer)
+  waitTimer = null
+  waitingFor = null
 
   const wait = Math.max(0, GAP_MS - (Date.now() - lastEnded))
-  timer = setTimeout(() => {
-    timer = null
-    const el = queue.shift()
-    if (!el) return
-
-    const finish = () => {
-      el.removeEventListener('ended', finish)
-      el.removeEventListener('error', finish)
+  gapTimer = setTimeout(() => {
+    gapTimer = null
+    const done = () => {
+      el.removeEventListener('ended', done)
+      el.removeEventListener('error', done)
       if (current === el) current = null
+      finished.add(next)
       lastEnded = Date.now()
       pump()
     }
-    el.addEventListener('ended', finish)
-    el.addEventListener('error', finish)
+    el.addEventListener('ended', done)
+    el.addEventListener('error', done)
 
     current = el
     void el.play().catch(() => {
-      // Sound is refused until the page has been touched. Put it back and wait
-      // for the rider rather than losing the clip.
-      el.removeEventListener('ended', finish)
-      el.removeEventListener('error', finish)
+      el.removeEventListener('ended', done)
+      el.removeEventListener('error', done)
       current = null
-      queue.unshift(el)
       blocked = true
       waitForTouch()
     })
@@ -71,25 +106,33 @@ function waitForTouch() {
   document.addEventListener('keydown', go, { once: true })
 }
 
-/** A voice note has landed and should be heard when its turn comes. */
-export function enqueue(el: HTMLAudioElement) {
-  if (queue.includes(el) || current === el) return
-  queue.push(el)
+/** The bot's voice notes, in the order the thread says them. */
+export function setOrder(ids: string[]) {
+  order = ids
+  pump()
+}
+
+/** A voice note's player now exists and can be heard. */
+export function register(id: string, el: HTMLAudioElement) {
+  if (players.get(id) === el) return
+  players.set(id, el)
   pump()
 }
 
 /** The rider pressed play themselves. Their choice wins; the queue stands down. */
 export function takeOver(el: HTMLAudioElement) {
-  clearTimer()
-  queue = []
+  clearTimers()
+  order = []
   if (current && current !== el) current.pause()
   current = null
 }
 
-/** Clear, or leaving the page: nothing queued should outlive the conversation. */
+/** Clear: nothing queued should outlive the conversation it belonged to. */
 export function stopAll() {
-  clearTimer()
-  queue = []
+  clearTimers()
+  order = []
+  players.clear()
+  finished.clear()
   if (current) current.pause()
   current = null
   lastEnded = 0

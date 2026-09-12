@@ -161,9 +161,12 @@ reader accepts both scripts.
   thing is said. A rider who is listening rather than reading needs that pause.
   The welcome settles in about 3.9 seconds, and the newest line stays against
   the composer so the rider never scrolls.
-- Voice notes **play themselves** as they arrive, so a rider who reads poorly
-  need not find and press play on every bubble. They queue: one plays, the next
-  waits for it to finish and then two seconds more. A browser refuses sound
+- Voice notes **play themselves**, so a rider who reads poorly need not find and
+  press play on every bubble. They play **in the order the thread says them**,
+  which is not the order they become ready: a step's question has a recording on
+  disk and is ready at once, while an answer has to be read by Uplift first. A
+  clip still being made holds its place and the queue waits for it, up to twenty
+  seconds. One plays, the next waits for it to finish and then two seconds more. A browser refuses sound
   until the page is touched, so a blocked clip is put back and the queue starts
   at the rider's first tap rather than being lost. Pressing play on anything
   stands the queue down — that is an instruction. A thread already on screen
@@ -176,7 +179,7 @@ reader accepts both scripts.
 `npm test` — 29 unit tests: name matching, the yes/no reader in both scripts,
 message lookups, a check that every recording the bot promises is actually in
 `public/`, and a check that nothing but a role and words ever goes upstream.
-`npm run e2e` — 16 browser tests: staged arrival, scroll pinning, history not
+`npm run e2e` — 17 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the
 transcript surviving a reload, a spoken name being sent back, a question tucked

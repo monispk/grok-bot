@@ -8,6 +8,8 @@ export type Message = {
   src?: string
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
+  /** Identifies the bubble for its whole life, however the list is rebuilt. */
+  id?: string
   /** When it was said, for the time in the corner of the bubble. */
   at?: number
   /** The model wrote these words just now, so no recording of them can exist. */

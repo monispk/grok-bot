@@ -16,7 +16,7 @@ import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
 import { useRecorder, type Recording } from './recorder.ts'
-import { stopAll } from './autoplay.ts'
+import { setOrder, stopAll } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
@@ -41,9 +41,12 @@ const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
+let seq = 0
 const stamp = (list: Message[]): Message[] => {
   let now = 0
-  return list.map((m) => (m.at ? m : { ...m, at: (now ||= Date.now()) }))
+  return list.map((m) =>
+    m.at && m.id ? m : { ...m, at: m.at ?? (now ||= Date.now()), id: m.id ?? `m${++seq}` },
+  )
 }
 
 const clock = (at?: number) =>
@@ -249,6 +252,18 @@ export function App() {
    * from the words themselves, so a line already read costs nothing the second
    * time and keeps the same URL across a reload.
    */
+  useEffect(() => {
+    setOrder(
+      messages
+        .map((m, i) => ({ m, i }))
+        .filter(
+          ({ m, i }) =>
+            m.role === 'assistant' && m.kind === 'audio' && i >= restored.current && !!m.id,
+        )
+        .map(({ m }) => m.id!),
+    )
+  }, [messages])
+
   const spoken = useRef(new Set<string>())
   useEffect(() => {
     const waiting = messages.filter((m) => m.kind === 'audio' && m.speak && !m.sources)
@@ -810,7 +825,7 @@ export function App() {
                 )}
                 <VoiceNote
                   sources={m.sources ?? VOICE_SOURCES}
-                  autoplay={!mine && i >= restored.current}
+                  playId={!mine && i >= restored.current ? m.id : undefined}
                 />
                 {/* Show what was heard, so a mistranscription is obvious. */}
                 {mine && m.content && <span class="transcript">{m.content}</span>}

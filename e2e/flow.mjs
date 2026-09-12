@@ -565,6 +565,42 @@ await check('a returning rider is not read their own history', async () => {
   assert.equal(played, 0, `${played} clip(s) played themselves on a revisit`)
 })
 
+await spoken('the answer is heard before the next question', async () => {
+  // The reported bug. A step's question has a recording on disk and is ready at
+  // once; the answer has to be read by Uplift first. Queued as they arrived, the
+  // rider heard the next question and never heard their answer.
+  await primeAt(3, [
+    { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
+  ])
+  await page.waitForSelector('footer textarea')
+  await page.evaluate(() => {
+    window.__log = []
+    const watch = (el) => {
+      if (el.__w) return
+      el.__w = true
+      el.addEventListener('play', () => window.__log.push(el.currentSrc))
+    }
+    document.querySelectorAll('audio').forEach(watch)
+    new MutationObserver(() => document.querySelectorAll('audio').forEach(watch))
+      .observe(document.body, { childList: true, subtree: true })
+  })
+
+  await page.fill('footer textarea', `salary kitni milti hai ${Date.now()}`)
+  await page.click('footer button.send')
+
+  // Wait until two clips have started, or until we are sure only one will.
+  await settle(async () => page.evaluate(() => window.__log.length >= 2), 40_000)
+  const log = await page.evaluate(() => window.__log)
+
+  const answer = log.findIndex((u) => u.includes('/api/speak/'))
+  const question = log.findIndex((u) => /\/ask-|\/say-/.test(u))
+  assert.ok(answer >= 0, `the answer was never played (heard: ${log.join(', ') || 'nothing'})`)
+  assert.ok(
+    question < 0 || answer < question,
+    `the next question was played before the answer (heard: ${log.join(', ')})`,
+  )
+})
+
 await browser.close()
 console.log(results.join('\n'))
 console.log(process.exitCode ? '\n  some browser tests failed' : '\n  all browser tests passed')
