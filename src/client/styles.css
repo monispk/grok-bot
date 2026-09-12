@@ -2,14 +2,24 @@
    the layout for larger screens. */
 
 :root {
-  --bg: #ffffff;
-  --panel: #f6f7f9;
-  --line: #e3e6ea;
-  --fg: #14171a;
-  --muted: #667085;
-  --brand: #d70f64;        /* foodpanda magenta, PANTONE 214 C */
-  --accent: #d70f64;
-  --user: #fdeaf2;
+  /*
+   * WhatsApp's palette, near enough to pass without a second look. A rider who
+   * cannot read well has already learned one messaging app; asking them to learn
+   * a second is friction we can simply decline to create. The Foodpanda identity
+   * stays where WhatsApp puts a business's: as the contact at the top.
+   */
+  --bg: #efeae2;           /* chat wallpaper */
+  --panel: #f0f2f5;        /* composer bar */
+  --input: #ffffff;        /* the box you type into */
+  --in: #ffffff;           /* what the bot says */
+  --out: #d9fdd3;          /* what the rider says */
+  --line: #e9edef;
+  --fg: #111b21;
+  --muted: #667781;        /* timestamps, secondary text */
+  --brand: #008069;        /* top bar */
+  --accent: #00a884;       /* the round button, links, the scrub bar */
+  --tick: #53bdeb;         /* read receipts */
+  --user: #d9fdd3;
   --err: #b42318;
   --tap: 44px; /* minimum comfortable touch target */
   --safe-t: env(safe-area-inset-top, 0px);
@@ -30,13 +40,18 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0d10;
-    --panel: #14181d;
-    --line: #232a32;
-    --fg: #e6e9ee;
-    --muted: #8b95a5;
-    --accent: #ff4d8f;     /* lifted for contrast on dark */
-    --user: #2b1522;
+    --bg: #0b141a;
+    --panel: #111b21;
+    --input: #2a3942;
+    --in: #202c33;
+    --out: #005c4b;
+    --line: #2a3942;
+    --fg: #e9edef;
+    --muted: #8696a0;
+    --brand: #1f2c34;
+    --accent: #00a884;
+    --tick: #53bdeb;
+    --user: #005c4b;
     --err: #ff6b6b;
   }
 }
@@ -84,40 +99,49 @@ header {
   position: relative;
   z-index: 2;
 
-  /*
-   * Two edges doing different jobs. The hairline of light is what separates the
-   * header from something its own colour passing underneath — a voice note's
-   * play button is the same magenta, and against a plain shadow it simply
-   * merged into the bar. The shadow underneath is what separates the header
-   * from a pale background, where the hairline would be invisible.
-   */
-  box-shadow:
-    inset 0 -1px 0 rgba(255, 255, 255, .3),
-    0 1px 2px rgba(0, 0, 0, .14),
-    0 5px 14px rgba(0, 0, 0, .10);
+  box-shadow: 0 1px 3px rgba(11, 20, 26, .22);
+}
+
+header .who {
+  margin-right: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+header .status {
+  font-size: 12px;
+  line-height: 1.1;
+  color: rgba(255, 255, 255, .8);
 }
 
 header strong {
-  margin-right: auto;
-  font-size: 14px;
-  line-height: 1.25;
-  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+/* The contact's photo. Round, because that is where the eye looks first. */
 .mark {
   flex: none;
-  width: 26px;
-  height: 26px;
-  object-fit: contain;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #dfe5e7;
 }
 
 .ghost {
   flex: none;
-  border: 1px solid rgba(255, 255, 255, .55);
+  border: 1px solid rgba(255, 255, 255, .45);
   background: transparent;
   color: #fff;
-  border-radius: 10px;
-  min-height: 38px;
+  border-radius: 14px;
+  min-height: 32px;
   padding: 0 12px;
   font-size: 13px;
   cursor: pointer;
@@ -133,26 +157,94 @@ header strong {
   /* Keep pull-to-refresh and scroll chaining out of the thread. */
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 16px 12px;
+  padding: 12px 8px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 6px;
   overflow-wrap: anywhere;
 }
 
 .empty { margin: auto; text-align: center; color: var(--muted); padding: 0 24px; }
 .empty p { font-size: 17px; margin: 0 0 6px; }
 
-.msg { line-height: 1.6; font-size: 16px; }
+.msg {
+  position: relative;
+  line-height: 1.5;
+  font-size: 15px;
+  max-width: 85%;
+  padding: 6px 9px 8px;
+  border-radius: 7.5px;
+  box-shadow: 0 1px .5px rgba(11, 20, 26, .13);
+}
+
+/* The little beak that points back at whoever is speaking. */
+.msg::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 13px;
+}
+
+.msg.bot {
+  align-self: flex-start;
+  background: var(--in);
+  border-top-left-radius: 0;
+}
+
+.msg.bot::after {
+  left: -8px;
+  background: var(--in);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+}
 
 .msg.user {
   align-self: flex-end;
-  background: var(--user);
-  padding: 10px 14px;
-  border-radius: 16px 16px 4px 16px;
-  max-width: 85%;
+  background: var(--out);
+  border-top-right-radius: 0;
   white-space: pre-wrap;
 }
+
+.msg.user::after {
+  right: -8px;
+  background: var(--out);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+/* The time, and the ticks that say it arrived — tucked into the bottom
+   right of the bubble, the way every message in WhatsApp carries them. */
+.stamp {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 6px -3px -4px 8px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.stamp svg { display: block; color: var(--tick); }
+
+.msg.shot .stamp {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 8px;
+  background: rgba(11, 20, 26, .45);
+  color: #fff;
+}
+
+.msg.shot .stamp svg { color: #cfe9fb; }
+
+/* A voice note keeps its time beside it, not on top of its own duration. */
+.msg.media .stamp { float: none; margin: 0 4px 2px 0; }
+.msg.media { display: flex; flex-wrap: wrap; align-items: flex-end; }
+.msg.shot { display: block; }
 
 .msg.bot :first-child { margin-top: 0; }
 .msg.bot :last-child { margin-bottom: 0; }
@@ -188,39 +280,44 @@ header strong {
 
 /* ---------- attachments ---------- */
 
-.msg.media { max-width: 88%; }
+.msg.media { max-width: 80%; padding: 3px; }
+
+/* A voice note and a photo fill their bubble; the padding is just the frame. */
+.msg.media.pending { min-height: 44px; }
 
 .photo {
   display: block;
   width: 100%;
   max-width: 320px;
   height: auto;
-  border-radius: 14px;
+  border-radius: 6px;
   background: var(--panel);
 }
 
 .voice {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  padding: 8px 14px 8px 8px;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 4px 6px 4px 2px;
   max-width: 320px;
 }
 
 .voice .play {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border: 0;
   border-radius: 50%;
   display: grid;
   place-items: center;
   cursor: pointer;
-  background: var(--accent);
-  color: #fff;
+  /* WhatsApp draws the play glyph in the bubble's own text colour, not on a
+     coloured disc — the disc is the sender's avatar. */
+  background: transparent;
+  color: var(--muted);
 }
 
 .voice .scrub {
@@ -248,7 +345,7 @@ header strong {
   padding: 0 12px calc(7px + var(--safe-b));
   font-size: 11px;
   color: var(--muted);
-  background: var(--bg);
+  background: var(--panel);
 }
 
 .credit img {
@@ -262,31 +359,28 @@ header strong {
   .credit img { filter: none; opacity: .8; }
 }
 
-/* Mic sits where Send does, and takes its place while the box is empty — the
-   pattern every messaging app has already taught this audience. */
-.mic {
-  flex: none;
-  min-height: var(--tap);
-  min-width: var(--tap);
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-}
 
-.mic:disabled { opacity: .45; cursor: default; }
 
 .recbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-  background: var(--bg);
+  padding: 6px 8px calc(6px + var(--safe-b));
+  border-top: 0;
+  background: var(--panel);
+}
+
+.recbar .bin {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .reclive {
@@ -303,7 +397,7 @@ header strong {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--err);
+  background: #f15c6d;
   animation: pulse 1.1s ease-in-out infinite;
 }
 
@@ -313,11 +407,7 @@ header strong {
   .recdot { animation: none; }
 }
 
-.recbar .send,
-.recbar .ghost {
-  min-height: var(--tap);
-  padding: 0 16px;
-}
+
 
 /* What we heard, under the rider's own recording. */
 .transcript {
@@ -554,25 +644,58 @@ header strong {
 
 footer {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-end;
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-  background: var(--bg);
+  padding: 6px 8px calc(6px + var(--safe-b));
+  border-top: 0;
+  background: var(--panel);
 }
+
+/* Everything you can put into a message lives in one rounded box; the button
+   that sends it sits outside, round and green. That shape is the thing this
+   audience already recognises. */
+.pill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  background: var(--input);
+  border-radius: 24px;
+  padding: 0 6px 0 4px;
+}
+
+.pill button {
+  flex: none;
+  width: 40px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.pill button:disabled { opacity: .45; cursor: default; }
+
+/* The paperclip is at an angle in WhatsApp, which is most of how it reads. */
+.pill .attach svg { transform: rotate(-45deg); }
 
 textarea {
   flex: 1;
+  min-width: 0;
   resize: none;
   font: inherit;
   /* Must stay >=16px: anything smaller makes iOS Safari zoom on focus. */
   font-size: 16px;
-  line-height: 1.4;
+  line-height: 1.35;
   color: var(--fg);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 11px 15px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 12px 6px 12px 8px;
   min-height: var(--tap);
   max-height: 40dvh;
 }
@@ -583,22 +706,26 @@ textarea {
 textarea { scrollbar-width: none; }
 textarea::-webkit-scrollbar { width: 0; height: 0; }
 
-textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+textarea:focus { outline: 0; }
+textarea::placeholder { color: var(--muted); }
 
-footer button {
+/* The round green button: microphone while there is nothing to send, paper
+   plane the moment there is. */
+.fab {
   flex: none;
+  width: 46px;
+  height: 46px;
+  padding: 0;
   border: 0;
-  border-radius: 20px;
-  min-height: var(--tap);
-  padding: 0 18px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
+  border-radius: 50%;
   background: var(--accent);
   color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
 }
 
-footer button:disabled { opacity: .4; cursor: default; }
+.fab:disabled { opacity: .45; cursor: default; }
 footer button.stop { background: var(--err); }
 
 /* ---------- password gate ---------- */

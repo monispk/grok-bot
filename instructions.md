@@ -141,8 +141,19 @@ reader accepts both scripts.
 
 ### Interface
 
-- Foodpanda magenta `#D70F64`, panda mark in the header, app icons, "Powered by
-  rozeegpt.ai" under the composer.
+- **WhatsApp's interface**, close enough to pass without a second look: its
+  palette (`#008069` bar, `#EFEAE2` wallpaper, `#D9FDD3` outgoing, `#FFFFFF`
+  incoming; `#0B141A` / `#202C33` / `#005C4B` in the dark), its bubbles with
+  tails, timestamps and read ticks, its composer — one rounded box holding the
+  text, paperclip and camera, with a round green microphone beside it that turns
+  into a paper plane the moment there is something to send — and "typing…" under
+  the contact's name. A rider who reads poorly has already learned one messaging
+  app; asking them to learn a second is friction we can decline to create.
+- Foodpanda's identity sits where WhatsApp puts a business's: as the **contact**
+  at the top, panda mark and all. The app never claims to be WhatsApp, carries
+  no Meta logo, and says "Powered by rozeegpt.ai" under the composer.
+- The phone's own status bar is themed to match the header, in both schemes, so
+  the illusion does not break the moment the app opens.
 - Phone-first layout, 16px composer so iOS does not zoom, safe-area insets,
   44px touch targets, installable to the home screen.
 - Messages arrive in the **groups a person would say them in**: a line, its

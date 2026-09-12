@@ -41,6 +41,42 @@ const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
+const stamp = (list: Message[]): Message[] => {
+  let now = 0
+  return list.map((m) => (m.at ? m : { ...m, at: (now ||= Date.now()) }))
+}
+
+const clock = (at?: number) =>
+  at
+    ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : ''
+
+/**
+ * The time, and for the rider's own messages the pair of ticks that says it
+ * arrived. Every WhatsApp bubble carries these; without them the shape is
+ * right but the thing still does not look like itself.
+ */
+function Stamp({ m }: { m: Message }) {
+  if (!m.at) return null
+  return (
+    <span class="stamp">
+      {clock(m.at)}
+      {m.role === 'user' && (
+        <svg viewBox="0 0 16 11" width="15" height="11" aria-hidden="true">
+          <path
+            d="M1 5.8 3.9 8.7 9.6 3M6.4 5.8 9.3 8.7 15 3"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      )}
+    </span>
+  )
+}
+
 /**
  * The model's own words. Marked, because a scripted line may already have a
  * recording travelling with it — a step's question arrives as the words plus
@@ -88,7 +124,17 @@ export function App() {
       ? { msgs: saved, revealed: saved.length }
       : { msgs: WELCOME, revealed: 0 }
   })
-  const [messages, setMessages] = useState<Message[]>(boot.msgs)
+  const [messages, setRaw] = useState<Message[]>(stamp(boot.msgs))
+  /**
+   * Every message carries the time it was said. Stamping here rather than at
+   * each call site means no route into the thread can forget — and there are
+   * six of them.
+   */
+  const setMessages = useCallback(
+    (v: Message[] | ((prev: Message[]) => Message[])) =>
+      setRaw((prev) => stamp(typeof v === 'function' ? v(prev) : v)),
+    [],
+  )
   const [revealed, setRevealed] = useState(boot.revealed)
   /**
    * Everything already in the thread when the page opened. Those are read back
@@ -728,7 +774,10 @@ export function App() {
     <div class="shell">
       <header>
         <img class="mark" src="/panda.png" alt="" />
-        <strong>Foodpanda Delivery Rider Onboarding</strong>
+        <span class="who">
+          <strong>Foodpanda Rider Onboarding</strong>
+          <span class="status">{streaming !== null ? 'typing…' : 'online'}</span>
+        </span>
         <button class="ghost" onClick={reset} disabled={busy}>
           Clear
         </button>
@@ -738,8 +787,9 @@ export function App() {
         {messages.slice(0, revealed).map((m, i) => {
           if (m.kind === 'image')
             return (
-              <div key={i} class="msg bot media">
+              <div key={i} class="msg bot media shot">
                 <Picture src={m.src ?? ''} alt="Foodpanda delivery rider" />
+                <Stamp m={m} />
               </div>
             )
           if (m.kind === 'audio') {
@@ -764,6 +814,7 @@ export function App() {
                 />
                 {/* Show what was heard, so a mistranscription is obvious. */}
                 {mine && m.content && <span class="transcript">{m.content}</span>}
+                <Stamp m={m} />
               </div>
             )
           }
@@ -784,13 +835,13 @@ export function App() {
           return m.role === 'user' ? (
             <div key={i} class="msg user">
               {m.content}
+              <Stamp m={m} />
             </div>
           ) : (
-            <div
-              key={i}
-              class="msg bot"
-              dangerouslySetInnerHTML={{ __html: rendered[i] ?? '' }}
-            />
+            <div key={i} class="msg bot">
+              <span dangerouslySetInnerHTML={{ __html: rendered[i] ?? '' }} />
+              <Stamp m={m} />
+            </div>
           )
         })}
 
@@ -831,15 +882,26 @@ export function App() {
 
       {recorder.state === 'recording' ? (
         <footer class="recbar">
-          <button class="ghost" onClick={recorder.cancel} aria-label="Mansookh karein">
-            ✕
+          <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                d="M4 7h16M10 4h4M9 7v12m3-12v12m3-12v12M6 7l1 13h10l1-13"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </button>
           <span class="reclive">
             <span class="recdot" />
             {`${Math.floor(recorder.seconds / 60)}:${String(recorder.seconds % 60).padStart(2, '0')}`}
           </span>
-          <button class="send" onClick={recorder.stop}>
-            Bhejein
+          <button class="fab send" onClick={recorder.stop} aria-label="Bhejein">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
+            </svg>
           </button>
         </footer>
       ) : (
@@ -884,82 +946,95 @@ export function App() {
             if (f) void onFile(f)
           }}
         />
-        <button
-          class="camera"
-          aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
-          disabled={busy}
-          onClick={() =>
-            (current?.facing === 'user' ? selfieCam : camera).current?.click()
-          }
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path
-              d="M4 8h3l1.4-2h7.2L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linejoin="round"
-            />
-            <circle cx="12" cy="13.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.7" />
-          </svg>
-        </button>
+        <div class="pill">
+          <textarea
+            value={draft}
+            rows={1}
+            placeholder="Message"
+            onFocus={warm}
+            onInput={(e) => {
+              const el = e.target as HTMLTextAreaElement
+              setDraft(el.value)
+              el.style.height = 'auto'
+              el.style.height = `${Math.min(el.scrollHeight, 180)}px`
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void onSend((e.target as HTMLTextAreaElement).value)
+              }
+            }}
+          />
 
-        <button
-          class="attach"
-          aria-label="Tasveer ya file bhejein"
-          disabled={busy}
-          onClick={() => picker.current?.click()}
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path
-              d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 18a2 2 0 0 1-3-3l8-8"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </button>
+          <button
+            class="attach"
+            aria-label="Tasveer ya file bhejein"
+            disabled={busy}
+            onClick={() => picker.current?.click()}
+          >
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                d="M16.5 6.5v9.75a4.5 4.5 0 0 1-9 0V5.75a3 3 0 0 1 6 0v9.75a1.5 1.5 0 0 1-3 0V6.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
 
-        <textarea
-          value={draft}
-          rows={1}
-          placeholder="Message…"
-          onFocus={warm}
-          onInput={(e) => {
-            const el = e.target as HTMLTextAreaElement
-            setDraft(el.value)
-            el.style.height = 'auto'
-            el.style.height = `${Math.min(el.scrollHeight, 180)}px`
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void onSend((e.target as HTMLTextAreaElement).value)
+          <button
+            class="camera"
+            aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
+            disabled={busy}
+            onClick={() =>
+              (current?.facing === 'user' ? selfieCam : camera).current?.click()
             }
-          }}
-        />
+          >
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                d="M4.5 7.5h3L9 5.5h6l1.5 2h3A1.5 1.5 0 0 1 21 9v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18V9a1.5 1.5 0 0 1 1.5-1.5z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linejoin="round"
+              />
+              <circle cx="12" cy="13.2" r="3.3" fill="none" stroke="currentColor" stroke-width="1.7" />
+            </svg>
+          </button>
+        </div>
 
         {streaming !== null ? (
-          <button class="stop" onClick={stop}>
-            Stop
+          <button class="fab stop" onClick={stop} aria-label="Rok dein">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+            </svg>
           </button>
         ) : draft.trim() ? (
-          <button class="send" onClick={() => void onSend()} disabled={busy}>
-            Send
+          <button
+            class="fab send"
+            onClick={() => void onSend()}
+            disabled={busy}
+            aria-label="Bhejein"
+          >
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
+            </svg>
           </button>
         ) : (
           <button
-            class="mic"
+            class="fab mic"
             aria-label="Awaaz mein jawab dein"
             disabled={busy}
             onClick={() => void recorder.start()}
           >
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <path
-                d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"
+                d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15z"
+                fill="currentColor"
+              />
+              <path
+                d="M18.5 11.2a6.5 6.5 0 0 1-13 0M12 17.8V21"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="1.9"
