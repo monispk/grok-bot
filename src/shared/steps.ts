@@ -290,18 +290,41 @@ export function readRail(text: string): Rail | null {
 
 
 export function readYesNo(text: string): 'yes' | 'no' | null {
-  // A spoken answer comes back from Whisper in Urdu script, so both are read.
-  if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
-  if (/ہاں|جی|بالکل|ضرور/.test(text)) return 'yes'
-
   const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
+  const said = (...w: string[]) => w.some((x) => t.includes(` ${x} `))
+
+  // "pata nahi" is not an answer at all. Counted as a no, it would record a
+  // rider as having no bike because they were unsure what was being asked.
+  if (/samajh nahi|pata nahi|nahi pata|maloom nahi|nahi samjh|سمجھ نہیں|پتہ نہیں/.test(t + text))
+    return null
+
+  // Negation first, otherwise. "mere paas nahi hai" carries every word that
+  // means yes and one that means no, and the no is the answer.
+  if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
+  if (said('nahi', 'nahin', 'nahen', 'nai', 'nhi', 'no', 'nope', 'na', 'n')) return 'no'
+
+  if (/ہاں|جی|بالکل|ضرور|آہ/.test(text)) return 'yes'
   // "y" and "n" included: a rider on a phone keyboard types the shortest thing
   // that could work, and being told it was not understood is a poor reward.
-  if (/\s(nahi|nahin|nahen|nai|nhi|no|nope|na|n)\s/.test(t)) return 'no'
-  if (/\s(haan|han|hann|ji|jee|g|yes|yep|yup|y|ok|okay|theek|bilkul|zaroor|hai)\s/.test(t))
+  if (
+    said('haan', 'han', 'hann', 'ji', 'jee', 'g', 'yes', 'yep', 'yup', 'y', 'ok', 'okay',
+         'theek', 'bilkul', 'zaroor', 'hai', 'aah', 'ah', 'ahan')
+  )
     return 'yes'
+
+  /**
+   * A whole sentence rather than a word: "mere paas touch phone hai", or the
+   * same transcribed into Urdu script. A voice note comes back as speech, not
+   * as an answer form, and a rider who has plainly said they have the thing
+   * should not be asked again because they did not begin with "haan".
+   */
+  const owns = /\bpaas\b|پاس/.test(text)
+  const isTense = /\bhai\b|\bhain\b|\bhay\b|ہے|ہیں/.test(text)
+  if (owns && isTense) return 'yes'
+
   return null
 }
+
 
 export const WELCOME_LINES = [
   'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',

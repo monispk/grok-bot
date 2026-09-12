@@ -122,3 +122,25 @@ test('not understanding is not the same as having no wallet', () => {
   // While a real denial still reads as one.
   assert.equal(readRail('koi nahi'), 'neither')
 })
+
+test('a sentence that answers the question counts as an answer', () => {
+  // Reported: a voice note transcribed as "آہ میرے پاس touch phone ہے" — plainly
+  // yes — was thrown away because it did not begin with "haan".
+  for (const said of [
+    'آہ میرے پاس touch phone ہے',
+    'mere paas touch phone hai',
+    'ji haan mere paas bike hai',
+    'میرے پاس بائیک ہے',
+  ])
+    assert.equal(readYesNo(said), 'yes', said)
+
+  for (const said of ['mere paas nahi hai', 'میرے پاس نہیں ہے', 'bike nahi hai mere paas'])
+    assert.equal(readYesNo(said), 'no', said)
+})
+
+test('being unsure is not the same as saying no', () => {
+  // A "no" here records a rider as having no bike, which ends their eligibility
+  // on a question they only failed to understand.
+  for (const said of ['pata nahi', 'samajh nahi aaya', 'mujhe nahi pata', 'پتہ نہیں'])
+    assert.equal(readYesNo(said), null, said)
+})
