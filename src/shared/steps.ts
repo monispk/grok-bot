@@ -57,7 +57,7 @@ export const STEP_SPECS: StepSpec[] = [
     id: 'name',
     kind: 'text',
     audio: '/ask-full_name',
-    ask: 'Chalain shuru kartay hain! Aapka poora naam jo CNIC par hai, kya hai?',
+    ask: 'Chalain shuru kartay hain! Aapka poora naam kya hai jo ID Card par likha hai?',
     need: 'Baraye meherbani apna poora naam likh kar bhejein.',
   },
   {
@@ -368,15 +368,18 @@ export const WELCOME_SPOKEN = [
 /**
  * The first question, exactly as Uplift is given it.
  *
- * Pinned by hand for the same reasons as WELCOME_SPOKEN above: "ID card" rather
+ * Pinned by hand for the same reasons as WELCOME_SPOKEN above: "ID Card" rather
  * than CNIC, which is read as the word "sinik", and a newline after the opening
  * so the rider gets a beat before the question rather than one run-on breath.
+ *
+ * The question mark is the ASCII one. Given the Urdu ؟ this voice ends the
+ * sentence flat, as a statement.
  *
  * Re-record with: npx tsx scripts/voice.mjs --raw ask-full_name "<this text>"
  */
 export const NAME_SPOKEN = [
   'چلیں شروع کرتے ہیں!',
-  'آپ کا پورا نام جو ID card پر ہے، کیا ہے؟',
+  'آپ کا پورا نام کیا ہے جو ID Card پر لکھا ہے?',
 ].join('\n')
 
 /** How the application ended, which decides what the rider is told. */

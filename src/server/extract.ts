@@ -1,7 +1,7 @@
 import { completeJson } from './provider.ts'
 
 const NAME_PROMPT = `You decide whether a message is a person's name.
-The user was asked: "Chalain shuru kartay hain! Aapka poora naam jo CNIC par hai, kya hai?" (What is your full name as on your CNIC?)
+The user was asked: "Chalain shuru kartay hain! Aapka poora naam kya hai jo ID Card par likha hai?" (What is your full name as written on your ID card?)
 Reply with JSON only: {"is_name": true|false, "full_name": string|null, "first_name": string|null}
 If the message is a question, a greeting, or anything other than their own name, set is_name to false and the names to null.
 Names may be written in Roman Urdu. Strip words like "mera naam hai" / "my name is". Keep the name's own spelling.`
