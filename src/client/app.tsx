@@ -9,6 +9,7 @@ import {
 import { Dashboard } from './dashboard.tsx'
 import { DebugPanel } from './debug.tsx'
 import {
+  alreadyAnswered,
   askMessages,
   finished,
   quizAsk,
@@ -578,9 +579,16 @@ export function App() {
   /** Move to the next step, or finish. Called only once the input was accepted. */
   const advanceFrom = useCallback(
     (i: number, extra: Message[], patch: Partial<store.FlowState> = {}) => {
-      const next = STEPS[i + 1]
       setFlow((f) => {
-        const merged = { ...f, ...patch, step: i + 1 }
+        const merged = { ...f, ...patch }
+        // Past anything already answered, not simply to the next in the list.
+        // A rider who said at the number question that they had neither wallet
+        // was then asked which wallet they had — twice, because the answer was
+        // recorded and the sequence walked over it anyway.
+        let j = i + 1
+        while (STEPS[j] && alreadyAnswered(STEPS[j]!, merged)) j++
+        merged.step = j
+        const next = STEPS[j]
         // Collection just ended. A verified rider with a wallet is asked to pay
         // before anything is concluded; everyone else is concluded here.
         // A rider with both accounts is charged on Easypaisa: it is the rail
@@ -747,9 +755,10 @@ export function App() {
           return
         }
         if (rail === 'neither') {
-          // Recorded, and said plainly: the fee will be taken at the counter.
-          say(bot(SAY.noWallet.text))
-          advanceFrom(step, [], { rail, noWallet: true })
+          // The number is already in hand by this point, so what is left to say
+          // is how the fee gets paid — not "send your number anyway", which is
+          // what this said when one line served both questions.
+          advanceFrom(step, [bot(SAY.noWalletPayAtOffice.text)], { rail, noWallet: true })
           return
         }
         advanceFrom(step, [], { rail, noWallet: false })
@@ -762,15 +771,20 @@ export function App() {
       if (current.id === 'phone') {
         const phone = readPhone(text)
         if (!phone) {
-          if (asksSomething(text)) {
+          // Read for a wallet answer before deciding this is a question. A
+          // rider often answers the next question first — "I have neither" —
+          // and the Latin-only test that used to live here could not see it
+          // said in Urdu, so it was recorded only when the words happened to
+          // also read as a plain "no".
+          const rail = readRail(text)
+          if (rail) {
+            // An answer, not a failure to understand one. Recorded here so the
+            // wallet question is not asked again further down.
+            setFlow((f) => ({ ...f, rail, noWallet: rail === 'neither' }))
+            say(bot(rail === 'neither' ? SAY.noWalletAskNumber.text : SAY.stillNeedNumber.text))
+          } else if (asksSomething(text)) {
             await runFaq(withUser)
             say(...askMessages(current))
-          } else if (readYesNo(text) === 'no' || /wallet|easypaisa|jazz/i.test(text)) {
-            // "I have neither" is an answer, not a failure to understand one.
-            // Recorded, so the fee is asked for at the counter rather than
-            // through a rail they have just said they do not have.
-            setFlow((f) => ({ ...f, noWallet: true, rail: 'neither' }))
-            say(bot(SAY.noWallet.text))
           } else {
             // Not "answer the question again" — the number itself is wrong,
             // and a rider who mistyped one digit deserves to be told so.

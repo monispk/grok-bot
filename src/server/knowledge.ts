@@ -20,7 +20,8 @@ Kamai kitni hai: Agar aap roz 12 ghante kaam karein to hafte mein Rs. 15,000 tak
 Paise kab miltay hain: Har hafte, rider wallet mein.
 Apni bike zaroori hai: Ji haan.
 Apne ghante khud chun saktay hain: Ji haan, rider app se apni shift khud chuntay hain.
-Kaunse documents chahiye: Asli CNIC, Learner's ya poora Driving License, smartphone, bijli ya gas ka naya bill, aur Rs. 2,500 security deposit.
+Kaunse documents chahiye: Asli CNIC, Learner's ya poora Driving License, smartphone, aur Rs. 2,500 security deposit.
+Agar easypaisa ya JazzCash na ho: Koi baat nahi. Aap Rs. 2,500 ki fee apni branch office aa kar counter par jama kara saktay hain. Account kholna zaroori nahi.
 Security deposit wapas milta hai: Ji haan, poora wapas mil jata hai. Bas delivery bag theek haalat mein wapas karein, aap ko kaam se nikala na gaya ho, aur aap ne foodpanda ko koi paisa dena na ho.
 Onboarding mein kitna waqt lagta hai: Aik din.
 Pehle ka tajurba chahiye: Nahi, koi tajurba zaroori nahi.
@@ -30,23 +31,23 @@ Interview hota hai: Nahi.
 Foodpanda ka office kahan hai: Do office hain. Aik F8 Markaz, Islamabad mein, aur doosra Rawalpindi mein. Aap Peer se Juma, dopahar 12 baje se shaam 6 baje tak ja saktay hain.
 Mujhe kis office jana hoga: Jo office aap ke ghar se qareeb ho, F8 Markaz Islamabad ya Rawalpindi.
 Kya ye pakki ya sarkari naukri hai: Nahi. Ye freelancer kaam hai, naukri nahi. Aap apne kaam ke ghante khud chuntay hain.
-WhatsApp par documents bhejnay ke baad kya hota hai: Rider ko apni branch office jana hota hai, Peer se Juma, dopahar 12 baje se shaam 6 baje tak, taake registration poori ho jaye.
+Documents bhejnay ke baad kya hota hai: Rider ko apni branch office jana hota hai, Peer se Juma, dopahar 12 baje se shaam 6 baje tak, taake registration poori ho jaye.
 
 === IS KAAM KE FAIDAY ===
 Apne kaam ke ghante khud chunain.
-WhatsApp se jaldi aur asaan registration.
+Is chat se jaldi aur asaan registration.
 Mahine mein Rs. 60,000 se zyada, aur upar se bonus: joining bonus, daily quest, fuel bonus, refer bonus.
 Accident ki insurance.
 Loyalty program, Rider of the Month, aur eid ke inaam.
 Foodpanda aik jana pehchana aur bharosay wala brand hai.
 
 === KON APPLY KAR SAKTA HAI ===
-Asli CNIC. Learner's ya poora Driving License. Smartphone. Ghar ka naya bijli ya gas ka bill (pata check karne ke liye). Umar 18 saal ya us se zyada.
+Asli CNIC. Learner's ya poora Driving License. Smartphone. Umar 18 saal ya us se zyada.
 
 === REGISTRATION KE QADAM ===
-1. Rider WhatsApp agent se baat karta hai.
-2. Apni maloomat deta hai aur ye cheezein bhejta hai: apni tasveer, CNIC, Driving License, bill ki tasveer.
-3. Rs. 2,500 security deposit easypaisa, JazzCash ya HBL Konnect se jama karta hai.
+1. Rider is chat mein Rozeena se baat karta hai.
+2. Apni maloomat deta hai aur ye cheezein bhejta hai: apni selfie, CNIC ka front, aur Driving License.
+3. Rs. 2,500 security deposit easypaisa ya JazzCash se jama karta hai. Jis ke paas koi account na ho, wo ye fee office aa kar counter par jama kara sakta hai.
 4. Apni branch jata hai, Peer se Juma, dopahar 12 se shaam 6 baje tak.
 5. Branch par bag aur shirt milti hai, app ki training hoti hai, aur pehli baar login karaya jata hai.
 

@@ -220,9 +220,25 @@ export function dropRepeat(previous: string | undefined, next: string): boolean 
  * A question word is enough on its own; a bare question mark is not, so "haan
  * hai na?" does not send a stray turn to the model.
  */
+/**
+ * Urdu question words, matched whole.
+ *
+ * As a plain alternation these matched inside other words, and the other words
+ * a rider produces are not the ones you would write down: Whisper transcribed
+ * "JazzCash account" as جاس کیاش ایک انٹ, and کیاش contains کیا. A rider
+ * answering "I have neither" was read as asking a question, told at length to
+ * go and open an account, and then asked for their number again.
+ */
+const URDU_ASKS = new Set([
+  'کیا', 'کیسے', 'کیسا', 'کیسی', 'کتنا', 'کتنی', 'کتنے',
+  'کب', 'کہاں', 'کیوں', 'کیون', 'کون', 'کونسا', 'کونسی',
+  'سیلری', 'تنخواہ',
+])
+
 export function asksSomething(text: string): boolean {
-  const urdu = /کیا|کیسے|کتنا|کتنی|کتنے|کتنی|کب|کہاں|کیوں|کون|سیلری|تنخواہ/
-  if (urdu.test(text)) return true
+  // Splitting on everything that is not a letter or a digit keeps Urdu words
+  // whole; \b does not, because it is defined on Latin word characters.
+  if (text.split(/[^\p{L}\p{N}]+/u).some((w) => URDU_ASKS.has(w))) return true
 
   const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
   const asks =

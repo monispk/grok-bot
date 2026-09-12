@@ -144,3 +144,31 @@ test('being unsure is not the same as saying no', () => {
   for (const said of ['pata nahi', 'samajh nahi aaya', 'mujhe nahi pata', 'پتہ نہیں'])
     assert.equal(readYesNo(said), null, said)
 })
+
+test('a mangled transcript is read as the answer it is, not as a question', () => {
+  // Verbatim from a live conversation. Whisper heard "mera koi Easypaisa ya
+  // JazzCash account nahi hai" and wrote "JazzCash account" as جاس کیاش ایک انٹ.
+  // کیاش contains کیا, and matching the question words as substrings made this
+  // a question: the rider was lectured on opening an account, then asked for
+  // their number again — and their answer was never recorded at all.
+  const mangled = 'میرا کوئی ایزی پیسہ ہے جاس کیاش ایک انٹ نہیں ہے'
+  assert.equal(asksSomething(mangled), false)
+  assert.equal(readRail(mangled), 'neither')
+
+  // Said again, clearly, two messages later. This one always worked.
+  const plain = 'میرے پاس دونوں میں سے کوئی بھی نہیں ہے۔'
+  assert.equal(asksSomething(plain), false)
+  assert.equal(readRail(plain), 'neither')
+})
+
+test('a real Urdu question is still a question', () => {
+  // The substring fix must not go the other way: these have to keep working.
+  for (const asked of [
+    'سیلری کتنی ملتی ہے؟',
+    'یہ کیا ہے',
+    'آفس کہاں ہے',
+    'کب جانا ہوگا',
+    'مجھے کیوں چاہیے',
+  ])
+    assert.equal(asksSomething(asked), true, asked)
+})

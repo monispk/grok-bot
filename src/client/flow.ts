@@ -6,7 +6,7 @@ import {
   UNCLEAR as QUIZ_UNCLEAR,
   type Question,
 } from '../shared/quiz.ts'
-import type { Message } from './storage.ts'
+import type { FlowState, Message } from './storage.ts'
 
 export type { StepKind, DocKind } from '../shared/steps.ts'
 
@@ -22,6 +22,25 @@ export const STEPS: Step[] = STEP_SPECS.map((s) => ({
 }))
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
+
+/**
+ * Whether a step's answer is already on file.
+ *
+ * Only the typed steps can be answered out of turn, and one of them routinely
+ * is: a rider asked for their number says "I have neither" — which is the
+ * wallet question's answer, arriving a question early. Asking it anyway told
+ * them they had not been listened to, which is exactly what it means.
+ *
+ * A document, a location or a yes-or-no is not covered: those have to be given
+ * when they are asked for, and there is no earlier moment to give them in.
+ */
+export const alreadyAnswered = (step: Step, f: FlowState): boolean => {
+  if (step.id === 'wallet') return !!f.rail
+  if (step.id === 'phone') return !!f.phone
+  if (step.id === 'name') return !!f.fullName
+  return false
+}
+
 
 const voice = (base: string): Message => ({
   role: 'assistant',

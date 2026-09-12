@@ -248,6 +248,38 @@ await check('the camera and paperclip are live only when a document is asked for
   assert.ok(there, 'the buttons disappeared instead of greying out')
 })
 
+await check('saying "I have neither" at the number question is not asked again', async () => {
+  await primeAt(at('phone'), [{ role: 'assistant', content: 'Aap ka mobile number kya hai?' }])
+  await page.waitForSelector('footer textarea')
+
+  // Verbatim from a live conversation: Whisper's rendering of "mera koi
+  // Easypaisa ya JazzCash account nahi hai". The کیا inside کیاش made this a
+  // question, so it was answered with a lecture instead of recorded.
+  await page.fill('footer textarea', 'میرا کوئی ایزی پیسہ ہے جاس کیاش ایک انٹ نہیں ہے')
+  await page.click('footer button.send')
+
+  const recorded = await settle(async () =>
+    page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').rail === 'neither'),
+  )
+  assert.ok(recorded, 'the answer was not recorded as having neither wallet')
+
+  await page.fill('footer textarea', '03348234444')
+  await page.click('footer button.send')
+
+  // Straight past the wallet question to the one after it.
+  const moved = await settle(async () =>
+    page.evaluate(
+      (want) => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').step === want,
+      at('smartphone'),
+    ),
+  )
+  const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
+  assert.ok(moved, `stopped on ${ORDER[step]} instead of skipping wallet`)
+
+  const asked = (await stored()).some((m) => (m.content || '').includes('Easypaisa hai ya JazzCash'))
+  assert.ok(!asked, 'the wallet question was asked after the rider said they had neither')
+})
+
 /** Records for long enough that MediaRecorder emits real bytes, then sends. */
 const speak = async (ms = 1200) => {
   await page.click('button.mic')

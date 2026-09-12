@@ -72,14 +72,34 @@ export const SAY = {
     '/say-mic-denied',
   ),
   /**
-   * The rider says they have neither wallet. The number is still wanted — it
-   * is how anyone reaches them — and the wallet check simply comes back
-   * unchecked. Repeating the original question here would only ask again about
-   * the accounts they have just said they do not have.
+   * "I have neither", said while the number is still being asked for. The
+   * number is wanted regardless — it is how anyone reaches them — and the
+   * wallet check simply comes back unchecked. Repeating the original question
+   * would ask again about accounts they have just said they do not have.
    */
-  noWallet: say(
+  noWalletAskNumber: say(
     'Koi baat nahi. Phir bhi apna mobile number bhejein, hum isi number par aap se raabta karein ge.',
     '/say-no-wallet',
+  ),
+  /**
+   * The rider names their wallet at the number question — which answers the
+   * question after this one, not this one. Recorded, then the number is asked
+   * for again, naming the account so they know which number is wanted.
+   */
+  stillNeedNumber: say(
+    'Shukriya. Ab baraye meherbani wohi mobile number bhejein jis par ye account hai.',
+    '/say-still-need-number',
+  ),
+  /**
+   * The same answer, once the number is already in hand.
+   *
+   * One line used to serve both moments, so a rider who said they had neither
+   * wallet was asked for a number they had typed two messages earlier. What
+   * they actually need to hear at this point is how the fee gets paid.
+   */
+  noWalletPayAtOffice: say(
+    'Koi baat nahi. Registration fee pachees sau rupay aap office aa kar, counter par jama kara sakte hain.',
+    '/say-fee-at-office',
   ),
   /**
    * When the pin cannot be trusted — refused, never arrived, too vague, or a

@@ -32,6 +32,15 @@ async function say(name, text, raw = false) {
   // and for a line every rider hears — the welcome — the pauses and the
   // pronunciations are worth pinning down by hand.
   const spoken = raw ? text : await forSpeech(text)
+
+  // forSpeech falls back to the Roman Urdu when the conversion fails, which is
+  // right at runtime — an accent beats silence — and wrong here. A recording is
+  // permanent: this wrote two clips read letter by letter in English before
+  // anything said the conversion had not happened.
+  if (!raw && !/[\u0600-\u06FF]/.test(spoken)) {
+    console.error(`  ${name}: the script conversion produced no Urdu — is GROQ_API_KEY set?`)
+    return false
+  }
   const res = await fetch('https://api.upliftai.org/v1/synthesis/text-to-speech', {
     method: 'POST',
     headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
