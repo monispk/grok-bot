@@ -18,6 +18,16 @@
     "Helvetica Neue", Arial, sans-serif;
 }
 
+/* A black shadow on a dark ground says nothing, so the light edge carries it. */
+@media (prefers-color-scheme: dark) {
+  header {
+    box-shadow:
+      inset 0 -1px 0 rgba(255, 255, 255, .34),
+      0 1px 2px rgba(0, 0, 0, .55),
+      0 6px 18px rgba(0, 0, 0, .45);
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0b0d10;
@@ -69,6 +79,22 @@ header {
   padding-top: calc(10px + var(--safe-t));
   background: var(--brand);
   color: #fff;
+
+  /* Above the thread, so the shadow falls on it rather than behind it. */
+  position: relative;
+  z-index: 2;
+
+  /*
+   * Two edges doing different jobs. The hairline of light is what separates the
+   * header from something its own colour passing underneath — a voice note's
+   * play button is the same magenta, and against a plain shadow it simply
+   * merged into the bar. The shadow underneath is what separates the header
+   * from a pale background, where the hairline would be invisible.
+   */
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, .3),
+    0 1px 2px rgba(0, 0, 0, .14),
+    0 5px 14px rgba(0, 0, 0, .10);
 }
 
 header strong {
