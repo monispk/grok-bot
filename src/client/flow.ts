@@ -1,4 +1,11 @@
 import { audioSources, closing, STEP_SPECS, type Outcome, type StepSpec } from '../shared/steps.ts'
+import {
+  CLOSING as QUIZ_CLOSING,
+  DECLINED as QUIZ_DECLINED,
+  INTRO as QUIZ_INTRO,
+  UNCLEAR as QUIZ_UNCLEAR,
+  type Question,
+} from '../shared/quiz.ts'
 import type { Message } from './storage.ts'
 
 export type { StepKind, DocKind } from '../shared/steps.ts'
@@ -48,6 +55,26 @@ export const finished = (outcome: Outcome, firstName: string, branch?: string): 
     kind: 'video',
     video: TRAINING_VIDEO,
   },
+  // Offered after the video, never before: it tests what the video said. Not
+  // offered at all to a rider who did not meet a gate — they have been told to
+  // come back when they have the bike or the phone, and a quiz on top of that
+  // is noise.
+  ...(outcome === 'not_eligible' ? [] : [bot(QUIZ_INTRO), voice('/quiz/intro')]),
+]
+
+/** A quiz question, numbered so the rider knows how far in they are. */
+export const quizAsk = (q: Question, n: number, of: number): Message[] => [
+  bot(
+    `Sawaal ${n} / ${of}\n\n${q.stem}\n\n` +
+      q.options.map((o) => `**${o.key})** ${o.text}`).join('\n'),
+  ),
+  voice(`/quiz/${q.id}`),
+]
+
+/** One of the three fixed lines around the questions, with its recording. */
+export const quizSay = (which: 'closing' | 'declined' | 'unclear'): Message[] => [
+  bot({ closing: QUIZ_CLOSING, declined: QUIZ_DECLINED, unclear: QUIZ_UNCLEAR }[which]),
+  voice(`/quiz/${which}`),
 ]
 
 export const thanksName = (firstName: string): Message =>

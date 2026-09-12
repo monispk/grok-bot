@@ -215,6 +215,9 @@ header strong {
 /* The time, and the ticks that say it arrived — tucked into the bottom
    right of the bubble, the way every message in WhatsApp carries them. */
 .stamp {
+  /* A clock reads the same way in either language. Without this the bubble's
+     own direction turns "1:50 AM" into "AM 1:50" on an Urdu message. */
+  direction: ltr;
   float: right;
   display: inline-flex;
   align-items: center;

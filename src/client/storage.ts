@@ -30,6 +30,18 @@ export type FlowState = {
   missing?: string[]
   /** E.164 without the plus, as the wallet check wants it. */
   phone?: string
+  /**
+   * The training quiz, once collection is done. `asked` is fixed when the
+   * rider accepts, so a reload cannot reshuffle the questions under them.
+   */
+  quiz?: {
+    offered: boolean
+    declined: boolean
+    done: boolean
+    asked: string[]
+    at: number
+    answers: { id: string; chose: string | null }[]
+  }
   firstName: string
   fullName: string
   cnic: string
@@ -41,12 +53,24 @@ export type FlowState = {
 
 const STATE_KEY = 'grok-bot:flow'
 
+const FRESH: FlowState = { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
+
+/**
+ * Everything stored, with the required fields checked.
+ *
+ * The rest is carried through rather than listed. Naming each field meant every
+ * one added later was quietly dropped on reload — the rider's phone number, the
+ * gates they did not meet and their quiz answers all went that way, and nothing
+ * reported it because a missing field looks exactly like a fresh start.
+ */
 export function loadState(): FlowState {
   try {
     const raw = localStorage.getItem(STATE_KEY)
-    if (!raw) return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
+    if (!raw) return { ...FRESH }
     const v = JSON.parse(raw) as Partial<FlowState>
+    if (!v || typeof v !== 'object') return { ...FRESH }
     return {
+      ...v,
       step: typeof v.step === 'number' && v.step >= 0 ? v.step : 0,
       firstName: typeof v.firstName === 'string' ? v.firstName : '',
       fullName: typeof v.fullName === 'string' ? v.fullName : '',
@@ -54,7 +78,7 @@ export function loadState(): FlowState {
       collected: v.collected && typeof v.collected === 'object' ? v.collected : {},
     }
   } catch {
-    return { step: 0, firstName: '', fullName: '', cnic: '', collected: {} }
+    return { ...FRESH }
   }
 }
 

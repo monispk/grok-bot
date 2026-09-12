@@ -7,8 +7,18 @@ import {
   useState,
 } from 'preact/hooks'
 import { DebugPanel } from './debug.tsx'
-import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
-import { audioSources } from '../shared/steps.ts'
+import {
+  askMessages,
+  finished,
+  quizAsk,
+  quizSay,
+  STEPS,
+  thanksDoc,
+  thanksGps,
+  thanksName,
+} from './flow.ts'
+import { audioSources, type Outcome } from '../shared/steps.ts'
+import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../shared/quiz.ts'
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
 import {
   asksSomething,
@@ -50,6 +60,14 @@ const CAMERA_ACCEPT = 'image/*'
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
 let seq = 0
+/**
+ * Which of the four closings a rider gets. Payment is not wired into the flow
+ * yet, so nobody reaches "paid" from here — the fee is still taken at the
+ * counter, which is what `not_auto_verified` tells them to do.
+ */
+const outcomeFor = (f: store.FlowState): Outcome =>
+  f.ineligible || (f.missing ?? []).length > 0 ? 'not_eligible' : 'not_auto_verified'
+
 const stamp = (list: Message[]): Message[] => {
   let now = 0
   return list.map((m) =>
@@ -153,10 +171,10 @@ export function App() {
    */
   const restored = useRef(boot.revealed)
   const [typed, setTyped] = useState(0)
-  const [{ step, firstName, fullName, cnic, collected, ineligible, missing, phone }, setFlow] =
-    useState(
+  const [flow, setFlow] = useState(
     () => store.loadState(),
   )
+  const { step, firstName, fullName, cnic, collected, ineligible, missing, phone, quiz } = flow
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -242,10 +260,13 @@ export function App() {
       if (ticking) clearInterval(ticking)
     }
   }, [revealed, messages])
-  useEffect(
-    () => store.saveState({ step, firstName, fullName, cnic, collected, ineligible }),
-    [step, firstName, fullName, cnic, collected, ineligible],
-  )
+  /**
+   * The whole thing, not a list of fields. Naming them one by one meant every
+   * field added afterwards was silently left out of storage — the phone number,
+   * the gates a rider did not meet and their quiz answers were all being lost
+   * on reload, and nothing said so.
+   */
+  useEffect(() => store.saveState(flow), [flow])
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -379,12 +400,77 @@ export function App() {
     setMessages((m) => append(m, lines))
   }, [])
 
+  /**
+   * One turn of the quiz: accept it or not, then ten answers.
+   *
+   * The questions are chosen once, when the rider says yes, and kept in the
+   * flow state — drawing them fresh each turn would hand them a different
+   * question every time they mistyped an answer.
+   */
+  const handleQuiz = useCallback(
+    (text: string, withUser: Message[]) => {
+      const q = quiz
+      if (!q || q.done) return
+
+      // Not started: this is the yes or no.
+      if (!q.asked.length) {
+        const answer = readYesNo(text)
+        if (answer === 'no') {
+          setFlow((f) => ({ ...f, quiz: { ...q, declined: true, done: true } }))
+          say(...quizSay('declined'))
+          return
+        }
+        if (answer !== 'yes') {
+          say(bot(SAY.repeat.text), bot(QUIZ_INTRO))
+          return
+        }
+        const picked = pickQuestions()
+        setFlow((f) => ({ ...f, quiz: { ...q, asked: picked.map((x) => x.id), at: 0 } }))
+        say(...quizAsk(picked[0]!, 1, picked.length))
+        return
+      }
+
+      // Mid-quiz: read the choice.
+      const chose = readChoice(text)
+      const current = QUESTIONS.find((x) => x.id === q.asked[q.at])
+      if (!current) return
+
+      if (!chose) {
+        say(...quizSay('unclear'))
+        return
+      }
+
+      const answers = [...q.answers, { id: current.id, chose }]
+      const next = q.at + 1
+      if (next >= q.asked.length) {
+        setFlow((f) => ({ ...f, quiz: { ...q, answers, at: next, done: true } }))
+        say(...quizSay('closing'))
+        return
+      }
+      setFlow((f) => ({ ...f, quiz: { ...q, answers, at: next } }))
+      const following = QUESTIONS.find((x) => x.id === q.asked[next])
+      if (following) say(...quizAsk(following, next + 1, q.asked.length))
+    },
+    [quiz, say],
+  )
+
+
   /** Move to the next step, or finish. Called only once the input was accepted. */
   const advanceFrom = useCallback(
     (i: number, extra: Message[], patch: Partial<store.FlowState> = {}) => {
       const next = STEPS[i + 1]
       setFlow((f) => {
         const merged = { ...f, ...patch, step: i + 1 }
+        // Collection just ended, and the rider is eligible: the quiz is on offer.
+        if (!next && !merged.ineligible && outcomeFor(merged) !== 'not_eligible')
+          merged.quiz = merged.quiz ?? {
+            offered: true,
+            declined: false,
+            done: false,
+            asked: [],
+            at: 0,
+            answers: [],
+          }
         setMessages((m) =>
           append(m, [
             ...extra,
@@ -392,14 +478,7 @@ export function App() {
               ? askMessages(next)
               : merged.ineligible
                 ? []
-                : finished(
-                    // Which of the four they get. Payment is not wired into
-                    // the flow yet, so nobody reaches "paid" from here.
-                    merged.ineligible || (merged.missing ?? []).length > 0
-                      ? 'not_eligible'
-                      : 'not_auto_verified',
-                    merged.firstName,
-                  )),
+                : finished(outcomeFor(merged), merged.firstName)),
           ]),
         )
         return merged
@@ -462,8 +541,12 @@ export function App() {
    */
   const processText = useCallback(
     async (text: string, withUser: Message[]) => {
-      // Flow complete — from here the bot is purely a question answerer.
-      if (!current) return void (await runFaq(withUser))
+      // Collection is done. The quiz comes first if it is still running; only
+      // once it is finished or declined does the bot go back to answering.
+      if (!current) {
+        if (quiz && !quiz.done) return void handleQuiz(text, withUser)
+        return void (await runFaq(withUser))
+      }
 
       if (current.kind === 'confirm') {
         const answer = readYesNo(text)
@@ -565,7 +648,7 @@ export function App() {
         say(bot(SAY.repeat.text), ...askMessages(current))
       }
     },
-    [current, step, runFaq, say, advanceFrom, missing],
+    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz],
   )
 
   const onSend = useCallback(
@@ -932,6 +1015,7 @@ export function App() {
               <div
                 key={i}
                 class={`msg ${mine ? 'user' : 'bot'} media${m.pending ? ' pending' : ''}`}
+                dir="auto"
               >
                 {/* Only ever over the rider's own clip, which fills the bubble. */}
                 {mine && m.pending && (
@@ -967,7 +1051,7 @@ export function App() {
               <Stamp m={m} />
             </div>
           ) : (
-            <div key={i} class="msg bot">
+            <div key={i} class="msg bot" dir="auto">
               <span dangerouslySetInnerHTML={{ __html: rendered[i] ?? '' }} />
               <Stamp m={m} />
             </div>
@@ -1121,6 +1205,10 @@ export function App() {
             class="attach"
             aria-label="Tasveer ya file bhejein"
             disabled={busy}
+            // Not on the selfie step. A file from storage is somebody's saved
+            // photograph, which is the one thing the face match exists to
+            // catch — the selfie has to be taken now, on the front camera.
+            hidden={current?.facing === 'user'}
             onClick={() => picker.current?.click()}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
