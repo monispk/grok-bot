@@ -68,6 +68,15 @@ export const STEP_SPECS: StepSpec[] = [
     need: 'Baraye meherbani apna sahi mobile number likh kar bhejein.',
   },
   {
+    // Asked right after the number, while that is what the rider is thinking
+    // about. Skipped entirely if they have already said they have neither.
+    id: 'wallet',
+    kind: 'text',
+    audio: '/ask-wallet-rail',
+    ask: 'Aap ke paas Easypaisa hai ya JazzCash?',
+    need: 'Baraye meherbani bataein: Easypaisa, JazzCash, ya koi nahi.',
+  },
+  {
     id: 'smartphone',
     kind: 'confirm',
     gate: true,
@@ -242,6 +251,30 @@ export function readPhone(text: string): string | null {
   return m ? `92${m[1]}` : null
 }
 
+export type Rail = 'easypaisa' | 'jazzcash' | 'neither'
+
+/**
+ * Which wallet the rider's number is on, out of whatever they answered.
+ *
+ * "Neither" is a real answer, not a failure to understand one: they still have
+ * a number, and the fee is taken at the counter instead.
+ */
+export function readRail(text: string): Rail | null {
+  const t = ` ${text.toLowerCase().replace(/[^a-z0-9؀-ۿ\s]/g, ' ')} `
+  const has = (...w: string[]) => w.some((x) => t.includes(` ${x} `))
+
+  // Checked before the two rails: "mere paas jazzcash nahi hai" names one.
+  if (
+    readYesNo(text) === 'no' ||
+    has('koi', 'nahi', 'none', 'neither', 'dono', 'کوئی', 'نہیں') ||
+    /\bnahi\b/.test(t)
+  )
+    return 'neither'
+  if (has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*paisa/i.test(text)) return 'easypaisa'
+  if (has('jazzcash', 'jazz', 'jc', 'جاز') || /jazz\s*cash/i.test(text)) return 'jazzcash'
+  return null
+}
+
 export function readYesNo(text: string): 'yes' | 'no' | null {
   // A spoken answer comes back from Whisper in Urdu script, so both are read.
   if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
@@ -283,7 +316,7 @@ const HOURS = 'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula ha
  * anywhere at all — they are told to come back here.
  */
 export function closing(outcome: Outcome, firstName: string, branch?: string): string[] {
-  const office = branch ?? OFFICES.f8
+  const office = branch ?? OFFICES.f8.address
   const hello = firstName ? `Shukriya ${firstName}!` : 'Shukriya!'
 
   if (outcome === 'not_eligible')
@@ -318,9 +351,53 @@ export function closing(outcome: Outcome, firstName: string, branch?: string): s
   ]
 }
 
-/** The two registration offices, from the process document. */
+/**
+ * The two registration offices, from the process document.
+ *
+ * The coordinates are approximate — F-8 Markaz and the Marir Chowk end of
+ * Murree Road — and only ever used to decide which of two offices is nearer.
+ * They are about twelve kilometres apart, so a few hundred metres of error
+ * changes nothing; worth replacing with surveyed pins all the same.
+ */
 export const OFFICES = {
-  f8: 'foodpanda office, Office No. 1, First Floor, Al Babar Center, F8 Markaz, Islamabad',
-  saddar:
-    'foodpanda office, Office No. 2, First Floor, Al Naseer Plaza, Marir Metro Station ke paas, Main Murree Road, Rawalpindi',
+  f8: {
+    address:
+      'foodpanda office, Office No. 1, First Floor, Al Babar Center, F8 Markaz, Islamabad',
+    short: 'F8 Markaz, Islamabad',
+    lat: 33.7104,
+    lng: 73.0479,
+  },
+  saddar: {
+    address:
+      'foodpanda office, Office No. 2, First Floor, Al Naseer Plaza, Marir Metro Station ke paas, Main Murree Road, Rawalpindi',
+    short: 'Saddar, Rawalpindi',
+    lat: 33.6007,
+    lng: 73.0679,
+  },
 } as const
+
+export type OfficeId = keyof typeof OFFICES
+
+/** Great-circle distance in kilometres. */
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const R = 6371
+  const rad = (d: number) => (d * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Which office the rider is closer to. Sent to the branch they can actually
+ * reach — the two are twelve kilometres and a motorway apart, and a rider told
+ * to cross the city when the other office is nearer has been sent the wrong way.
+ */
+export function nearestOffice(at: { lat: number; lng: number }): OfficeId {
+  return distanceKm(at, OFFICES.f8) <= distanceKm(at, OFFICES.saddar) ? 'f8' : 'saddar'
+}

@@ -58,14 +58,45 @@ export async function forSpeech(line: string): Promise<string> {
   const hit = cache.get(t)
   if (hit !== undefined) return hit
 
-  // Reasoning tokens bill against this, and a tight cap comes back empty.
-  const out = await completeJson(SYSTEM, t, 900)
-  const text = typeof out?.['text'] === 'string' ? (out['text'] as string).trim() : ''
-
-  // A failed conversion is not worth failing the voice note over: Uplift reads
-  // Roman Urdu after a fashion, and silence would be worse.
-  const result = text || t
+  const result = (await convert(t)) ?? t
   if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value!)
   cache.set(t, result)
   return result
+}
+
+const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
+
+/**
+ * One conversion, checked for length.
+ *
+ * The model drops a word now and then — "jama nahi hui" came back as "جمع
+ * نہیں", losing the verb — and it does so intermittently, so the same sentence
+ * converts correctly on the next attempt. That matters more than it sounds:
+ * clips are cached against the words, so one bad conversion is recorded once
+ * and then spoken to every rider who reaches that line.
+ *
+ * A conversion that has lost a quarter of its words is refused and tried
+ * again; if the second is no better, the Roman Urdu is used instead. Uplift
+ * reads that after a fashion, and an accent is a smaller problem than a
+ * sentence with its verb missing.
+ */
+async function convert(t: string): Promise<string | null> {
+  const want = words(t)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Reasoning tokens bill against this, and a tight cap comes back empty.
+    const out = await completeJson(SYSTEM, t, 900)
+    const text = typeof out?.['text'] === 'string' ? (out['text'] as string).trim() : ''
+    if (!text) continue
+    // No shrinkage at all. The conversion is word for word — Urdu words become
+    // Urdu, English stays English — so it may grow ("Easypaisa" becomes "Easy
+    // پیسہ") but has no business getting shorter. A quarter's tolerance let a
+    // missing verb through in a five-word sentence, which is exactly the case
+    // this exists to catch.
+    if (words(text) >= want) return text
+    console.warn(
+      `script: dropped words converting "${t.slice(0, 60)}" ` +
+        `(${want} -> ${words(text)}), attempt ${attempt + 1}`,
+    )
+  }
+  return null
 }

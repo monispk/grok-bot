@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { asksSomething, readPhone, readYesNo } from '../shared/steps.ts'
+import { asksSomething, readPhone, readRail, readYesNo } from '../shared/steps.ts'
 
 test('reads yes', () => {
   for (const t of ['haan', 'Ji haan', 'jee', 'yes', 'G', 'bilkul', 'ji hai'])
@@ -81,4 +81,15 @@ test('the shortest answers a phone keyboard offers', () => {
   // question nobody had asked, and it invented one.
   for (const yes of ['y', 'Y', 'yes', 'ok', 'theek hai', 'haan']) assert.equal(readYesNo(yes), 'yes', yes)
   for (const no of ['n', 'N', 'no', 'nahi']) assert.equal(readYesNo(no), 'no', no)
+})
+
+test('which wallet, however the rider says it', () => {
+  for (const said of ['easypaisa', 'Easy Paisa', 'ep', 'easypaisa hai'])
+    assert.equal(readRail(said), 'easypaisa', said)
+  for (const said of ['jazzcash', 'jazz cash', 'JazzCash hai', 'jazz'])
+    assert.equal(readRail(said), 'jazzcash', said)
+  for (const said of ['koi nahi', 'nahi', 'dono nahi hain', 'neither', 'کوئی نہیں'])
+    assert.equal(readRail(said), 'neither', said)
+  assert.equal(readRail('pata nahin kya'), 'neither')  // any "nahi" is a no
+  assert.equal(readRail('hmm'), null)
 })

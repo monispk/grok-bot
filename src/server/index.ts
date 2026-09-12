@@ -23,6 +23,7 @@ import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace } from './rozee.ts'
 import { checkWallet } from './rizq.ts'
+import { anyRailReady, newRef, payEasypaisa, payJazzcash } from './pay.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
@@ -50,6 +51,7 @@ app.get('/healthz', (c) =>
     speech: speechReady(),
     db: dbReady(),
     fee: FEE_PAISA,
+    rails: anyRailReady(),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
@@ -339,6 +341,29 @@ app.post('/api/extract-name', guard, async (c) => {
  * Whose wallet is the rider's number? Asked once, after the CNIC is read,
  * because it is the name on the card that the title is compared against.
  */
+/**
+ * Takes the registration fee. Called once, at the end, and only for a rider
+ * whose checks passed — the client decides that; this route does the debit.
+ */
+app.post('/api/pay', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as {
+    rail?: unknown
+    phone?: unknown
+    cnic?: unknown
+  }
+  const rail = body.rail === 'jazzcash' ? 'jazzcash' : 'easypaisa'
+  const phone = typeof body.phone === 'string' ? body.phone.replace(/\D/g, '') : ''
+  const cnic = typeof body.cnic === 'string' ? body.cnic : ''
+  if (!phone) return c.json({ state: 'failed', detail: 'no number' })
+
+  const ref = newRef(rail)
+  const attempt =
+    rail === 'jazzcash' ? await payJazzcash(phone, cnic, ref) : await payEasypaisa(phone, ref)
+  console.log(`pay: ${attempt.rail} ${attempt.state} ${attempt.ref} — ${attempt.detail}`)
+  return c.json(attempt)
+})
+
 app.post('/api/wallet', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as { phone?: unknown; name?: unknown }

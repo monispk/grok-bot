@@ -42,6 +42,18 @@ export type FlowState = {
    * them to the counter instead.
    */
   noWallet?: boolean
+  /** The nearer of the two offices, from the rider's pin. */
+  branch?: 'f8' | 'saddar'
+  /** Which rail the rider's number is on, once they have said. */
+  rail?: 'easypaisa' | 'jazzcash' | 'neither'
+  /** The fee: what was attempted, and how it ended. */
+  payment?: {
+    rail: string
+    state: 'initiated' | 'pending' | 'paid' | 'failed'
+    amountPaisa: number
+    ref: string
+    detail: string
+  }
   /**
    * The training quiz, once collection is done. `asked` is fixed when the
    * rider accepts, so a reload cannot reshuffle the questions under them.

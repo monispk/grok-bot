@@ -18,13 +18,14 @@ import {
   thanksGps,
   thanksName,
 } from './flow.ts'
-import { audioSources, type Outcome } from '../shared/steps.ts'
+import { audioSources, distanceKm, nearestOffice, OFFICES, type Outcome } from '../shared/steps.ts'
 import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../shared/quiz.ts'
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
 import {
   asksSomething,
   dropRepeat,
   readPhone,
+  readRail,
   readYesNo,
   stripEcho,
   TYPE_NAME_PLEASE,
@@ -499,7 +500,11 @@ export function App() {
               ? askMessages(next)
               : merged.ineligible
                 ? []
-                : finished(outcomeFor(merged), merged.firstName)),
+                : finished(
+                    outcomeFor(merged),
+                    merged.firstName,
+                    OFFICES[merged.branch ?? 'f8'].address,
+                  )),
           ]),
         )
         return merged
@@ -612,6 +617,27 @@ export function App() {
         return
       }
 
+      if (current.id === 'wallet') {
+        const rail = readRail(text)
+        if (!rail) {
+          if (asksSomething(text)) {
+            await runFaq(withUser)
+            say(...askMessages(current))
+          } else {
+            say(bot(current.need), ...askMessages(current).slice(1))
+          }
+          return
+        }
+        if (rail === 'neither') {
+          // Recorded, and said plainly: the fee will be taken at the counter.
+          say(bot(SAY.noWallet.text))
+          advanceFrom(step, [], { rail, noWallet: true })
+          return
+        }
+        advanceFrom(step, [], { rail, noWallet: false })
+        return
+      }
+
       // The only other typed step. A number is checked here rather than sent
       // to the model: it is a pattern, not a judgement, and a wrong reading
       // would fail the wallet check for a reason the rider could not guess at.
@@ -625,7 +651,7 @@ export function App() {
             // "I have neither" is an answer, not a failure to understand one.
             // Recorded, so the fee is asked for at the counter rather than
             // through a rail they have just said they do not have.
-            setFlow((f) => ({ ...f, noWallet: true }))
+            setFlow((f) => ({ ...f, noWallet: true, rail: 'neither' }))
             say(bot(SAY.noWallet.text))
           } else {
             say(bot(current.need), ...askMessages(current).slice(1))
@@ -917,11 +943,20 @@ export function App() {
             thanksGps(),
           ],
           {
+            // Which branch to send them to, decided here while the pin is in
+            // hand. The offices are twelve kilometres and a motorway apart, so
+            // naming the wrong one costs a rider a wasted morning.
+            branch: nearestOffice({ lat: latitude, lng: longitude }),
             collected: {
               ...collected,
               'gps.latitude': latitude.toFixed(6),
               'gps.longitude': longitude.toFixed(6),
               'gps.accuracyMetres': String(Math.round(pos.coords.accuracy)),
+              'gps.nearestOffice': OFFICES[nearestOffice({ lat: latitude, lng: longitude })].short,
+              'gps.distanceKm': distanceKm(
+                { lat: latitude, lng: longitude },
+                OFFICES[nearestOffice({ lat: latitude, lng: longitude })],
+              ).toFixed(1),
             },
           },
         )
