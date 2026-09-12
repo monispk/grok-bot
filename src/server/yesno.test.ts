@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { asksSomething, readPhone, readRail, readYesNo } from '../shared/steps.ts'
+import { asksSomething, readPhone, readRail, readYesNo, stripAskBack } from '../shared/steps.ts'
 
 test('reads yes', () => {
   for (const t of ['haan', 'Ji haan', 'jee', 'yes', 'G', 'bilkul', 'ji hai'])
@@ -171,4 +171,37 @@ test('a real Urdu question is still a question', () => {
     'مجھے کیوں چاہیے',
   ])
     assert.equal(asksSomething(asked), true, asked)
+})
+
+test('"nahin" however the vowels fall out', () => {
+  // Reported: "dono nhn hain" — I have neither — was recorded as having BOTH,
+  // because nhn was in no list of spellings and "dono" won. At the end of the
+  // flow that charges the fee through a wallet the rider does not have.
+  assert.equal(readRail('dono nhn hain'), 'neither')
+  assert.equal(readYesNo('dono nhn hain'), 'no')
+  for (const said of ['nahi', 'nahin', 'nhi', 'nhn', 'nah', 'nahen', 'nahein'])
+    assert.equal(readRail(`dono ${said} hain`), 'neither', said)
+
+  // And the shape must not swallow agreement. "hai na" is a rider saying yes.
+  assert.equal(readRail('easypaisa hai na'), 'easypaisa')
+  assert.equal(readRail('dono hain'), 'both')
+  assert.equal(readRail('in mein se easypaisa hai'), 'easypaisa')
+})
+
+test('a question the model asks back is not passed on', () => {
+  // Reported: the rider asked "konsa account" and was asked it straight back,
+  // then asked for their number by the flow — three questions, no answer.
+  assert.equal(
+    stripAskBack('Aap ke paas kaun sa account hai – Easypaisa ya JazzCash? (Sirf ek batayein).'),
+    '',
+  )
+  // An actual answer survives, including the part before the question.
+  assert.equal(
+    stripAskBack('Security deposit Rs. 2,500 hai. Aap ke paas kaun sa account hai?'),
+    'Security deposit Rs. 2,500 hai.',
+  )
+  assert.equal(
+    stripAskBack('Rs. 2,500 security deposit hai. Ye poora wapas mil jata hai.'),
+    'Rs. 2,500 security deposit hai. Ye poora wapas mil jata hai.',
+  )
 })

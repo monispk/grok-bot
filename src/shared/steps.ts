@@ -207,6 +207,27 @@ export function dropRepeat(previous: string | undefined, next: string): boolean 
 }
 
 /**
+ * Removes a question the model has asked the rider.
+ *
+ * The prompt forbids it — "jawab ke baad apni taraf se koi naya sawal na
+ * poochein" — and it asks anyway. A rider who asked "konsa account?" was asked
+ * "Aap ke paas kaun sa account hai?" straight back, and then asked for their
+ * number by the flow: three questions deep with nothing answered.
+ *
+ * A sentence has to both end in a question mark and address the rider before it
+ * is dropped, so an answer that quotes a question survives.
+ */
+export function stripAskBack(reply: string): string {
+  const parts = reply.split(/(?<=[.?!؟۔])\s+|\n+/).filter((p) => p.trim())
+  const asksBack = (p: string) => /[?؟]/.test(p) && /\baap\b|آپ/i.test(p)
+  // "(Sirf ek batayein)." was the aside left behind when the question in front
+  // of it went, which reads as a stray instruction to nobody.
+  const aside = (p: string) => /^\(.*\)\s*[.۔]?$/.test(p.trim())
+  const kept = parts.filter((p) => !asksBack(p) && !aside(p))
+  return kept.join(' ').trim()
+}
+
+/**
  * Reads yes or no from a rider's reply. Deterministic rather than a model call:
  * it is one word, it must be reliable, and a wrong reading here either turns
  * away someone eligible or walks someone through an application they cannot
@@ -272,6 +293,26 @@ export function readPhone(text: string): string | null {
   return MOBILE.test(local) ? `92${local}` : null
 }
 
+/**
+ * "nahin", however it is spelled.
+ *
+ * Riders drop vowels wherever they like: nahi, nahin, nhi, nhn, nah, nahen.
+ * A fixed list of spellings missed "nhn", so "dono nhn hain" lost its negative,
+ * "dono" won, and a rider with neither account was recorded as having both —
+ * which at the end of the flow would have charged them through a wallet they
+ * had just said twice they did not have.
+ *
+ * Matched on the consonants instead: n, then h, then an optional closing n,
+ * with vowels anywhere. The token must start with n, so "in" and "hain" are
+ * left alone.
+ */
+const NEGATIVE_SHAPE = /^n[aeiou]*h[aeiou]*n?$/
+
+export function saysNo(text: string, extra: readonly string[] = []): boolean {
+  const words = text.toLowerCase().split(/[^a-z]+/).filter(Boolean)
+  return words.some((w) => NEGATIVE_SHAPE.test(w) || extra.includes(w))
+}
+
 export type Rail = 'easypaisa' | 'jazzcash' | 'both' | 'neither'
 
 /**
@@ -291,7 +332,10 @@ export function readRail(text: string): Rail | null {
   if (/samajh nahi|pata nahi|nahi pata|maloom nahi|nahi samjh|سمجھ نہیں|پتہ نہیں/.test(t))
     return null
 
-  const denied = has('nahi', 'nahin', 'nai', 'nhi', 'no', 'none', 'neither', 'نہیں', 'کوئی')
+  // Not 'na' or a bare 'n': "easypaisa hai na" is a rider agreeing, and both
+  // would have read it as a denial.
+  const denied =
+    saysNo(text, ['nai', 'nay', 'no', 'none', 'neither', 'nope']) || has('نہیں', 'کوئی')
   const both = has('dono', 'donon', 'both', 'دونوں')
   const easypaisa = has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*paisa/i.test(text)
   const jazzcash = has('jazzcash', 'jazz', 'jc', 'جاز') || /jazz\s*cash/i.test(text)
@@ -317,7 +361,7 @@ export function readYesNo(text: string): 'yes' | 'no' | null {
   // Negation first, otherwise. "mere paas nahi hai" carries every word that
   // means yes and one that means no, and the no is the answer.
   if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
-  if (said('nahi', 'nahin', 'nahen', 'nai', 'nhi', 'no', 'nope', 'na', 'n')) return 'no'
+  if (saysNo(text) || said('nai', 'no', 'nope', 'na', 'n')) return 'no'
 
   if (/ہاں|جی|بالکل|ضرور|آہ/.test(text)) return 'yes'
   // "y" and "n" included: a rider on a phone keyboard types the shortest thing

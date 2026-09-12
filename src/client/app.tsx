@@ -35,6 +35,7 @@ import {
   readPhone,
   readRail,
   readYesNo,
+  stripAskBack,
   stripEcho,
   TYPE_NAME_PLEASE,
 } from '../shared/steps.ts'
@@ -656,8 +657,10 @@ export function App() {
             },
             onDone: () => {
               // Strip the repeated question; we ask it again ourselves, with the
-              // recording attached.
-              const kept = pending ? stripEcho(acc, pending) : acc
+              // recording attached. And strip any question of its own it has
+              // asked the rider: the flow asks the questions, and one from both
+              // at once leaves the rider with two to answer and no answer.
+              const kept = stripAskBack(pending ? stripEcho(acc, pending) : acc)
               if (kept) {
                 const next = append(messagesRef.current, [fromModel(kept)])
                 setMessages(next)
@@ -747,7 +750,7 @@ export function App() {
         const rail = readRail(text)
         if (!rail) {
           if (asksSomething(text)) {
-            await runFaq(withUser)
+            await runFaq(withUser, current.ask)
             say(...askMessages(current))
           } else {
             say(bot(current.need), ...askMessages(current).slice(1))
@@ -783,7 +786,7 @@ export function App() {
             setFlow((f) => ({ ...f, rail, noWallet: rail === 'neither' }))
             say(bot(rail === 'neither' ? SAY.noWalletAskNumber.text : SAY.stillNeedNumber.text))
           } else if (asksSomething(text)) {
-            await runFaq(withUser)
+            await runFaq(withUser, current.ask)
             say(...askMessages(current))
           } else {
             // Not "answer the question again" — the number itself is wrong,
