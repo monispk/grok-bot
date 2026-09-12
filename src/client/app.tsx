@@ -153,7 +153,8 @@ export function App() {
    */
   const restored = useRef(boot.revealed)
   const [typed, setTyped] = useState(0)
-  const [{ step, firstName, fullName, cnic, collected, ineligible, missing }, setFlow] = useState(
+  const [{ step, firstName, fullName, cnic, collected, ineligible, missing, phone }, setFlow] =
+    useState(
     () => store.loadState(),
   )
   const [draft, setDraft] = useState('')
@@ -342,6 +343,37 @@ export function App() {
       cancelled = true
     }
   }, [collected])
+
+  /**
+   * The wallet title, once the CNIC has been read. It waits for the card
+   * because the name on the card is what the title is compared against, and it
+   * runs in the background because nothing the rider does depends on it.
+   */
+  useEffect(() => {
+    const name = collected['cnic_front.name'] ?? fullName
+    if (!phone || !name || collected['checks.wallet']) return
+    let cancelled = false
+    fetch('/api/wallet', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ phone, name }),
+    })
+      .then((r) => r.json())
+      .then((r: { outcome?: string; rail?: string; title?: string; titles?: { rail: string; title: string }[] }) => {
+        if (cancelled || !r.outcome) return
+        const note =
+          r.outcome === 'pass'
+            ? `match — ${r.title} (${r.rail})`
+            : r.outcome === 'fail'
+              ? `no match — ${(r.titles ?? []).map((t) => `${t.rail}: ${t.title}`).join(', ') || 'no account found'}`
+              : 'not checked'
+        setFlow((f) => ({ ...f, collected: { ...f.collected, 'checks.wallet': note } }))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [phone, fullName, collected])
 
   const say = useCallback((...lines: Message[]) => {
     setMessages((m) => append(m, lines))

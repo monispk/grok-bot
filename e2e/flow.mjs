@@ -642,37 +642,57 @@ await spoken('the answer is heard before the next question', async () => {
 })
 
 await check('a clip the browser refuses does not pretend to be playing', async () => {
-  // Real browsers refuse sound until the page is touched, and they fire 'play'
-  // before refusing — so the bubble showed a pause button and sat at 0:00,
-  // looking as though it were playing. This context has autoplay blocked.
-  // A separate browser: the autoplay flag is set for the whole process, so a
-  // new context of the existing one would still be allowed to play.
+  // A real browser refuses sound until the page is touched, and fires 'play'
+  // before refusing — so the bubble showed a pause button over a clip sitting
+  // silently at 0:00.
+  //
+  // Headless Chromium plays regardless of --autoplay-policy, so the refusal
+  // cannot be provoked by a flag; asserting against a plain launch only tests
+  // that headless plays audio. It is injected instead: play() announces itself
+  // and then rejects, exactly as a phone does.
   const strictBrowser = await chromium.launch()
   const strict = await strictBrowser.newContext({ viewport: { width: 390, height: 844 } })
   const page2 = await strict.newPage()
+  await page2.addInitScript(() => {
+    window.__realPlay = HTMLMediaElement.prototype.play
+    HTMLMediaElement.prototype.play = function () {
+      this.dispatchEvent(new Event('play'))
+      return Promise.reject(new DOMException('blocked', 'NotAllowedError'))
+    }
+  })
   await page2.goto(APP)
   await page2.evaluate(() => localStorage.clear())
   await page2.reload()
   await page2.waitForSelector('.voice audio', { state: 'attached', timeout: 20_000 })
-  await page2.waitForTimeout(4000)
+  await page2.waitForTimeout(3000)
 
   const state = await page2.evaluate(() => {
     const a = document.querySelector('.voice audio')
     const btn = document.querySelector('.voice .play')
     return { paused: a.paused, t: a.currentTime, label: btn?.getAttribute('aria-label') }
   })
-  assert.ok(state.paused, 'the clip claims to be playing while the browser refused it')
+  assert.ok(state.paused, 'the clip claims to be playing though the browser refused it')
+  assert.equal(state.t, 0, `the clip sat at ${state.t}s pretending to have started`)
   assert.equal(
     state.label,
     'Awaaz sunein',
     `the bubble offers "${state.label}" though nothing is playing`,
   )
 
-  // And the rider's first tap should start it.
+  // And the rider's first tap should start it for real.
+  await page2.evaluate(() => {
+    HTMLMediaElement.prototype.play = window.__realPlay
+  })
   await page2.click('.voice .play')
   const started = await (async () => {
     for (let i = 0; i < 40; i++) {
-      if (await page2.evaluate(() => { const a = document.querySelector('.voice audio'); return !a.paused && a.currentTime > 0 })) return true
+      if (
+        await page2.evaluate(() => {
+          const a = document.querySelector('.voice audio')
+          return !a.paused && a.currentTime > 0
+        })
+      )
+        return true
       await page2.waitForTimeout(150)
     }
     return false

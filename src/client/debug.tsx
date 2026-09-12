@@ -78,9 +78,8 @@ function Checks({ d }: { d: Record<string, string> }) {
   const licName = d['license.name']
   const nameVerdict = d['checks.licenceVsCnic']
 
-  const dueDate = d['bill.dueDate']
-  const age = d['bill.billAgeDays']
-  const address = d['bill.billAddress']
+  const face = d['checks.faceMatch']
+  const wallet = d['checks.wallet']
 
   const rows: { state: CheckState; label: string; detail: string }[] = [
     {
@@ -95,21 +94,16 @@ function Checks({ d }: { d: Record<string, string> }) {
       detail: cnicName && licName ? `${licName}  ·  ${cnicName}` : 'waiting for both documents',
     },
     {
-      state: !dueDate ? 'pending' : Number(age) <= 92 ? 'pass' : 'fail',
-      label: 'Utility bill is less than 3 months old',
-      detail: dueDate ? `due ${dueDate}${age ? ` · ${age} days ago` : ''}` : 'no due date read',
-    },
-    {
-      state: address ? 'pass' : 'pending',
-      label: 'Utility bill address captured',
-      detail: address ?? 'not captured',
-    },
-    {
-      state: 'pending',
+      // "not checked" is its own state: the service did not answer, which is
+      // not the same as a rider who failed and must never be shown as one.
+      state: !face ? 'pending' : face.startsWith('match') ? 'pass' : face === 'not checked' ? 'pending' : 'fail',
       label: 'Selfie matches CNIC picture',
-      detail: d['selfie.captured'] === 'yes'
-        ? 'selfie taken — face API not connected yet'
-        : 'no selfie yet',
+      detail: face ?? (d['selfie.captured'] === 'yes' ? 'checking…' : 'no selfie yet'),
+    },
+    {
+      state: !wallet ? 'pending' : wallet.startsWith('match') ? 'pass' : wallet === 'not checked' ? 'pending' : 'fail',
+      label: 'Wallet is in the rider’s own name',
+      detail: wallet ?? 'waiting for the CNIC',
     },
   ]
 

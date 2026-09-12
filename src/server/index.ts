@@ -22,6 +22,7 @@ import { init as initDb, dbReady, sweep } from './db.ts'
 import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace } from './rozee.ts'
+import { checkWallet } from './rizq.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
@@ -334,6 +335,19 @@ app.post('/api/extract-name', guard, async (c) => {
 })
 
 // Compares two names taken off documents — the licence against the CNIC.
+/**
+ * Whose wallet is the rider's number? Asked once, after the CNIC is read,
+ * because it is the name on the card that the title is compared against.
+ */
+app.post('/api/wallet', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as { phone?: unknown; name?: unknown }
+  const phone = typeof body.phone === 'string' ? body.phone.replace(/\D/g, '') : ''
+  const name = typeof body.name === 'string' ? body.name : ''
+  if (!phone || !name) return c.json({ outcome: 'unavailable', reason: 'nothing to check' })
+  return c.json(await checkWallet(phone, name))
+})
+
 app.post('/api/compare-names', guard, async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { a?: unknown; b?: unknown }
   const a = typeof body.a === 'string' ? body.a.slice(0, 200) : ''
