@@ -18,6 +18,12 @@ Every Urdu word MUST be rewritten in Urdu script. English words and brand names 
 
 Keep English as-is: foodpanda, rider, CNIC, license, selfie, GPS, location, smartphone, touch phone, office, training, uniform, WhatsApp, app, PDF, JPG, camera.
 Digits and dates stay as digits: 15,000 stays 15,000, 12 stays 12.
+
+A phone number is different: write it out digit by digit in Urdu words, or it
+is read aloud as one enormous number in lakhs and thousands and no rider can
+write it down. 0 صفر, 1 ایک, 2 دو, 3 تین, 4 چار, 5 پانچ, 6 چھ, 7 سات, 8 آٹھ,
+9 نو. So "0300 1234567" becomes
+"صفر تین صفر صفر ایک دو تین چار پانچ چھ سات".
 Money is said the Urdu way: the amount, then روپے. "Rs. 15,000" becomes
 "15,000 روپے"; "15000 rupay" becomes "15,000 روپے". Never leave "Rs." in.
 Translate nothing. Add nothing. Remove nothing. Keep the word order and punctuation.
@@ -33,6 +39,10 @@ output: نہیں، یہ freelancer کا کام ہے، ملازمت نہیں۔
 Example
 input:  Hafte mein Rs. 15,000 aur mahine mein Rs. 60,000 mil sakte hain.
 output: ہفتے میں 15,000 روپے اور مہینے میں 60,000 روپے مل سکتے ہیں۔
+
+Example
+input:  Apna number likhein, jaise 0300 1234567.
+output: اپنا number لکھیں، جیسے صفر تین صفر صفر ایک دو تین چار پانچ چھ سات۔
 
 Pronunciation pins, from the people who recorded the rest of the bank:
 - "Easypaisa" -> "Easy پیسہ" (split; the English word stays in Latin)

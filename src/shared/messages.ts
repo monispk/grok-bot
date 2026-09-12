@@ -93,7 +93,7 @@ export const SAY = {
    * they had somehow failed to answer it.
    */
   badNumber: say(
-    'Ye number theek nahi lag raha. Baraye meherbani apna gyarah hindson ka mobile number check kar ke dobara likhein, jaise 0300 1234567.',
+    'Ye number theek nahi lag raha. Baraye meherbani apna poora mobile number check kar ke dobara likhein, jaise 0300 1234567.',
     '/say-bad-number',
   ),
   pickOffice: say(
