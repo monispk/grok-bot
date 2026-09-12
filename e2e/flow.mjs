@@ -42,6 +42,28 @@ const ctx = await browser.newContext({
 })
 const page = await ctx.newPage()
 
+/**
+ * The sequence, by name. Tests say which step they mean rather than which
+ * number: the order has changed once already, and bare indices moved every
+ * test onto the wrong question without a single failure to show for it.
+ * Mirrors STEP_SPECS in src/shared/steps.ts.
+ */
+const ORDER = [
+  'name',
+  'phone',
+  'smartphone',
+  'bike',
+  'license_front',
+  'cnic_front',
+  'selfie',
+  'location',
+]
+const at = (id) => {
+  const i = ORDER.indexOf(id)
+  if (i < 0) throw new Error(`no such step: ${id}`)
+  return i
+}
+
 /** Drops the rider straight onto a step, so a test is not six uploads long. */
 const primeAt = async (step, history) => {
   await page.goto(APP)
@@ -153,7 +175,7 @@ await check('a returning rider sees the whole thread at once', async () => {
 })
 
 await check('a wrong document is refused, and its voice note stays put', async () => {
-  await primeAt(3, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.' },
   ])
   await sendMadeUpPhoto()
@@ -198,7 +220,7 @@ const speak = async (ms = 1200) => {
 }
 
 await check('a spoken answer is transcribed, answered, and the step asked again', async () => {
-  await primeAt(3, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.' },
   ])
   await page.waitForSelector('button.mic')
@@ -272,7 +294,7 @@ await check('a question tucked into an answer is not dropped', async () => {
   // The rider answered the smartphone question and asked about pay in the same
   // breath. The answer was taken, the question thrown away, and they had to ask
   // it a second time.
-  await primeAt(1, [
+  await primeAt(at('smartphone'), [
     { role: 'assistant', content: 'Kya aap ke paas apna baray screen wala touch phone hai?' },
   ])
   await page.waitForSelector('footer textarea')
@@ -308,7 +330,7 @@ await spoken('an answer the bot invents is spoken too', async () => {
   // The scripted questions have recordings; nobody could record an answer that
   // had not been written yet, so a rider who reads poorly heard every question
   // and none of the replies.
-  await primeAt(3, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
   ])
   await page.waitForSelector('footer textarea')
@@ -371,19 +393,21 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
   // And the same at a step, which is where it was noticed. The question has to
   // arrive through the flow: priming writes history straight to storage, which
   // never runs the code that attaches a voice note.
-  await primeAt(1, [
+  await primeAt(at('smartphone'), [
     { role: 'assistant', content: 'Kya aap ke paas apna baray screen wala touch phone hai?' },
   ])
   await page.waitForSelector('footer textarea')
   await page.fill('footer textarea', 'haan')
   await page.click('footer button.send')
 
-  await settle(async () => (await stored()).some((m) => (m.content || '').includes('selfie')))
+  // Answering the smartphone gate brings up the bike gate, which also has a
+  // recording — the case this test exists for.
+  await settle(async () => (await stored()).some((m) => (m.content || '').includes('bike')))
   await page.waitForTimeout(2500)
   const players = await page.evaluate(
     () => document.querySelectorAll('.msg.bot .voice').length,
   )
-  assert.equal(players, 1, `the selfie question had ${players} voice notes, not one`)
+  assert.equal(players, 1, `the bike question had ${players} voice notes, not one`)
 })
 
 await check('lines arrive in groups, with a pause between them', async () => {
@@ -442,7 +466,7 @@ await spoken('nothing spins while a line is being read', async () => {
   // an empty bubble with no height, so the spinner escaped and span over the
   // text beside it. Its window is only a few hundred ms, so this watches every
   // frame rather than sampling from here and walking past it.
-  await primeAt(3, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
   ])
   await page.waitForSelector('footer textarea')
@@ -477,7 +501,7 @@ await check('Clear says the welcome again, a group at a time', async () => {
   // The thread has to be longer than the welcome: the counter was left where the
   // old conversation ended, and only a thread past the welcome's length put it
   // beyond the end, which is what dropped the whole welcome on screen at once.
-  await primeAt(4, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Aap ka poora naam kya hai?' },
     { role: 'user', content: 'Monis Ur Rahmaan' },
     { role: 'assistant', content: 'Shukriya Monis.' },
@@ -569,7 +593,7 @@ await spoken('the answer is heard before the next question', async () => {
   // The reported bug. A step's question has a recording on disk and is ready at
   // once; the answer has to be read by Uplift first. Queued as they arrived, the
   // rider heard the next question and never heard their answer.
-  await primeAt(3, [
+  await primeAt(at('license_front'), [
     { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
   ])
   await page.waitForSelector('footer textarea')

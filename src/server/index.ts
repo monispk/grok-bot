@@ -19,6 +19,7 @@ import { extractName } from './extract.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, sweep } from './db.ts'
+import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
@@ -46,6 +47,9 @@ app.get('/healthz', (c) =>
     whatsapp: whatsappReady,
     speech: speechReady(),
     db: dbReady(),
+    fee: FEE_PAISA,
+    // Present only when a test override is active, so it cannot ship unseen.
+    ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
 )
 
@@ -388,6 +392,7 @@ app.get('*', serveStatic({ path: './dist/client/index.html' }))
 
 startWarmer()
 warmOcr()
+announceFee()
 // Not awaited: a database that is slow to answer should delay nobody. Every
 // call through it already degrades to memory when it is not there.
 void initDb().then(() => void sweep())
