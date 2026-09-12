@@ -100,7 +100,13 @@ export function VoiceNote({
         preload="metadata"
         onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
         onTimeUpdate={(e) => setPos((e.target as HTMLAudioElement).currentTime)}
-        onPlay={() => setPlaying(true)}
+        /*
+         * 'playing', not 'play'. The first fires when playback actually
+         * begins; the second fires when it is merely asked for, and a browser
+         * refusing autoplay fires it and then refuses — leaving a pause button
+         * over a clip sitting silently at 0:00.
+         */
+        onPlaying={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => {
           setPlaying(false)

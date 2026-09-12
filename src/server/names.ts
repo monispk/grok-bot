@@ -63,7 +63,7 @@ export function normalise(raw: string): string[] {
 }
 
 /** Levenshtein similarity, 0..1 — absorbs OCR slips like rn/m or l/1. */
-function similarity(a: string, b: string): number {
+export function similarity(a: string, b: string): number {
   if (a === b) return 1
   const m = a.length
   const n = b.length
@@ -99,7 +99,7 @@ const fold = (t: string) =>
  * (Faruqi/Faruki), ph/f, and the vowels that carry no distinction.
  * Digraphs are protected as single symbols so "sh" never collapses to "s".
  */
-function phonetic(token: string): string {
+export function phonetic(token: string): string {
   const x = fold(token)
     .replace(/ph/g, 'f')
     .replace(/ch/g, 'C')

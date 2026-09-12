@@ -199,7 +199,7 @@ await check('a wrong document is refused, and its voice note stays put', async (
   assert.ok(stillThere, 'the voice note vanished after appearing')
 
   const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
-  assert.equal(step, 3, 'a refused document advanced the flow')
+  assert.equal(step, at('license_front'), 'a refused document advanced the flow')
 })
 
 await check('a second wrong document is refused again', async () => {
@@ -258,7 +258,7 @@ await check('a spoken answer is transcribed, answered, and the step asked again'
   assert.ok(reasked, 'the step did not ask again after answering')
 
   const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
-  assert.equal(step, 3, 'a spoken question skipped the document step')
+  assert.equal(step, at('license_front'), 'a spoken question skipped the document step')
 })
 
 await check('the transcript survives a reload, though the clip cannot', async () => {
@@ -310,13 +310,17 @@ await check('a question tucked into an answer is not dropped', async () => {
     const h = await stored()
     return (
       h.some((m) => (m.content || '').includes('Theek hai')) &&
-      h.some((m) => (m.content || '').includes('selfie'))
+      h.some((m) => (m.content || '').includes('bike'))
     )
   })
   assert.ok(moved, 'answering the question stalled the flow')
 
   const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
-  assert.equal(step, 2, `the flow did not advance past the smartphone question (step ${step})`)
+  assert.equal(
+    step,
+    at('bike'),
+    `the flow did not advance past the smartphone question (step ${step})`,
+  )
 })
 
 const speechOn = await fetch(`${APP}/healthz`)
@@ -404,9 +408,21 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
   // recording — the case this test exists for.
   await settle(async () => (await stored()).some((m) => (m.content || '').includes('bike')))
   await page.waitForTimeout(2500)
-  const players = await page.evaluate(
-    () => document.querySelectorAll('.msg.bot .voice').length,
-  )
+
+  // "Theek hai." has a recording of its own now, so the thread holds two voice
+  // notes and both are correct. What must never happen is a question carrying
+  // two: count the ones that follow the bike question.
+  const players = await page.evaluate(() => {
+    const kids = [...document.querySelector('.scroll').children]
+    const q = kids.findIndex((c) => (c.textContent || '').includes('bike'))
+    if (q < 0) return -1
+    let n = 0
+    for (let i = q + 1; i < kids.length; i++) {
+      if (!kids[i].querySelector('.voice')) break
+      n++
+    }
+    return n
+  })
   assert.equal(players, 1, `the bike question had ${players} voice notes, not one`)
 })
 
