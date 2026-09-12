@@ -34,6 +34,13 @@ Example
 input:  Hafte mein Rs. 15,000 aur mahine mein Rs. 60,000 mil sakte hain.
 output: ہفتے میں 15,000 روپے اور مہینے میں 60,000 روپے مل سکتے ہیں۔
 
+Pronunciation pins, from the people who recorded the rest of the bank:
+- "Easypaisa" -> "Easy پیسہ" (split; the English word stays in Latin)
+- "JazzCash" -> "JazzCash" (Latin, one word)
+- "CNIC" -> "ID card" when spoken aloud
+- "2,500" -> "پچیس سو" — digits are read inconsistently, and this is the one
+  number a rider must not mishear
+
 Spell these the standard way. A near-miss changes the vowel and is read aloud
 wrong: وعدہ (waada, not واعدہ), برائے (baraye), مہربانی (meherbani), معذرت
 (maazrat), اجازت (ijazat), ضروری (zaroori), تصویر (tasveer), ملازمت (mulazmat),

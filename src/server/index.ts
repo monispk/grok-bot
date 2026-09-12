@@ -18,6 +18,7 @@ import { warmOcr } from './ocr.ts'
 import { extractName } from './extract.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
+import { init as initDb, dbReady, sweep } from './db.ts'
 import { verifyDocument } from './verify.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
@@ -44,6 +45,7 @@ app.get('/healthz', (c) =>
     commit: COMMIT,
     whatsapp: whatsappReady,
     speech: speechReady(),
+    db: dbReady(),
   }),
 )
 
@@ -276,8 +278,8 @@ app.post('/api/speak', guard, async (c) => {
 
 // Fetching one is open: WhatsApp audio is collected by Meta, not by the rider,
 // and the id cannot be guessed without already knowing the words.
-app.get('/api/speak/:id', (c) => {
-  const found = audioFor(c.req.param('id'))
+app.get('/api/speak/:id', async (c) => {
+  const found = await audioFor(c.req.param('id'))
   if (!found) return c.text('Not found', 404)
   return c.body(found.bytes as unknown as ArrayBuffer, 200, {
     'content-type': found.mime,
@@ -386,6 +388,10 @@ app.get('*', serveStatic({ path: './dist/client/index.html' }))
 
 startWarmer()
 warmOcr()
+// Not awaited: a database that is slow to answer should delay nobody. Every
+// call through it already degrades to memory when it is not there.
+void initDb().then(() => void sweep())
+setInterval(() => void sweep(), 6 * 60 * 60_000).unref()
 
 const port = Number(process.env.PORT ?? 3099)
 serve({ fetch: app.fetch, port, hostname: '0.0.0.0' }, (info) => {

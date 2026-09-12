@@ -29,6 +29,8 @@ let gapTimer: ReturnType<typeof setTimeout> | null = null
 let waitTimer: ReturnType<typeof setTimeout> | null = null
 let waitingFor: string | null = null
 let blocked = false
+/** A clip the rider started themselves. The queue holds off until it ends. */
+let manual: HTMLAudioElement | null = null
 
 function clearTimers() {
   if (gapTimer) clearTimeout(gapTimer)
@@ -38,7 +40,7 @@ function clearTimers() {
 }
 
 function pump() {
-  if (current || blocked || gapTimer) return
+  if (current || blocked || gapTimer || manual) return
 
   const next = order.find((id) => !finished.has(id))
   if (!next) {
@@ -87,6 +89,17 @@ function pump() {
       el.removeEventListener('ended', done)
       el.removeEventListener('error', done)
       current = null
+      // A browser fires 'play' and only then refuses, so the bubble is already
+      // showing a pause button. Left alone it sits there at 0:00 looking as
+      // though it is playing. Put it back to rest and tell the truth.
+      el.pause()
+      // Rewinding before the metadata has loaded throws in some browsers, and a
+      // clip that stays put is a far smaller problem than one that crashes.
+      try {
+        el.currentTime = 0
+      } catch {
+        /* it will start from the beginning anyway */
+      }
       blocked = true
       waitForTouch()
     })
@@ -119,12 +132,27 @@ export function register(id: string, el: HTMLAudioElement) {
   pump()
 }
 
-/** The rider pressed play themselves. Their choice wins; the queue stands down. */
+/**
+ * The rider pressed play themselves. Their choice wins: whatever the queue was
+ * playing stops, it will not play that clip again on its own, and it stays out
+ * of the way until theirs has finished. If they pause it and leave it, the
+ * queue stays quiet — they stopped it on purpose.
+ */
 export function takeOver(el: HTMLAudioElement) {
   clearTimers()
-  order = []
   if (current && current !== el) current.pause()
   current = null
+  for (const [id, player] of players) if (player === el) finished.add(id)
+
+  manual = el
+  const over = () => {
+    el.removeEventListener('ended', over)
+    if (manual !== el) return
+    manual = null
+    lastEnded = Date.now()
+    pump()
+  }
+  el.addEventListener('ended', over)
 }
 
 /** Clear: nothing queued should outlive the conversation it belonged to. */
@@ -135,6 +163,7 @@ export function stopAll() {
   finished.clear()
   if (current) current.pause()
   current = null
+  manual = null
   lastEnded = 0
   blocked = false
 }

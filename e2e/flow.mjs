@@ -601,6 +601,46 @@ await spoken('the answer is heard before the next question', async () => {
   )
 })
 
+await check('a clip the browser refuses does not pretend to be playing', async () => {
+  // Real browsers refuse sound until the page is touched, and they fire 'play'
+  // before refusing — so the bubble showed a pause button and sat at 0:00,
+  // looking as though it were playing. This context has autoplay blocked.
+  // A separate browser: the autoplay flag is set for the whole process, so a
+  // new context of the existing one would still be allowed to play.
+  const strictBrowser = await chromium.launch()
+  const strict = await strictBrowser.newContext({ viewport: { width: 390, height: 844 } })
+  const page2 = await strict.newPage()
+  await page2.goto(APP)
+  await page2.evaluate(() => localStorage.clear())
+  await page2.reload()
+  await page2.waitForSelector('.voice audio', { state: 'attached', timeout: 20_000 })
+  await page2.waitForTimeout(4000)
+
+  const state = await page2.evaluate(() => {
+    const a = document.querySelector('.voice audio')
+    const btn = document.querySelector('.voice .play')
+    return { paused: a.paused, t: a.currentTime, label: btn?.getAttribute('aria-label') }
+  })
+  assert.ok(state.paused, 'the clip claims to be playing while the browser refused it')
+  assert.equal(
+    state.label,
+    'Awaaz sunein',
+    `the bubble offers "${state.label}" though nothing is playing`,
+  )
+
+  // And the rider's first tap should start it.
+  await page2.click('.voice .play')
+  const started = await (async () => {
+    for (let i = 0; i < 40; i++) {
+      if (await page2.evaluate(() => { const a = document.querySelector('.voice audio'); return !a.paused && a.currentTime > 0 })) return true
+      await page2.waitForTimeout(150)
+    }
+    return false
+  })()
+  assert.ok(started, 'tapping play did not start the clip')
+  await strictBrowser.close()
+})
+
 await browser.close()
 console.log(results.join('\n'))
 console.log(process.exitCode ? '\n  some browser tests failed' : '\n  all browser tests passed')

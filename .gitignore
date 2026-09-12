@@ -4,3 +4,11 @@ dist
 .env.local
 *.log
 .DS_Store
+
+# Credentials. The repo is public; these must never be committed.
+.env*
+!.env.example
+
+# Handover material from foodpanda/Naseeb: live credentials, the recorded
+# audio bank, and the process PDF. The repo is public; none of it goes in.
+docs/

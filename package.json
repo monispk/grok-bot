@@ -23,6 +23,7 @@
     "marked": "^15.0.4",
     "onnxruntime-node": "^1.27.0",
     "pdfjs-dist": "^6.2.108",
+    "pg": "^8.23.0",
     "ppu-paddle-ocr": "^6.4.1",
     "preact": "^10.25.3",
     "undici": "^7.2.0"
@@ -30,6 +31,7 @@
   "devDependencies": {
     "@preact/preset-vite": "^2.9.3",
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
     "concurrently": "^9.1.0",
     "esbuild": "^0.25.12",
     "playwright": "^1.56.0",

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { forSpeech } from './script.ts'
+import { query } from './db.ts'
 
 /**
  * Spoken answers, from Uplift AI.
@@ -34,8 +35,32 @@ const cache = new Map<string, { bytes: Uint8Array; mime: string }>()
 
 export type Speech = { bytes: Uint8Array; mime: string }
 
-/** The audio for an id, if it has been synthesised and not yet evicted. */
-export const audioFor = (id: string): Speech | null => cache.get(id) ?? null
+/**
+ * The audio for an id. Memory first, then the database — a voice note's URL
+ * lives in the rider's thread for as long as the conversation does, which is
+ * longer than any one deploy.
+ */
+export async function audioFor(id: string): Promise<Speech | null> {
+  const hot = cache.get(id)
+  if (hot) return hot
+
+  const rows = await query<{ mime: string; bytes: Buffer }>(
+    `UPDATE speech SET used_at = now() WHERE id = $1 RETURNING mime, bytes`,
+    [id],
+  )
+  const row = rows?.[0]
+  if (!row) return null
+
+  const found = { bytes: new Uint8Array(row.bytes), mime: row.mime }
+  remember(id, found)
+  return found
+}
+
+function remember(id: string, speech: Speech) {
+  // Oldest out first; a Map iterates in insertion order.
+  if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value!)
+  cache.set(id, speech)
+}
 
 /**
  * Says a line and returns the id it can be fetched by. The id is derived from
@@ -47,7 +72,7 @@ export async function speak(text: string): Promise<string | null> {
   if (!speechReady() || !t || t.length > MAX_CHARS) return null
 
   const id = digest(t)
-  if (cache.has(id)) return id
+  if (await audioFor(id)) return id
 
   // Uplift is given mixed script; the rider still reads the Roman Urdu.
   const spoken = await forSpeech(t)
@@ -70,9 +95,12 @@ export async function speak(text: string): Promise<string | null> {
     const bytes = new Uint8Array(await res.arrayBuffer())
     if (!bytes.length) return null
 
-    // Oldest out first; a Map iterates in insertion order.
-    if (cache.size >= MAX_CACHED) cache.delete(cache.keys().next().value!)
-    cache.set(id, { bytes, mime })
+    remember(id, { bytes, mime })
+    await query(
+      `INSERT INTO speech (id, mime, bytes, said) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET used_at = now()`,
+      [id, mime, Buffer.from(bytes), spoken],
+    )
     return id
   } catch (err) {
     console.error('uplift:', err instanceof Error ? err.message : err)
