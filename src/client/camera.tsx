@@ -43,6 +43,19 @@ export function Camera({
 
   useEffect(() => {
     let dead = false
+
+    /**
+     * Armed before the camera is even asked for, not after.
+     *
+     * getUserMedia does not always reject when it cannot help — it can simply
+     * never settle, and a guard scheduled after the await is never scheduled
+     * at all. That left the rider looking at a preview that would never start
+     * and a shutter that would never enable, with no way past the step.
+     */
+    const giveUp = setTimeout(() => {
+      if (!dead && !video.current?.videoWidth) bail.current()
+    }, 6000)
+
     void (async () => {
       try {
         const got = await navigator.mediaDevices.getUserMedia({
@@ -60,21 +73,19 @@ export function Camera({
         await el.play().catch(() => {})
         // videoWidth is 0 until the metadata lands, and a shot taken before
         // then is a blank frame. Wait for the real thing.
-        if (el.videoWidth) setReady(true)
-        else el.addEventListener('loadedmetadata', () => setReady(true), { once: true })
-
-        // A stream that never reports its size is a preview the rider can look
-        // at but not use. Rather than leave them with a dead shutter, hand them
-        // back to the picker, which always works.
-        setTimeout(() => {
-          if (!dead && !video.current?.videoWidth) bail.current()
-        }, 6000)
+        const good = () => {
+          clearTimeout(giveUp)
+          setReady(true)
+        }
+        if (el.videoWidth) good()
+        else el.addEventListener('loadedmetadata', good, { once: true })
       } catch {
         if (!dead) bail.current()
       }
     })()
     return () => {
       dead = true
+      clearTimeout(giveUp)
       // Stop every track, or the browser keeps showing its recording light.
       stream.current?.getTracks().forEach((t) => t.stop())
       stream.current = null
