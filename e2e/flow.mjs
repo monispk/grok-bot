@@ -431,6 +431,78 @@ await check('lines arrive in groups, with a pause between them', async () => {
   assert.ok(total < 9000, `the welcome took ${total}ms, which is a wait rather than a rhythm`)
 })
 
+await spoken('nothing spins while a line is being read', async () => {
+  // The spinner is positioned over its bubble. A voice note still being read has
+  // an empty bubble with no height, so the spinner escaped and span over the
+  // text beside it. Its window is only a few hundred ms, so this watches every
+  // frame rather than sampling from here and walking past it.
+  await primeAt(3, [
+    { role: 'assistant', content: 'Ab apne driving license ki tasveer bhejein.' },
+  ])
+  await page.waitForSelector('footer textarea')
+  await page.evaluate(() => {
+    window.__spin = 0
+    const tick = () => {
+      window.__spin = Math.max(window.__spin, document.querySelectorAll('.msg.bot .spinner').length)
+      window.__raf = requestAnimationFrame(tick)
+    }
+    tick()
+  })
+
+  await page.fill('footer textarea', 'salary kitni milti hai')
+  await page.click('footer button.send')
+
+  const arrived = await settle(async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.msg.bot .voice audio')].some((a) =>
+        a.currentSrc.includes('/api/speak/'),
+      ),
+    ),
+  )
+  const worst = await page.evaluate(() => {
+    cancelAnimationFrame(window.__raf)
+    return window.__spin
+  })
+  assert.ok(arrived, 'the answer was never read out')
+  assert.equal(worst, 0, `${worst} spinner(s) span on the bot's side while it was being read`)
+})
+
+await check('Clear says the welcome again, a group at a time', async () => {
+  // The thread has to be longer than the welcome: the counter was left where the
+  // old conversation ended, and only a thread past the welcome's length put it
+  // beyond the end, which is what dropped the whole welcome on screen at once.
+  await primeAt(4, [
+    { role: 'assistant', content: 'Aap ka poora naam kya hai?' },
+    { role: 'user', content: 'Monis Ur Rahmaan' },
+    { role: 'assistant', content: 'Shukriya Monis.' },
+    { role: 'assistant', content: 'Kya aap ke paas touch phone hai?' },
+    { role: 'user', content: 'haan' },
+    { role: 'assistant', content: 'Theek hai.' },
+    { role: 'assistant', content: 'Ab apni aik selfie khenchein.' },
+    { role: 'user', content: 'ok' },
+    { role: 'assistant', content: 'Ab apne CNIC ke saamne wali tasveer bhejein.' },
+    { role: 'user', content: 'theek hai' },
+  ])
+  await page.waitForSelector('header button.ghost')
+  await page.click('header button.ghost')
+
+  const counts = new Set()
+  const done = await settle(async () => {
+    const s = await page.evaluate(() => {
+      const el = document.querySelector('.scroll')
+      return el ? { shown: el.children.length, total: JSON.parse(localStorage.getItem('grok-bot:history') || '[]').length } : null
+    })
+    if (!s) return false
+    counts.add(s.shown)
+    return s.total > 0 && s.shown === s.total
+  })
+  assert.ok(done, 'the welcome never finished arriving after Clear')
+  assert.ok(
+    counts.size > 3,
+    `after Clear the welcome appeared in ${counts.size} step(s); it was dropped on screen at once`,
+  )
+})
+
 await browser.close()
 console.log(results.join('\n'))
 console.log(process.exitCode ? '\n  some browser tests failed' : '\n  all browser tests passed')

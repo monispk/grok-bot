@@ -158,14 +158,22 @@ reader accepts both scripts.
 `npm test` — 29 unit tests: name matching, the yes/no reader in both scripts,
 message lookups, a check that every recording the bot promises is actually in
 `public/`, and a check that nothing but a role and words ever goes upstream.
-`npm run e2e` — 11 browser tests: staged arrival, scroll pinning, history not
+`npm run e2e` — 14 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the
 transcript surviving a reload, a spoken name being sent back, a question tucked
 inside an answer still being answered, an invented answer being read aloud, and
-a question with a recording not being read a second time. Five of them are
+a question with a recording not being read a second time, lines arriving in
+groups with a pause between them, nothing spinning while a line is being read,
+and Clear saying the welcome again a group at a time. Eight of them are
 regression guards for bugs that shipped. The last is skipped
 when `UPLIFT_API_KEY` is unset.
+
+`npm run dev:mock` runs the whole thing offline — `scripts/mock-upstream.mjs`
+stands in for Groq and `scripts/mock-uplift.mjs` for Uplift. The Uplift mock
+answers after 1.2s on purpose: the real thing takes a Groq call to convert the
+script and a second to read it, and an instant mock hid a spinner that escaped
+its bubble and span over the text beside it.
 
 The microphone tests run Chromium with `--use-fake-device-for-media-capture`, so
 they record a synthetic tone through the real `MediaRecorder` path.

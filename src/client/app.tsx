@@ -661,6 +661,11 @@ export function App() {
     store.clear()
     store.clearState()
     setMessages(WELCOME)
+    // Back to nothing revealed, so the welcome is said again at a pace the rider
+    // can follow. Left where it was, it sat past the end of the new thread and
+    // dropped the whole welcome on screen at once.
+    setRevealed(0)
+    setTyped(0)
     setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {}, ineligible: false })
     setError(null)
   }, [])
@@ -731,15 +736,21 @@ export function App() {
             )
           if (m.kind === 'audio') {
             const mine = m.role === 'user'
+            // A line Uplift is still reading shows nothing at all. The words are
+            // already on screen and the voice note simply appears behind them —
+            // a spinner over an empty bubble has no box to sit in, so it floated
+            // loose over whatever happened to be next to it.
+            if (m.speak && !m.sources) return null
             return (
               <div
                 key={i}
                 class={`msg ${mine ? 'user' : 'bot'} media${m.pending ? ' pending' : ''}`}
               >
-                {m.pending && (
+                {/* Only ever over the rider's own clip, which fills the bubble. */}
+                {mine && m.pending && (
                   <span class="spinner" role="status" aria-label="Awaaz sun rahe hain" />
                 )}
-                {(m.sources || !m.speak) && <VoiceNote sources={m.sources ?? VOICE_SOURCES} />}
+                <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
                 {/* Show what was heard, so a mistranscription is obvious. */}
                 {mine && m.content && <span class="transcript">{m.content}</span>}
               </div>
