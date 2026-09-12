@@ -61,12 +61,29 @@ const bot = (content: string): Message => ({ role: 'assistant', content })
 
 let seq = 0
 /**
- * Which of the four closings a rider gets. Payment is not wired into the flow
- * yet, so nobody reaches "paid" from here — the fee is still taken at the
- * counter, which is what `not_auto_verified` tells them to do.
+ * Which of the four closings a rider gets.
+ *
+ * A branch visit is only offered on a verified application. Everything that
+ * blocks — an unreadable CNIC, a licence that is not one, a selfie that does
+ * not match the card — already stops the rider at its own step, so what is
+ * left here is the quiet kind of doubt: a check that could not be run because
+ * a service was down, or a name the documents disagree about. Neither is the
+ * rider's fault and neither is worth a wasted journey across a city.
+ *
+ * The quiz has no part in this. It is optional, and it is graded elsewhere.
  */
-const outcomeFor = (f: store.FlowState): Outcome =>
-  f.ineligible || (f.missing ?? []).length > 0 ? 'not_eligible' : 'not_auto_verified'
+function outcomeFor(f: store.FlowState): Outcome {
+  if (f.ineligible || (f.missing ?? []).length > 0) return 'not_eligible'
+
+  const face = f.collected['checks.faceMatch'] ?? ''
+  const name = f.collected['checks.licenceVsCnic'] ?? ''
+  const verified =
+    face.startsWith('match') && (name === 'match' || name === 'review' || name === '')
+
+  if (!verified) return 'not_verified'
+  // Payment is not wired into the flow yet, so the fee is still owed.
+  return 'verified_unpaid'
+}
 
 const stamp = (list: Message[]): Message[] => {
   let now = 0
@@ -600,6 +617,12 @@ export function App() {
           if (asksSomething(text)) {
             await runFaq(withUser)
             say(...askMessages(current))
+          } else if (readYesNo(text) === 'no' || /wallet|easypaisa|jazz/i.test(text)) {
+            // "I have neither" is an answer, not a failure to understand one.
+            // Recorded, so the fee is asked for at the counter rather than
+            // through a rail they have just said they do not have.
+            setFlow((f) => ({ ...f, noWallet: true }))
+            say(bot(SAY.noWallet.text))
           } else {
             say(bot(current.need), ...askMessages(current).slice(1))
           }
@@ -670,9 +693,11 @@ export function App() {
       if (busy) return
       setError(null)
 
-      // The name is matched against the CNIC and the licence, so it has to exist
-      // as text. This is the one question a recording cannot answer.
-      if (current?.kind === 'text') {
+      // The name is matched against the CNIC and the licence, so it has to
+      // exist as text. It is the one question a recording cannot answer — and
+      // only it: the phone step is typed too, and refusing a voice note there
+      // told a rider asked for their number to type their name.
+      if (current?.id === 'name') {
         say(bot(SAY.typeName.text))
         return
       }
@@ -733,7 +758,10 @@ export function App() {
         say(bot(current.wrong))
         return
       }
-      if (current?.kind === 'text') {
+      // Only the name. A phone number may be spoken or photographed off a
+      // SIM pack; refusing every typed step here told a rider asked for their
+      // number to type their name instead.
+      if (current?.id === 'name') {
         say(bot(TYPE_NAME_PLEASE))
         return
       }

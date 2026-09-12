@@ -269,7 +269,7 @@ export const WELCOME_LINES = [
 export type Outcome =
   | 'verified_paid'
   | 'verified_unpaid'
-  | 'not_auto_verified'
+  | 'not_verified'
   | 'not_eligible'
 
 const HOURS = 'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.'
@@ -306,10 +306,15 @@ export function closing(outcome: Outcome, firstName: string, branch?: string): s
       HOURS,
     ]
 
+  /**
+   * Nobody is sent to a branch on an unverified application. A rider who makes
+   * that journey — often across a city, often losing a day's earnings — and is
+   * turned away at the counter has paid for our uncertainty. They are told the
+   * truth instead: it is being looked at, and we will call.
+   */
   return [
-    `${hello} Aap ke documents mil gaye hain, magar inhein staff khud dekhe ga.`,
-    `Apne asli documents le kar ${office} aayein — staff wahan check kar ke fee lein ge.`,
-    HOURS,
+    `${hello} Aap ke documents mil gaye hain. Hamari team inhein check kar rahi hai.`,
+    'Jab ye mukammal ho jayen ge, hum isi number par aap se raabta karein ge. Abhi office aane ki zaroorat nahi.',
   ]
 }
 

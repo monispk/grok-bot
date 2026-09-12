@@ -148,7 +148,7 @@ async function advance(to: string, session: Session, confirm: string) {
     return
   }
   // The fee and the verification results decide which of the four is sent.
-  const outcome = session.ineligible ? 'not_eligible' : 'not_auto_verified'
+  const outcome = session.ineligible ? 'not_eligible' : 'not_verified'
   await say(to, session, confirm, ...closing(outcome, session.firstName))
 }
 
@@ -176,7 +176,7 @@ export async function handleIncoming(raw: Incoming): Promise<void> {
   if (msg.type === 'audio' || msg.type === 'voice') {
     // The name is matched against the CNIC and the licence, so it has to exist
     // as text. Refused before transcribing, since the answer cannot be used.
-    if (step?.kind === 'text') {
+    if (step?.id === 'name') {
       await say(to, session, TYPE_NAME_PLEASE)
       await askStep(to, session, session.step)
       await sessions.save(session)
@@ -260,7 +260,7 @@ export async function handleIncoming(raw: Incoming): Promise<void> {
 
   // A voice note, photo or file sent at the name question. Say why it has to be
   // typed before falling through to the media handling below.
-  if (step.kind === 'text' && msg.type !== 'text') {
+  if (step.id === 'name' && msg.type !== 'text') {
     await say(to, session, TYPE_NAME_PLEASE)
     await askStep(to, session, session.step)
     await sessions.save(session)

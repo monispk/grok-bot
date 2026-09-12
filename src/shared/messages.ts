@@ -71,6 +71,20 @@ export const SAY = {
     'Microphone ki ijazat nahi mili. Baraye meherbani apne phone mein microphone ki ijazat dein, ya apna jawab likh kar bhejein.',
     '/say-mic-denied',
   ),
+  /**
+   * The rider says they have neither wallet. The number is still wanted — it
+   * is how anyone reaches them — and the wallet check simply comes back
+   * unchecked. Repeating the original question here would only ask again about
+   * the accounts they have just said they do not have.
+   */
+  noWallet: say(
+    'Koi baat nahi. Phir bhi apna mobile number bhejein, hum isi number par aap se raabta karein ge.',
+    '/say-no-wallet',
+  ),
+  underReview: say(
+    'Aap ke documents mil gaye hain. Hamari team inhein check kar rahi hai. Jab ye mukammal ho jayen ge, hum isi number par aap se raabta karein ge. Abhi office aane ki zaroorat nahi.',
+    '/say-under-review',
+  ),
   needBike: say(
     'Is kaam ke liye apni bike zaroori hai. Jab aap ke paas bike ho, tab dobara raabta karein — hum aap ki madad karein ge.',
     '/say-need-bike',

@@ -31,6 +31,12 @@ export type FlowState = {
   /** E.164 without the plus, as the wallet check wants it. */
   phone?: string
   /**
+   * The rider has neither Easypaisa nor JazzCash. Recorded so the fee step
+   * does not offer rails they have already said they do not have — it sends
+   * them to the counter instead.
+   */
+  noWallet?: boolean
+  /**
    * The training quiz, once collection is done. `asked` is fixed when the
    * rider accepts, so a reload cannot reshuffle the questions under them.
    */
