@@ -23,3 +23,17 @@ test('initials alone are not a name', () => {
   // "M U R" could be almost anyone; the surname has to be spelled out.
   assert.ok(!titleMatches('Monis Ur Rahmaan', 'M U R'))
 })
+
+test('a counter clerk running the name together is still the same person', () => {
+  // Real: this rider's Easypaisa title is "MONASUR REHMAN" and their JazzCash
+  // title is "MONIS UR RAHMAN". One person, two counters, two spellings.
+  const cnic = 'Monis Ur Rahmaan'
+  for (const title of ['MONIS UR RAHMAN', 'MONASUR REHMAN', 'MONIS RAHMAN', 'M U RAHMAN'])
+    assert.ok(titleMatches(cnic, title), `rejected "${title}"`)
+})
+
+test('a near-miss is still not anybody else', () => {
+  const cnic = 'Monis Ur Rahmaan'
+  for (const title of ['Ali Hassan', 'A HASSAN', 'Fatima Bibi', 'M U R', ''])
+    assert.ok(!titleMatches(cnic, title), `accepted "${title}"`)
+})

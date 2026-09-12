@@ -124,7 +124,14 @@ async function titleFetch(bankId: string, account: string, auth: string): Promis
  * letter standing for a name is allowed to match that name's initial.
  */
 export function titleMatches(cnicName: string, title: string): boolean {
-  if (compareNames(cnicName, title).verdict === 'match') return true
+  // `review` counts here, where it does not on a document. On a CNIC it means
+  // "let branch staff look at the originals"; on a wallet title it means the
+  // spelling wandered, which is the normal case. This check never gates
+  // anybody, so the cost of accepting a near-miss is nothing and the cost of
+  // refusing one is a recruiter chasing a rider whose name was simply typed
+  // differently at the counter.
+  const seen = compareNames(cnicName, title).verdict
+  if (seen === 'match' || seen === 'review') return true
 
   const words = (s: string) =>
     s.toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean)
@@ -143,14 +150,19 @@ export function titleMatches(cnicName: string, title: string): boolean {
   let i = 0
   let wholeWords = 0
   for (const part of abbr) {
-    while (
-      i < full.length &&
-      !(part.length === 1 ? full[i]!.startsWith(part) : sameWord(full[i]!, part))
-    )
-      i++
-    if (i >= full.length) return false
+    let took = 0
+    while (i < full.length && took === 0) {
+      if (part.length === 1 && full[i]!.startsWith(part)) took = 1
+      else if (part.length > 1 && sameWord(full[i]!, part)) took = 1
+      // A counter clerk types the name as one word: "Monis Ur" becomes
+      // "MONASUR", which sounds identical and matches nothing token by token.
+      else if (part.length > 1 && i + 1 < full.length && sameWord(full[i]! + full[i + 1]!, part))
+        took = 2
+      else i++
+    }
+    if (!took) return false
     if (part.length > 1) wholeWords++
-    i++
+    i += took
   }
   return wholeWords > 0 && abbr[abbr.length - 1]!.length > 1
 }
