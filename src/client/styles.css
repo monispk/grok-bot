@@ -909,3 +909,143 @@ footer button.stop { background: var(--err); }
   text-align: left;
   background: linear-gradient(transparent, rgba(0, 0, 0, .7));
 }
+
+/* ---------- the collected-data screen (testing only) ---------- */
+
+.dash {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.dash-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  padding-top: calc(12px + var(--safe-t));
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(11, 20, 26, .22);
+}
+
+.dash-top strong { flex: 1; font-size: 16px; font-weight: 500; }
+
+.dash-top button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.dash-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px calc(24px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dsec {
+  background: var(--in);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.dsec h4 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dsec .drow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 5px 0;
+  font-size: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dsec .drow:last-child { border-bottom: 0; }
+.dsec .drow > span:first-child { color: var(--muted); flex: none; max-width: 45%; }
+/* A flex item will not shrink below its content without this, so a long
+   wallet title ran straight off the right edge instead of wrapping. */
+.dsec .drow > :last-child { flex: 1 1 auto; min-width: 0; }
+.dsec .drow b { text-align: right; overflow-wrap: anywhere; font-weight: 500; }
+
+/* Pass and fail read at a glance, before any of the words are read. */
+.verdict { font-weight: 600; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.verdict.pass { color: #0b7a4b; }
+.verdict.fail { color: #a3301c; }
+.verdict.pending { color: var(--muted); font-weight: 500; }
+
+.dsec .none { margin: 0; font-size: 13px; color: var(--muted); }
+
+.shots { display: flex; gap: 10px; }
+.shots figure { flex: 1; margin: 0; min-width: 0; }
+.shots button { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }
+.shots img,
+.shots .noshot {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.shots .noshot {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.shots figcaption { margin-top: 5px; font-size: 11px; color: var(--muted); text-align: center; }
+
+.qrow {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--line);
+}
+.qrow:last-of-type { border-bottom: 0; }
+.qid { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qrow em { color: var(--muted); font-style: normal; }
+
+.dsec pre {
+  margin: 0;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: 0;
+  padding: 20px;
+  background: rgba(11, 20, 26, .9);
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }

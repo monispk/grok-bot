@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'preact/hooks'
+import { Dashboard } from './dashboard.tsx'
 import { DebugPanel } from './debug.tsx'
 import {
   askMessages,
@@ -188,9 +189,10 @@ export function App() {
    */
   const restored = useRef(boot.revealed)
   const [typed, setTyped] = useState(0)
-  const [flow, setFlow] = useState(
-    () => store.loadState(),
-  )
+  const [flow, setFlow] = useState(() => {
+    const loaded = store.loadState()
+    return loaded.applicationId ? loaded : { ...loaded, applicationId: crypto.randomUUID() }
+  })
   const { step, firstName, fullName, cnic, collected, ineligible, missing, phone, quiz } = flow
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
@@ -198,6 +200,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null)
   /** Which way the camera should face while it is open, or null when it is not. */
   const [camOpen, setCamOpen] = useState<'user' | 'environment' | null>(null)
+  /** Testing only: everything collected so far, on one screen. */
+  const [dashOpen, setDashOpen] = useState(false)
   const [gate, setGate] = useState({ required: false, authed: true })
   const [password, setPassword] = useState('')
 
@@ -860,8 +864,9 @@ export function App() {
         if (data.verification?.nameVerdict)
           gathered[`${current.doc ?? current.id}.nameMatch`] = data.verification.nameVerdict
         if (current.id === 'selfie') gathered['selfie.captured'] = 'yes'
-        // Keep the id so the selfie can be matched against this card later.
-        if (current.doc) gathered[`${current.doc}.uploadId`] = data.id
+        // Keep the id: the selfie is matched against the CNIC by it, and the
+        // dashboard shows every document by it.
+        gathered[`${current.doc ?? current.id}.uploadId`] = data.id
 
         // A selfie that is plainly not the person on the card is worth one more
         // attempt — a bad photograph is far likelier than an impostor, and the
@@ -953,7 +958,17 @@ export function App() {
     // dropped the whole welcome on screen at once.
     setRevealed(0)
     setTyped(0)
-    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {}, ineligible: false, missing: [], phone: '' })
+    setFlow({
+      applicationId: crypto.randomUUID(),
+      step: 0,
+      firstName: '',
+      fullName: '',
+      cnic: '',
+      collected: {},
+      ineligible: false,
+      missing: [],
+      phone: '',
+    })
     setError(null)
   }, [])
 
@@ -1011,6 +1026,14 @@ export function App() {
           <strong>Foodpanda Rider Onboarding</strong>
           <span class="status">{streaming !== null ? 'typing…' : 'online'}</span>
         </span>
+        {/* Temporary, for testing the flow. Goes when the flow is trusted. */}
+        <button
+          class="ghost data"
+          onClick={() => setDashOpen(true)}
+          aria-label="Collected data dekhein"
+        >
+          Data
+        </button>
         <button class="ghost" onClick={reset} disabled={busy}>
           Clear
         </button>
@@ -1120,6 +1143,8 @@ export function App() {
           </button>
         </div>
       )}
+
+      {dashOpen && <Dashboard flow={flow} onClose={() => setDashOpen(false)} />}
 
       {camOpen && (
         <Camera

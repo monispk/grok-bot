@@ -25,6 +25,12 @@ export type Message = {
 }
 
 export type FlowState = {
+  /**
+   * Minted once, at first contact, and kept for the life of the application.
+   * The backend will key on this: a phone number cannot, because it arrives at
+   * step two and one number may legitimately start again.
+   */
+  applicationId?: string
   step: number
   /** Gates the rider did not meet. Recorded, never a reason to stop. */
   missing?: string[]
