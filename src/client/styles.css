@@ -1069,3 +1069,17 @@ footer button.stop { background: var(--err); }
 
 .gpsbar.offices b { font-size: 15px; font-weight: 600; }
 .gpsbar.offices span { font-size: 12px; opacity: .85; }
+
+/* A numbered list inside a bubble: the registration requirements. Tight to the
+   text around it, because a bubble is not a document. */
+.msg.bot ol,
+.msg.bot ul {
+  margin: 6px 0 2px;
+  padding-left: 1.35em;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.msg.bot li { padding-left: 2px; }
+.msg.bot li::marker { font-weight: 600; color: var(--muted); }

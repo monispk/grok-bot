@@ -143,14 +143,20 @@ export const SAY = {
   ),
   /** Said once, before anything is asked for, so the fee is never a surprise. */
   /**
-   * Said once, before anything is asked for, so the fee is never a surprise —
-   * and carrying the note about voice notes, because a rider who reads poorly
-   * needs to know they can speak back before they meet a question they cannot
-   * read. It rides here rather than arriving as a third recording of its own.
+   * The requirements, and nothing else in the bubble with them.
+   *
+   * Three numbered lines a rider can count on their fingers. Buried in a
+   * paragraph they were three clauses among six, and the one that decides
+   * whether somebody continues — the fee — read like an aside.
    */
   docsBriefing: say(
-    'Registration mukammal karne ke liye do cheezein chahiye: License ki picture, aur CNIC ki picture. Registration fee Rs. 2,500 hai. Yeh foodpanda ki official fee hai, kisi shakhs ko cash na dein. Main ye sab aap se ek ek kar ke maangungi. Agar aap ka koi sawal ho to neeche microphone ka button daba kar kisi bhi waqt voice note bhej saktay hain.',
+    'Registration ke liye ye cheezein chahiye:\n\n1. Driving license ki picture\n2. CNIC ki picture\n3. Registration fee Rs. 2,500',
     '/say-docs-briefing',
+  ),
+  /** Everything that is not a requirement, kept out of the list above. */
+  briefingNote: say(
+    'Ye foodpanda ki official fee hai, kisi shakhs ko cash na dein. Main ye sab aap se ek ek kar ke maangungi. Agar aap ka koi sawal ho to neeche microphone ka button daba kar kisi bhi waqt voice note bhej saktay hain.',
+    '/say-briefing-note',
   ),
   railComingSoon: say(
     'JazzCash par ye sahulat abhi jald aa rahi hai. Filhaal Easypaisa se ho sakti hai — kya Easypaisa se jama kar dein? Warna aap office par counter par bhi de saktay hain.',

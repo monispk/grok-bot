@@ -333,7 +333,20 @@ export const WELCOME_LINES = [
   // price after photographing their CNIC has spent the effort before hearing
   // it, and that is where they walk.
   SAY.docsBriefing.text,
+  SAY.briefingNote.text,
 ]
+
+/**
+ * The welcome as one spoken piece. The written version numbers the
+ * requirements so they can be counted; read aloud, "1. 2. 3." is noise, so
+ * this says the same three things as a sentence.
+ */
+export const WELCOME_SPOKEN = [
+  'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',
+  'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',
+  'Registration ke liye teen cheezein chahiye: pehli, driving license ki picture. Doosri, CNIC ki picture. Teesri, registration fee Rs. 2,500.',
+  SAY.briefingNote.text,
+].join(' ')
 
 /** How the application ended, which decides what the rider is told. */
 export type Outcome =
