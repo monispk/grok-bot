@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'preact/hooks'
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { enqueue, takeOver } from './autoplay.ts'
 
 const mmss = (s: number, roundUp = false) => {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -7,7 +8,13 @@ const mmss = (s: number, roundUp = false) => {
 }
 
 /** WhatsApp-style voice note: play/pause, scrub bar, elapsed time. */
-export function VoiceNote({ sources }: { sources: { src: string; type: string }[] }) {
+export function VoiceNote({
+  sources,
+  autoplay = false,
+}: {
+  sources: { src: string; type: string }[]
+  autoplay?: boolean
+}) {
   const ref = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
@@ -31,9 +38,20 @@ export function VoiceNote({ sources }: { sources: { src: string; type: string }[
   const current = ordered[attempt]
   if (!current) return null
 
+  // Joins the queue once, when it first lands. A clip restored from history is
+  // not new and is never queued: nobody wants a returning visit read back to them.
+  const queued = useRef(false)
+  useEffect(() => {
+    if (!autoplay || queued.current || !ref.current) return
+    queued.current = true
+    enqueue(ref.current)
+  }, [autoplay])
+
   const toggle = () => {
     const a = ref.current
     if (!a) return
+    // Pressing play is an instruction. Whatever the queue was doing, stop.
+    takeOver(a)
     // A rejected play() is usually an autoplay policy, not a broken file, so it
     // must never remove the player.
     if (a.paused) void a.play().catch(() => {})

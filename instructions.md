@@ -150,6 +150,13 @@ reader accepts both scripts.
   thing is said. A rider who is listening rather than reading needs that pause.
   The welcome settles in about 3.9 seconds, and the newest line stays against
   the composer so the rider never scrolls.
+- Voice notes **play themselves** as they arrive, so a rider who reads poorly
+  need not find and press play on every bubble. They queue: one plays, the next
+  waits for it to finish and then two seconds more. A browser refuses sound
+  until the page is touched, so a blocked clip is put back and the queue starts
+  at the rider's first tap rather than being lost. Pressing play on anything
+  stands the queue down — that is an instruction. A thread already on screen
+  when the page opens is never replayed.
 - A photo appears **immediately** with a spinner rather than after the upload.
 - Optional shared-password gate.
 
@@ -158,15 +165,17 @@ reader accepts both scripts.
 `npm test` — 29 unit tests: name matching, the yes/no reader in both scripts,
 message lookups, a check that every recording the bot promises is actually in
 `public/`, and a check that nothing but a role and words ever goes upstream.
-`npm run e2e` — 14 browser tests: staged arrival, scroll pinning, history not
+`npm run e2e` — 16 browser tests: staged arrival, scroll pinning, history not
 replayed, a refused document keeping its voice note, a second wrong document
 still being answered, a spoken answer being transcribed and acted on, the
 transcript surviving a reload, a spoken name being sent back, a question tucked
 inside an answer still being answered, an invented answer being read aloud, and
 a question with a recording not being read a second time, lines arriving in
 groups with a pause between them, nothing spinning while a line is being read,
-and Clear saying the welcome again a group at a time. Eight of them are
-regression guards for bugs that shipped. The last is skipped
+Clear saying the welcome again a group at a time, voice notes playing
+themselves one at a time with a two-second pause, and a returning rider not
+being read their own history. Eight of them are regression guards for bugs that
+shipped. The last is skipped
 when `UPLIFT_API_KEY` is unset.
 
 `npm run dev:mock` runs the whole thing offline — `scripts/mock-upstream.mjs`

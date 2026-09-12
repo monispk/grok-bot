@@ -28,7 +28,13 @@ const check = async (name, fn) => {
 // The fake device makes getUserMedia hand back a synthetic tone, so the mic can
 // be exercised without a microphone and without a prompt to click.
 const browser = await chromium.launch({
-  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-capture'],
+  args: [
+    '--use-fake-ui-for-media-stream',
+    '--use-fake-device-for-media-capture',
+    // A real browser refuses sound until the page is touched; the app handles
+    // that by waiting for the first tap. These tests are about the queue.
+    '--autoplay-policy=no-user-gesture-required',
+  ],
 })
 const ctx = await browser.newContext({
   viewport: { width: 390, height: 844 },
@@ -501,6 +507,62 @@ await check('Clear says the welcome again, a group at a time', async () => {
     counts.size > 3,
     `after Clear the welcome appeared in ${counts.size} step(s); it was dropped on screen at once`,
   )
+})
+
+await check('voice notes play themselves, one at a time, with a pause', async () => {
+  await page.goto(APP)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  // Record every play and end, from inside the page, so nothing is missed.
+  await page.evaluate(() => {
+    window.__log = []
+    const watch = (el) => {
+      if (el.__watched) return
+      el.__watched = true
+      el.addEventListener('play', () => window.__log.push({ e: 'play', at: Date.now(), src: el.currentSrc }))
+      el.addEventListener('ended', () => window.__log.push({ e: 'end', at: Date.now(), src: el.currentSrc }))
+    }
+    document.querySelectorAll('audio').forEach(watch)
+    new MutationObserver(() => document.querySelectorAll('audio').forEach(watch))
+      .observe(document.body, { childList: true, subtree: true })
+  })
+
+  // The welcome has two recordings: the introduction and the name question.
+  const heard = await settle(
+    async () => page.evaluate(() => window.__log.filter((l) => l.e === 'end').length >= 2),
+    40_000,
+  )
+  const log = await page.evaluate(() => window.__log)
+  assert.ok(heard, `only heard ${log.filter((l) => l.e === 'end').length} clip(s) play through`)
+
+  // Never two at once.
+  let open = 0
+  for (const l of log) {
+    if (l.e === 'play') open++
+    else open--
+    assert.ok(open <= 1, 'two voice notes played over each other')
+  }
+
+  // At least two seconds between one finishing and the next starting.
+  for (let i = 0; i < log.length - 1; i++) {
+    if (log[i].e !== 'end' || log[i + 1]?.e !== 'play') continue
+    const gap = log[i + 1].at - log[i].at
+    assert.ok(gap >= 1950, `only ${gap}ms between voice notes; asked for two seconds`)
+  }
+})
+
+await check('a returning rider is not read their own history', async () => {
+  await page.reload()
+  await page.evaluate(() => {
+    window.__played = 0
+    document.querySelectorAll('audio').forEach((el) =>
+      el.addEventListener('play', () => window.__played++),
+    )
+  })
+  await page.waitForTimeout(5000)
+  const played = await page.evaluate(() => window.__played)
+  assert.equal(played, 0, `${played} clip(s) played themselves on a revisit`)
 })
 
 await browser.close()

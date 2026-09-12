@@ -16,6 +16,7 @@ import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
 import { useRecorder, type Recording } from './recorder.ts'
+import { stopAll } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
@@ -89,6 +90,11 @@ export function App() {
   })
   const [messages, setMessages] = useState<Message[]>(boot.msgs)
   const [revealed, setRevealed] = useState(boot.revealed)
+  /**
+   * Everything already in the thread when the page opened. Those are read back
+   * silently; only what arrives from here on is played aloud.
+   */
+  const restored = useRef(boot.revealed)
   const [typed, setTyped] = useState(0)
   const [{ step, firstName, fullName, cnic, collected, ineligible }, setFlow] = useState(
     () => store.loadState(),
@@ -660,6 +666,8 @@ export function App() {
     setWorking(false)
     store.clear()
     store.clearState()
+    stopAll()
+    restored.current = 0
     setMessages(WELCOME)
     // Back to nothing revealed, so the welcome is said again at a pace the rider
     // can follow. Left where it was, it sat past the end of the new thread and
@@ -750,7 +758,10 @@ export function App() {
                 {mine && m.pending && (
                   <span class="spinner" role="status" aria-label="Awaaz sun rahe hain" />
                 )}
-                <VoiceNote sources={m.sources ?? VOICE_SOURCES} />
+                <VoiceNote
+                  sources={m.sources ?? VOICE_SOURCES}
+                  autoplay={!mine && i >= restored.current}
+                />
                 {/* Show what was heard, so a mistranscription is obvious. */}
                 {mine && m.content && <span class="transcript">{m.content}</span>}
               </div>
