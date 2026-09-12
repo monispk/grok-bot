@@ -27,8 +27,11 @@ if (!KEY) {
   process.exit(1)
 }
 
-async function say(name, text) {
-  const spoken = await forSpeech(text)
+async function say(name, text, raw = false) {
+  // --raw hands Uplift the words unchanged. The converter is not deterministic,
+  // and for a line every rider hears — the welcome — the pauses and the
+  // pronunciations are worth pinning down by hand.
+  const spoken = raw ? text : await forSpeech(text)
   const res = await fetch('https://api.upliftai.org/v1/synthesis/text-to-speech', {
     method: 'POST',
     headers: { authorization: `Bearer ${KEY}`, 'content-type': 'application/json' },
@@ -57,11 +60,12 @@ async function say(name, text) {
   return true
 }
 
-const args = process.argv.slice(2)
+const args = process.argv.slice(2).filter((a) => a !== '--raw')
+const raw = process.argv.includes('--raw')
 if (args[0] === '--from') {
   const bank = JSON.parse(readFileSync(args[1], 'utf8'))
   for (const [name, text] of Object.entries(bank)) {
-    await say(name, text)
+    await say(name, text, raw)
     await new Promise((r) => setTimeout(r, 1200)) // the script pass is rate limited
   }
 } else {
@@ -70,5 +74,5 @@ if (args[0] === '--from') {
     console.error('usage: node scripts/voice.mjs <name> "<roman urdu text>"')
     process.exit(1)
   }
-  await say(name, rest.join(' '))
+  await say(name, rest.join(' '), raw)
 }

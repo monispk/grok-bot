@@ -337,16 +337,33 @@ export const WELCOME_LINES = [
 ]
 
 /**
- * The welcome as one spoken piece. The written version numbers the
- * requirements so they can be counted; read aloud, "1. 2. 3." is noise, so
- * this says the same three things as a sentence.
+ * The welcome, exactly as Uplift is given it.
+ *
+ * Written out rather than converted. The converter is not deterministic — the
+ * same sentence came back with two commas one run and none the next, and it
+ * kept CNIC after being told not to — and this is the line every rider hears
+ * first, so its pauses and pronunciations are pinned by hand.
+ *
+ * Three things in here are deliberate and easy to undo by accident:
+ *
+ *   Newlines, not full stops, at the three places a breath belongs. Measured
+ *   against this voice: a newline buys about 0.65s of pause, a full stop 0.2s,
+ *   and an ellipsis or a dash almost nothing.
+ *
+ *   "ID card", never CNIC. Read as a word it comes out "sinik".
+ *
+ *   ڈھونڈ with one ھ. Spelled ڈھونڈھ it is read as "dhunaray".
+ *
+ * Re-record with: npx tsx scripts/voice.mjs --raw welcome "<this text>"
  */
 export const WELCOME_SPOKEN = [
-  'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',
-  'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',
-  'Registration ke liye teen cheezein chahiye: pehli, driving license ki picture. Doosri, CNIC ki picture. Teesri, registration fee Rs. 2,500.',
-  SAY.briefingNote.text,
-].join(' ')
+  'السلام علیکم! Foodpanda delivery rider کی job میں، خوش آمدید۔',
+  'میرا نام Rozeena ہے۔ اگر آپ اچھی job ڈھونڈ رہے ہیں، تو Foodpanda delivery rider کی job کے لیے apply کریں۔',
+  'Registration کے لیے، تین چیزیں چاہئیں۔',
+  'پہلی، driving license کی picture۔ دوسری، ID card کی picture۔ تیسری، registration fee پچیس سو روپے۔',
+  'یہ foodpanda کی official fee ہے، کسی شخص کو cash نہ دیں۔ میں یہ سب، آپ سے ایک ایک کر کے مانگوں گی۔',
+  'اگر آپ کا کوئی سوال ہو، تو نیچے microphone کا button دبا کر، کسی بھی وقت voice note بھیج سکتے ہیں۔',
+].join('\n')
 
 /** How the application ended, which decides what the rider is told. */
 export type Outcome =

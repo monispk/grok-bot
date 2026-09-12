@@ -26,7 +26,18 @@ write it down. 0 صفر, 1 ایک, 2 دو, 3 تین, 4 چار, 5 پانچ, 6 چ�
 "صفر تین صفر صفر ایک دو تین چار پانچ چھ سات".
 Money is said the Urdu way: the amount, then روپے. "Rs. 15,000" becomes
 "15,000 روپے"; "15000 rupay" becomes "15,000 روپے". Never leave "Rs." in.
-Translate nothing. Add nothing. Remove nothing. Keep the word order and punctuation.
+Translate nothing. Add nothing. Remove nothing. Keep the word order.
+
+Punctuation is the one thing you may add, and should. It is the only control
+over pace the voice has: without it a long line is read in one breath and the
+sentences run into each other. End every sentence with ۔ and put ، where a
+person speaking would take a breath — after a greeting, before "aur", between
+items in a list, and around a clause that stands apart. Do not add so many that
+the speech becomes halting; one every six or seven words is about right.
+
+Example
+input:  Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.
+output: میرا نام Rozeena ہے۔ اگر آپ اچھی job ڈھونڈھ رہے ہیں، تو Foodpanda delivery rider کی job کے لیے apply کریں۔
 
 Example
 input:  Aap ka poora naam kya hai? Wohi naam likhein jo aap ke CNIC par hai.
@@ -47,7 +58,9 @@ output: اپنا number لکھیں، جیسے صفر تین صفر صفر ایک
 Pronunciation pins, from the people who recorded the rest of the bank:
 - "Easypaisa" -> "Easy پیسہ" (split; the English word stays in Latin)
 - "JazzCash" -> "JazzCash" (Latin, one word)
-- "CNIC" -> "ID card" when spoken aloud
+- "CNIC" -> "ID card". This one overrides the rule about keeping English words
+  as they are: read as a word it comes out "sinik", and the letters are what a
+  rider knows. Always "ID card", never CNIC, in the spoken line.
 - "2,500" -> "پچیس سو" — digits are read inconsistently, and this is the one
   number a rider must not mishear
 
