@@ -340,8 +340,16 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
   await page.goto(APP)
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await settle(async () => (await stored()).length >= 7)
-  await page.waitForTimeout(2500)
+  // Wait for the welcome to finish arriving rather than for a fixed time: it is
+  // paced in groups now, so a fixed wait catches it half-said.
+  const done = await settle(async () =>
+    page.evaluate(() => {
+      const el = document.querySelector('.scroll')
+      const total = JSON.parse(localStorage.getItem('grok-bot:history') || '[]').length
+      return !!el && total > 0 && el.children.length === total
+    }),
+  )
+  assert.ok(done, 'the welcome never finished arriving')
 
   const shape = await page.evaluate(() =>
     [...document.querySelector('.scroll').children].map((c) =>
@@ -370,6 +378,57 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
     () => document.querySelectorAll('.msg.bot .voice').length,
   )
   assert.equal(players, 1, `the selfie question had ${players} voice notes, not one`)
+})
+
+await check('lines arrive in groups, with a pause between them', async () => {
+  // A line and its voice note are one utterance and must land together; the next
+  // thing said must wait, so a rider who is listening can keep up.
+  await page.goto(APP)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  // Sample what is on screen, with timings, while the welcome plays out.
+  const seen = []
+  const until = Date.now() + 20_000
+  while (Date.now() < until) {
+    const s = await page.evaluate(() => {
+      const el = document.querySelector('.scroll')
+      if (!el) return null
+      return {
+        kinds: [...el.children].map((c) =>
+          c.querySelector('img.photo') ? 'IMG' : c.querySelector('.voice') ? 'AUD' : 'TXT',
+        ),
+        total: JSON.parse(localStorage.getItem('grok-bot:history') || '[]').length,
+      }
+    })
+    if (s) {
+      const last = seen[seen.length - 1]
+      if (!last || last.kinds.join() !== s.kinds.join())
+        seen.push({ at: Date.now(), kinds: s.kinds })
+      if (s.total > 0 && s.kinds.length === s.total) break
+    }
+    await page.waitForTimeout(40)
+  }
+
+  const shape = seen[seen.length - 1].kinds
+  assert.deepEqual(shape, ['IMG', 'AUD', 'TXT', 'TXT', 'TXT', 'TXT', 'AUD'])
+
+  // Time from each arrival to the next.
+  const gaps = seen.slice(1).map((s, i) => ({ kind: s.kinds[s.kinds.length - 1], ms: s.at - seen[i].at }))
+
+  // A voice note rides just behind the line it speaks.
+  const attached = [gaps[0], gaps[gaps.length - 1]]
+  for (const g of attached)
+    assert.ok(g.ms < 450, `a voice note trailed its line by ${g.ms}ms; it should arrive with it`)
+
+  // Between one thing being said and the next there is a real pause.
+  const between = gaps.filter((g) => g.kind === 'TXT').map((g) => g.ms)
+  assert.ok(between.length >= 3, `only saw ${between.length} gaps between lines`)
+  for (const ms of between)
+    assert.ok(ms > 400, `only ${ms}ms before the next line; too quick to follow`)
+
+  const total = seen[seen.length - 1].at - seen[0].at
+  assert.ok(total < 9000, `the welcome took ${total}ms, which is a wait rather than a rhythm`)
 })
 
 await browser.close()

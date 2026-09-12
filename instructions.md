@@ -145,9 +145,11 @@ reader accepts both scripts.
   rozeegpt.ai" under the composer.
 - Phone-first layout, 16px composer so iOS does not zoom, safe-area insets,
   44px touch targets, installable to the home screen.
-- Messages arrive **one at a time**, words appearing quickly — the welcome
-  settles in about 1.8 seconds — and the newest line stays against the composer
-  so the rider never scrolls.
+- Messages arrive in the **groups a person would say them in**: a line, its
+  voice note on its heels (~170ms), then a pause of about 900ms before the next
+  thing is said. A rider who is listening rather than reading needs that pause.
+  The welcome settles in about 3.9 seconds, and the newest line stays against
+  the composer so the rider never scrolls.
 - A photo appears **immediately** with a spinner rather than after the upload.
 - Optional shared-password gate.
 

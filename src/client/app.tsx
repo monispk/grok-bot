@@ -23,13 +23,16 @@ const HISTORY_WINDOW = 12
 
 /**
  * Messages the bot sends arrive as a batch — the welcome is six at once — which
- * lands as a wall of text nobody reads. They are revealed one at a time instead,
- * words appearing quickly, so the eye follows the newest line rather than having
- * to find it. Fast enough not to be a wait; slow enough to be noticed.
+ * lands as a wall of text nobody reads. They are revealed instead in the groups
+ * a person would say them in: a line, its voice note just behind it, then a
+ * pause before the next thing is said. A rider who is listening rather than
+ * reading needs that pause to keep up.
  */
 const WORD_MS = 18
-const GAP_MS = 110
-const MEDIA_MS = 190
+/** A voice note follows the words it speaks almost at once: one utterance. */
+const BEAT_MS = 160
+/** The pause between one thing being said and the next. */
+const GROUP_MS = 700
 /** Long messages reveal several words a tick so none outstays this budget. */
 const MAX_TICKS = 14
 const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.gif,.pdf'
@@ -133,8 +136,14 @@ export function App() {
       return
     }
 
+    // A voice note belongs to the line above it — they are one utterance, so it
+    // follows on a beat. Anything else is the next thing being said, and waits.
+    const prev = messages[revealed - 1]
+    const attached = m.kind === 'audio' && prev?.role === 'assistant'
+    const lead = revealed === 0 ? 0 : attached ? BEAT_MS : GROUP_MS
+
     if (m.kind && m.kind !== 'text') {
-      const t = setTimeout(() => setRevealed((r) => r + 1), MEDIA_MS)
+      const t = setTimeout(() => setRevealed((r) => r + 1), lead)
       return () => clearTimeout(t)
     }
 
@@ -144,21 +153,28 @@ export function App() {
       return
     }
 
-    const chunk = Math.max(1, Math.ceil(words.length / MAX_TICKS))
-    let shown = 0
-    setTyped(0)
-    const id = setInterval(() => {
-      shown = Math.min(words.length, shown + chunk)
-      setTyped(shown)
-      if (shown >= words.length) {
-        clearInterval(id)
-        setTimeout(() => {
+    // The pause comes first, then the words appear. Typing straight away would
+    // put the gap after the line, where it reads as hesitation rather than turn-taking.
+    let ticking: ReturnType<typeof setInterval> | null = null
+    const start = setTimeout(() => {
+      const chunk = Math.max(1, Math.ceil(words.length / MAX_TICKS))
+      let shown = 0
+      setTyped(0)
+      ticking = setInterval(() => {
+        shown = Math.min(words.length, shown + chunk)
+        setTyped(shown)
+        if (shown >= words.length) {
+          if (ticking) clearInterval(ticking)
           setTyped(0)
           setRevealed((r) => r + 1)
-        }, GAP_MS)
-      }
-    }, WORD_MS)
-    return () => clearInterval(id)
+        }
+      }, WORD_MS)
+    }, lead)
+
+    return () => {
+      clearTimeout(start)
+      if (ticking) clearInterval(ticking)
+    }
   }, [revealed, messages])
   useEffect(
     () => store.saveState({ step, firstName, fullName, cnic, collected, ineligible }),
