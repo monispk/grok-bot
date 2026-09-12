@@ -656,6 +656,10 @@ export function App() {
         if (current.doc) body.append('kind', current.doc)
         if (fullName) body.append('expectedName', fullName)
         if (cnic) body.append('expectedCnic', cnic)
+        // The selfie is checked against the CNIC already uploaded. Both are
+        // still held in memory server-side, which is why this is sent now.
+        if (current.id === 'selfie' && collected['cnic_front.uploadId'])
+          body.append('against', collected['cnic_front.uploadId'])
 
         const res = await fetch('/api/upload', { method: 'POST', body })
         const data = (await res.json()) as {
@@ -670,6 +674,11 @@ export function App() {
             nameVerdict?: string | null
             fields?: Record<string, string | null>
           }
+          face?: {
+            outcome?: 'pass' | 'fail' | 'unavailable'
+            score?: number
+            reason?: string
+          } | null
         }
         if (!res.ok || !data.id) {
           settle(undefined)
@@ -701,6 +710,21 @@ export function App() {
         if (data.verification?.nameVerdict)
           gathered[`${current.doc ?? current.id}.nameMatch`] = data.verification.nameVerdict
         if (current.id === 'selfie') gathered['selfie.captured'] = 'yes'
+        // Keep the id so the selfie can be matched against this card later.
+        if (current.doc) gathered[`${current.doc}.uploadId`] = data.id
+
+        // A selfie that is plainly not the person on the card is worth one more
+        // attempt — a bad photograph is far likelier than an impostor, and the
+        // recorded line asks for better light rather than accusing anybody.
+        if (data.face?.outcome === 'fail') {
+          gathered['checks.faceMatch'] = `mismatch (${data.face.score?.toFixed(1) ?? '?'})`
+          say(bot(SAY.selfieRetry.text))
+          setFlow((f) => ({ ...f, collected: { ...f.collected, ...gathered } }))
+          return
+        }
+        if (data.face?.outcome === 'pass')
+          gathered['checks.faceMatch'] = `match (${data.face.score?.toFixed(1) ?? '?'})`
+        if (data.face?.outcome === 'unavailable') gathered['checks.faceMatch'] = 'not checked'
 
         advanceFrom(step, [thanksDoc()], {
           ...(seen && !cnic ? { cnic: seen } : {}),

@@ -21,6 +21,7 @@ import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, sweep } from './db.ts'
 import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
+import { facialReady, matchFace } from './rozee.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
@@ -257,7 +258,24 @@ app.post('/api/upload', guard, async (c) => {
     expectedCnic,
   })
 
-  return c.json({ id, name, mime, size, verification })
+  /**
+   * A selfie is only meaningful next to the card it is supposed to be of, so
+   * the client sends the id of the CNIC it already uploaded. Both are still in
+   * memory at this point, which is the whole reason this happens here.
+   *
+   * The result never blocks: a low score sends the rider back for a better
+   * photograph, and a service that does not answer is recorded as unchecked
+   * for branch staff rather than held against them.
+   */
+  let face: Awaited<ReturnType<typeof matchFace>> | null = null
+  const againstId = typeof body?.['against'] === 'string' ? body['against'] : ''
+  if (kind === null && againstId && facialReady()) {
+    const card = getUpload(againstId)
+    if (card) face = await matchFace(card.bytes, bytes)
+    else face = { outcome: 'unavailable', reason: 'the CNIC is no longer held', latency: 0 }
+  }
+
+  return c.json({ id, name, mime, size, verification, face })
 })
 
 app.get('/api/upload/:id', guard, (c) => {
