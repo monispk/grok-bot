@@ -66,17 +66,51 @@ export const SAY = {
   voiceUnclear: say(
     'Aap ki awaaz saaf nahi aayi. Baraye meherbani dobara bolein, ya likh kar bhejein.',
     '/say-voice-unclear',
-    false,
   ),
   micDenied: say(
     'Microphone ki ijazat nahi mili. Baraye meherbani apne phone mein microphone ki ijazat dein, ya apna jawab likh kar bhejein.',
     '/say-mic-denied',
-    false,
   ),
+  needBike: say(
+    'Is kaam ke liye apni bike zaroori hai. Jab aap ke paas bike ho, tab dobara raabta karein — hum aap ki madad karein ge.',
+    '/say-need-bike',
+  ),
+  /**
+   * What follows a missing phone or bike. The rider is not turned away: their
+   * details are worth keeping, and they are told to come back to this same
+   * chat when they have the thing.
+   */
+  knockoutAck: say(
+    'Theek hai, note kar liya. Abhi aap apne documents jama kara dein — jab aap ke paas ye cheez aa jaye, tab isi chat par aa kar registration mukammal kar lijiye ga.',
+    '/say-knockout-ack',
+  ),
+  selfieRetry: say(
+    'Selfie match nahi hui. Baraye meherbani neeche button daba kar dobara selfie khenchein — achi roshni mein, seedha camera ki taraf dekh kar.',
+    '/say-selfie-retry',
+  ),
+  repeat: say(
+    'Maazrat, samajh nahi aaya. Baraye meherbani dobara likhein.',
+    '/say-repeat',
+  ),
+  /** Said once, before anything is asked for, so the fee is never a surprise. */
+  docsBriefing: say(
+    'Registration mukammal karne ke liye do cheezein chahiye:\n1. License ki picture\n2. CNIC ki picture\n\nRegistration fee Rs. 2,500 hai. Yeh foodpanda ki official fee hai — kisi shakhs ko cash na dein.\n\nMain ye sab aap se ek ek kar ke maangungi.',
+    '/say-docs-briefing',
+  ),
+  askWalletRail: say(
+    'Aap ke paas Easypaisa hai ya JazzCash?',
+    '/ask-wallet-rail',
+  ),
+  railComingSoon: say(
+    'JazzCash par ye sahulat abhi jald aa rahi hai. Filhaal Easypaisa se ho sakti hai — kya Easypaisa se jama kar dein? Warna aap office par counter par bhi de saktay hain.',
+    '/say-rail-coming-soon',
+  ),
+  okDocument: say('Shukriya, tasveer mil gayi.', '/ok-document'),
+  okLocation: say('Shukriya, location mil gayi.', '/ok-location'),
+  okSmartphone: say('Theek hai.', '/ok-smartphone'),
   needSmartphone: say(
     'Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge.',
     '/say-need-smartphone',
-    false,
   ),
   // Worded without reference to a button, so one recording serves both the web
   // app and WhatsApp.

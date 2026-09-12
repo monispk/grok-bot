@@ -28,7 +28,8 @@ test('every recording the bot would send actually exists', () => {
 })
 
 test('an unrecognised line has no recording', () => {
-  assert.equal(audioForText('Shukriya, tasveer mil gayi.'), null)
+  // Something the bot could say but nobody recorded — a model's own words.
+  assert.equal(audioForText('Aap ko hafte mein taqreeban Rs. 15,000 mil saktay hain.'), null)
   assert.equal(audioForText(''), null)
 })
 

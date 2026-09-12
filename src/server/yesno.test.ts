@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { asksSomething, readYesNo } from '../shared/steps.ts'
+import { asksSomething, readPhone, readYesNo } from '../shared/steps.ts'
 
 test('reads yes', () => {
   for (const t of ['haan', 'Ji haan', 'jee', 'yes', 'G', 'bilkul', 'ji hai'])
@@ -51,4 +51,34 @@ test('a plain answer is not mistaken for a question', () => {
   assert.equal(asksSomething('nahi mere paas nahi hai'), false)
   // A question mark alone, on a short answer, is not a question.
   assert.equal(asksSomething('haan hai na?'), false)
+})
+
+test('a mobile number survives however the rider writes it', () => {
+  // Every one of these is the same number.
+  for (const written of [
+    '03001234567',
+    '0300-1234567',
+    '0300 123 4567',
+    '+92 300 1234567',
+    '923001234567',
+    '00923001234567',
+    '3001234567',
+    'mera number 0300 1234567 hai',
+  ])
+    assert.equal(readPhone(written), '923001234567', `failed on "${written}"`)
+})
+
+test('something that is not a mobile number is refused', () => {
+  assert.equal(readPhone('Monis Ur Rahmaan'), null)
+  assert.equal(readPhone(''), null)
+  assert.equal(readPhone('0421234567'), null)      // a landline, not 03xx
+  assert.equal(readPhone('12345'), null)           // too short
+  assert.equal(readPhone('61101-1234567-1'), null) // a CNIC, not a phone
+})
+
+test('the shortest answers a phone keyboard offers', () => {
+  // Reported: "y" was not understood, so the model was asked to answer a
+  // question nobody had asked, and it invented one.
+  for (const yes of ['y', 'Y', 'yes', 'ok', 'theek hai', 'haan']) assert.equal(readYesNo(yes), 'yes', yes)
+  for (const no of ['n', 'N', 'no', 'nahi']) assert.equal(readYesNo(no), 'no', no)
 })

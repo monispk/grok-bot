@@ -10,8 +10,16 @@ import { DebugPanel } from './debug.tsx'
 import { askMessages, finished, STEPS, thanksDoc, thanksGps, thanksName } from './flow.ts'
 import { audioSources } from '../shared/steps.ts'
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
-import { asksSomething, dropRepeat, readYesNo, stripEcho, TYPE_NAME_PLEASE } from '../shared/steps.ts'
+import {
+  asksSomething,
+  dropRepeat,
+  readPhone,
+  readYesNo,
+  stripEcho,
+  TYPE_NAME_PLEASE,
+} from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
+import { Camera, type Shot } from './camera.tsx'
 import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
@@ -145,13 +153,15 @@ export function App() {
    */
   const restored = useRef(boot.revealed)
   const [typed, setTyped] = useState(0)
-  const [{ step, firstName, fullName, cnic, collected, ineligible }, setFlow] = useState(
+  const [{ step, firstName, fullName, cnic, collected, ineligible, missing }, setFlow] = useState(
     () => store.loadState(),
   )
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** Which way the camera should face while it is open, or null when it is not. */
+  const [camOpen, setCamOpen] = useState<'user' | 'environment' | null>(null)
   const [gate, setGate] = useState({ required: false, authed: true })
   const [password, setPassword] = useState('')
 
@@ -423,21 +433,30 @@ export function App() {
         const also = asksSomething(text)
         if (answer === 'yes') {
           if (also) {
-            say(bot('Theek hai.'))
+            say(bot(SAY.okSmartphone.text))
             await runFaq(withUser)
             advanceFrom(step, [], {})
           } else {
-            advanceFrom(step, [bot('Theek hai.')], {})
+            advanceFrom(step, [bot(SAY.okSmartphone.text)], {})
           }
         } else if (answer === 'no') {
-          // A smartphone is not optional for this job. Say so plainly and stop
-          // rather than walking them through an application they cannot finish.
+          // A missing phone or bike is not a rejection. Say what is needed,
+          // record it, and carry on collecting — their details are worth
+          // having, and they are told to come back to this same chat. Turning
+          // them away at the door loses the application and the lead with it.
           if (also) await runFaq(withUser)
-          setFlow((f) => ({ ...f, step: STEPS.length, ineligible: true }))
-          say(bot(SAY.needSmartphone.text))
-        } else {
+          const needed = current.id === 'bike' ? SAY.needBike : SAY.needSmartphone
+          say(bot(needed.text), bot(SAY.knockoutAck.text))
+          advanceFrom(step, [], { missing: [...(missing ?? []), current.id] })
+        } else if (also) {
+          // They asked something instead of answering. Answer it, then repeat.
           await runFaq(withUser, current.ask)
           say(...askMessages(current))
+        } else {
+          // Not an answer and not a question. Say so, and ask again — sending
+          // this to the model made it invent a question of its own, which the
+          // rider then saw in place of the one they had just been asked.
+          say(bot(SAY.repeat.text), ...askMessages(current))
         }
         return
       }
@@ -447,6 +466,29 @@ export function App() {
         // it as a question, answer it, then ask again. The step does not move.
         await runFaq(withUser, current.ask)
         say(bot(current.wrong), ...(current.audio ? askMessages(current).slice(1) : []))
+        return
+      }
+
+      // The only other typed step. A number is checked here rather than sent
+      // to the model: it is a pattern, not a judgement, and a wrong reading
+      // would fail the wallet check for a reason the rider could not guess at.
+      if (current.id === 'phone') {
+        const phone = readPhone(text)
+        if (!phone) {
+          if (asksSomething(text)) {
+            await runFaq(withUser)
+            say(...askMessages(current))
+          } else {
+            say(bot(current.need), ...askMessages(current).slice(1))
+          }
+          return
+        }
+        if (asksSomething(text)) {
+          await runFaq(withUser)
+          advanceFrom(step, [], { phone })
+        } else {
+          advanceFrom(step, [], { phone })
+        }
         return
       }
 
@@ -477,12 +519,14 @@ export function App() {
         } else {
           advanceFrom(step, [thanksName(first)], patch)
         }
-      } else {
+      } else if (asksSomething(text)) {
         await runFaq(withUser, current.ask)
         say(...askMessages(current))
+      } else {
+        say(bot(SAY.repeat.text), ...askMessages(current))
       }
     },
-    [current, step, runFaq, say, advanceFrom],
+    [current, step, runFaq, say, advanceFrom, missing],
   )
 
   const onSend = useCallback(
@@ -735,7 +779,7 @@ export function App() {
     // dropped the whole welcome on screen at once.
     setRevealed(0)
     setTyped(0)
-    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {}, ineligible: false })
+    setFlow({ step: 0, firstName: '', fullName: '', cnic: '', collected: {}, ineligible: false, missing: [], phone: '' })
     setError(null)
   }, [])
 
@@ -895,6 +939,28 @@ export function App() {
         </div>
       )}
 
+      {camOpen && (
+        <Camera
+          facing={camOpen}
+          label={camOpen === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
+          onCancel={() => setCamOpen(null)}
+          onShot={({ blob }) => {
+            setCamOpen(null)
+            void onFile(
+              new File([blob], camOpen === 'user' ? 'selfie.jpg' : 'photo.jpg', {
+                type: 'image/jpeg',
+              }),
+            )
+          }}
+          onUnavailable={() => {
+            // No camera, no permission, or an insecure origin. Fall back to the
+            // picker rather than leaving the button doing nothing.
+            setCamOpen(null)
+            ;(current?.facing === 'user' ? selfieCam : camera).current?.click()
+          }}
+        />
+      )}
+
       {recorder.state === 'recording' ? (
         <footer class="recbar">
           <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
@@ -1002,9 +1068,7 @@ export function App() {
             class="camera"
             aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
             disabled={busy}
-            onClick={() =>
-              (current?.facing === 'user' ? selfieCam : camera).current?.click()
-            }
+            onClick={() => setCamOpen(current?.facing === 'user' ? 'user' : 'environment')}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <path

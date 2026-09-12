@@ -76,6 +76,7 @@ body {
 button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 
 .shell {
+  position: relative;   /* the camera sheet is positioned against this */
   display: flex;
   flex-direction: column;
   /* dvh tracks the shrinking viewport as mobile browser chrome hides. */
@@ -765,4 +766,92 @@ footer button.stop { background: var(--err); }
   footer { padding: 12px 16px; }
   .msg { font-size: 15px; }
   .msg.user { max-width: 80%; }
+}
+
+/* ---------- the camera, opened in the chat ---------- */
+
+/* Sits over the thread rather than replacing it, so the rider can still see
+   the instruction they are following. */
+.camera {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+
+.camera-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.camera video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A selfie preview behaves like a mirror, which is what people expect of
+   their own face. The captured file is not flipped. */
+.camera video.mirror { transform: scaleX(-1); }
+
+.camera-wait {
+  position: absolute;
+  color: rgba(255, 255, 255, .75);
+  font-size: 14px;
+}
+
+.camera-bar {
+  flex: none;
+  display: grid;
+  grid-template-columns: 64px 1fr 64px;
+  align-items: center;
+  justify-items: center;
+  padding: 18px 12px calc(18px + var(--safe-b));
+  background: #000;
+}
+
+.camera-cancel {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.shutter {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .9);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.shutter span {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .12s ease;
+}
+
+.shutter:active span { transform: scale(.88); }
+.shutter:disabled { opacity: .4; cursor: default; }
+.shutter:disabled span { background: rgba(255, 255, 255, .5); }
+
+.camera-spacer { width: 44px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shutter span { transition: none; }
 }

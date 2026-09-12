@@ -24,6 +24,10 @@ export type Message = {
 
 export type FlowState = {
   step: number
+  /** Gates the rider did not meet. Recorded, never a reason to stop. */
+  missing?: string[]
+  /** E.164 without the plus, as the wallet check wants it. */
+  phone?: string
   firstName: string
   fullName: string
   cnic: string

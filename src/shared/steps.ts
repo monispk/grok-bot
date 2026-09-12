@@ -12,6 +12,7 @@ import { SAY } from './messages.ts'
 export type StepKind = 'text' | 'confirm' | 'upload' | 'gps'
 export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
 
+
 export type StepSpec = {
   id: string
   kind: StepKind
@@ -20,6 +21,13 @@ export type StepSpec = {
   facing?: 'user' | 'environment'
   /** Selfies must be photographs, not a PDF picked from storage. */
   imageOnly?: boolean
+  /**
+   * A requirement of the role rather than a question about it. A "no" is
+   * recorded and the rider carries on — their details are worth having, and
+   * they are told to come back when they have the missing thing. Turning them
+   * away at the door loses the application and the lead with it.
+   */
+  gate?: boolean
   ask: string
   /** What is required. Transport-neutral. */
   need: string
@@ -48,31 +56,36 @@ export const STEP_SPECS: StepSpec[] = [
   {
     id: 'name',
     kind: 'text',
-    audio: '/ask-name',
+    audio: '/ask-full_name',
     ask: 'Aapka poora naam jo CNIC par hai, kya hai?',
     need: 'Baraye meherbani apna poora naam likh kar bhejein.',
   },
   {
+    id: 'phone',
+    kind: 'text',
+    audio: '/ask-phone',
+    ask: 'Aap ka mobile number kya hai? Wohi number bhejein jis par aap ka Easypaisa ya JazzCash account hai.',
+    need: 'Baraye meherbani apna sahi mobile number likh kar bhejein.',
+  },
+  {
     id: 'smartphone',
     kind: 'confirm',
+    gate: true,
     audio: '/ask-smartphone',
     ask: 'Kya aap ke paas apna baray screen wala touch phone hai? Touch phone foodpanda rider job ke liye zaroori hai.',
     need: 'Baraye meherbani "haan" ya "nahi" likh kar bataein.',
   },
   {
-    id: 'selfie',
-    audio: '/ask-selfie',
-    kind: 'upload',
-    facing: 'user',
-    imageOnly: true,
-    ask: 'Ab apni aik selfie khenchein. Camera ka button dabayein aur apna chehra saaf dikhayein.',
-    need: 'Iske liye aap ki selfie chahiye.',
-    webHint: 'Neeche camera ka nishan daba kar apni tasveer khenchein.',
-    waHint: 'Apni selfie khenchein aur isi chat mein bhej dein.',
+    id: 'bike',
+    kind: 'confirm',
+    gate: true,
+    audio: '/ask-bike',
+    ask: 'Kya aap ke paas apni bike hai? Bike foodpanda rider job ke liye zaroori hai.',
+    need: 'Baraye meherbani "haan" ya "nahi" likh kar bataein.',
   },
   {
     id: 'license_front',
-    audio: '/ask-license-front',
+    audio: '/ask-licence',
     kind: 'upload',
     doc: 'license',
     ask: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.',
@@ -82,7 +95,7 @@ export const STEP_SPECS: StepSpec[] = [
   },
   {
     id: 'cnic_front',
-    audio: '/ask-cnic-front',
+    audio: '/ask-cnic_front',
     kind: 'upload',
     doc: 'cnic_front',
     ask: 'Ab apne CNIC ke saamne wale hissay (front) ki tasveer bhejein.',
@@ -91,39 +104,32 @@ export const STEP_SPECS: StepSpec[] = [
     waHint: WA_CLIP,
   },
   {
-    id: 'cnic_back',
-    audio: '/ask-cnic-back',
+    // After the CNIC, never before it: the selfie is matched against the
+    // photograph on the card, so asking first leaves nothing to match.
+    id: 'selfie',
+    audio: '/ask-selfie',
     kind: 'upload',
-    doc: 'cnic_back',
-    ask: 'Ab apne CNIC ke peechay wale hissay (back) ki tasveer bhejein.',
-    need: 'Iske liye CNIC ke back ki tasveer chahiye.',
-    webHint: WEB_CLIP,
-    waHint: WA_CLIP,
+    facing: 'user',
+    imageOnly: true,
+    ask: 'Shukriya! Ab ek chhoti selfie se aap ki pehchan verify karni hai. Neeche button dabayen — camera khud khul jayega. Selfie ho jane ke baad main khud aage barh jaungi.',
+    need: 'Iske liye aap ki selfie chahiye.',
+    webHint: 'Neeche camera ka nishan daba kar apni tasveer khenchein.',
+    waHint: 'Apni selfie khenchein aur isi chat mein bhej dein.',
   },
   {
-    id: 'utility_bill',
-    audio: '/ask-utility-bill',
-    kind: 'upload',
-    doc: 'bill',
-    ask: 'Ab apne ghar ka utility bill (bijli, gas ya paani) ki tasveer bhejein jis par aap ke rehne ka pata likha ho. Bill pichlay teen mahine ke andar ka hona chahiye. Bill kisi aur ke naam par ho to bhi theek hai.',
-    need: 'Iske liye utility bill ki tasveer chahiye jis par pata likha ho.',
-    webHint: WEB_CLIP,
-    waHint: WA_CLIP,
-  },
-  {
-    id: 'gps',
-    audio: '/ask-gps',
+    id: 'location',
+    audio: '/ask-location',
     kind: 'gps',
-    ask: 'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Neeche "Location bhejein" ka button dabayein.',
+    ask: 'Neeche button daba kar apni location bhej dein, taake hum aap ko sab se qareeb foodpanda office bata sakein.',
     need: 'Iske liye aap ki location chahiye.',
     webHint: 'Neeche "Location bhejein" ka button dabayein.',
-    waHint: 'WhatsApp mein attach (📎) daba kar "Location" chunein aur apni location bhejein.',
+    waHint: 'WhatsApp mein attach ka nishan daba kar Location bhejein.',
   },
 ]
 
-/** WhatsApp asks for location through its own menu, not an on-screen button. */
 export const WA_ASK: Record<string, string> = {
-  gps: 'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Attach (📎) daba kar "Location" chunein.',
+  location:
+    'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Attach (📎) daba kar "Location" chunein.',
   selfie: 'Ab apni aik selfie khenchein aur bhejein. Apna chehra saaf dikhayein.',
 }
 
@@ -217,27 +223,64 @@ export function asksSomething(text: string): boolean {
   return /[?؟]/.test(text) && t.trim().split(/\s+/).length >= 4
 }
 
+/**
+ * A Pakistani mobile number out of whatever the rider typed or said, or null.
+ *
+ * Returned in the shape the wallet check wants: 923001234567, no plus. Riders
+ * write it every way there is — 0300-1234567, +92 300 1234567, 3001234567 —
+ * and a transcribed voice note arrives with the digits spaced out. All of
+ * those are the same number, and none of them should be a second question.
+ */
+export function readPhone(text: string): string | null {
+  const digits = text.replace(/[^0-9]/g, '')
+  // Longest first: a number written with the country code contains the local
+  // one, so testing the short form first would truncate it.
+  const m =
+    /(?:^|[^0-9])(?:0092|92)(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `) ??
+    /(?:^|[^0-9])0(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `) ??
+    /(?:^|[^0-9])(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `)
+  return m ? `92${m[1]}` : null
+}
+
 export function readYesNo(text: string): 'yes' | 'no' | null {
   // A spoken answer comes back from Whisper in Urdu script, so both are read.
   if (/نہیں|نہ\b|نا\b/.test(text)) return 'no'
   if (/ہاں|جی|بالکل|ضرور/.test(text)) return 'yes'
 
   const t = ` ${text.toLowerCase().replace(/[^a-z\s]/g, ' ')} `
-  if (/\s(nahi|nahin|nahen|nai|nhi|no|nope|na)\s/.test(t)) return 'no'
-  if (/\s(haan|han|hann|ji|jee|g|yes|yep|bilkul|zaroor|hai)\s/.test(t)) return 'yes'
+  // "y" and "n" included: a rider on a phone keyboard types the shortest thing
+  // that could work, and being told it was not understood is a poor reward.
+  if (/\s(nahi|nahin|nahen|nai|nhi|no|nope|na|n)\s/.test(t)) return 'no'
+  if (/\s(haan|han|hann|ji|jee|g|yes|yep|yup|y|ok|okay|theek|bilkul|zaroor|hai)\s/.test(t))
+    return 'yes'
   return null
 }
 
 export const WELCOME_LINES = [
   'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',
   'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',
-  'Main aapki madad karungi. Chalein shuru karte hain.',
+  // The fee is stated before anything is asked for. A rider who learns the
+  // price after photographing their CNIC has spent the effort before hearing
+  // it, and that is where they walk.
+  SAY.docsBriefing.text,
 ]
 
-export const closing = (firstName: string, address?: string): string[] => [
+/**
+ * The end of collection. The four outcomes from the process document — paid,
+ * unpaid, not auto-verified, not eligible — land here once payment and the
+ * verification calls exist; today every rider gets the branch and the hours.
+ */
+export const closing = (firstName: string, branch?: string): string[] => [
   firstName
-    ? `Mubarak ho ${firstName}! Aap ki application manzoor ho gayi hai.`
-    : 'Mubarak ho! Aap ki application manzoor ho gayi hai.',
-  ...(address ? [`Aap ka pata jo bill par mila: ${address}`] : []),
-  'Ab aap foodpanda office aa kar apni uniform lein aur training mukammal karein. Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.',
+    ? `Shukriya ${firstName}! Aap ki maloomat mil gayi hai.`
+    : 'Shukriya! Aap ki maloomat mil gayi hai.',
+  `Ab aap ${branch ?? OFFICES.f8} aa kar apna ID card, delivery bag aur shirt le lein.`,
+  'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.',
 ]
+
+/** The two registration offices, from the process document. */
+export const OFFICES = {
+  f8: 'foodpanda office, Office No. 1, First Floor, Al Babar Center, F8 Markaz, Islamabad',
+  saddar:
+    'foodpanda office, Office No. 2, First Floor, Al Naseer Plaza, Marir Metro Station ke paas, Main Murree Road, Rawalpindi',
+} as const
