@@ -1,4 +1,4 @@
-import { audioSources, STEP_SPECS, type StepSpec } from '../shared/steps.ts'
+import { audioSources, closing, STEP_SPECS, type Outcome, type StepSpec } from '../shared/steps.ts'
 import type { Message } from './storage.ts'
 
 export type { StepKind, DocKind } from '../shared/steps.ts'
@@ -33,16 +33,21 @@ export const askMessages = (step: Step): Message[] => [
  * Closing messages. The office line is a placeholder — the nearest branch will
  * be looked up from the GPS fix once that lands.
  */
-export const finished = (firstName: string, address?: string): Message[] => [
-  bot(
-    firstName
-      ? `Mubarak ho ${firstName}! Aap ki application manzoor ho gayi hai.`
-      : 'Mubarak ho! Aap ki application manzoor ho gayi hai.',
-  ),
-  ...(address ? [bot(`Aap ka pata jo bill par mila: ${address}`)] : []),
-  bot(
-    'Ab aap foodpanda office aa kar apni uniform lein aur training mukammal karein. Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.',
-  ),
+/** The mandatory training video, which every closing message carries. */
+export const TRAINING_VIDEO = 'pofJtK4o2z4'
+
+/**
+ * The closing, in one of four shapes, each ending with the training video —
+ * the one thing every rider is given regardless of how their application went.
+ */
+export const finished = (outcome: Outcome, firstName: string, branch?: string): Message[] => [
+  ...closing(outcome, firstName, branch).map(bot),
+  {
+    role: 'assistant',
+    content: '',
+    kind: 'video',
+    video: TRAINING_VIDEO,
+  },
 ]
 
 export const thanksName = (firstName: string): Message =>

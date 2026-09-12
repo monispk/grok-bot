@@ -265,18 +265,53 @@ export const WELCOME_LINES = [
   SAY.docsBriefing.text,
 ]
 
+/** How the application ended, which decides what the rider is told. */
+export type Outcome =
+  | 'verified_paid'
+  | 'verified_unpaid'
+  | 'not_auto_verified'
+  | 'not_eligible'
+
+const HOURS = 'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.'
+
 /**
- * The end of collection. The four outcomes from the process document — paid,
- * unpaid, not auto-verified, not eligible — land here once payment and the
- * verification calls exist; today every rider gets the branch and the hours.
+ * The closing message, one of four, from the process document.
+ *
+ * They differ in what the rider must bring and what is still owed, so telling
+ * everyone the same thing would send people to a branch without the documents
+ * or the fee that visit depends on. A rider who did not meet a gate is not sent
+ * anywhere at all — they are told to come back here.
  */
-export const closing = (firstName: string, branch?: string): string[] => [
-  firstName
-    ? `Shukriya ${firstName}! Aap ki maloomat mil gayi hai.`
-    : 'Shukriya! Aap ki maloomat mil gayi hai.',
-  `Ab aap ${branch ?? OFFICES.f8} aa kar apna ID card, delivery bag aur shirt le lein.`,
-  'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.',
-]
+export function closing(outcome: Outcome, firstName: string, branch?: string): string[] {
+  const office = branch ?? OFFICES.f8
+  const hello = firstName ? `Shukriya ${firstName}!` : 'Shukriya!'
+
+  if (outcome === 'not_eligible')
+    return [
+      `${hello} Aap ki maloomat mehfooz kar li gayi hai.`,
+      'Jab aap ke paas bike aur touch phone dono aa jayen, tab isi chat par message karein — hum wahin se aage barha dein ge.',
+    ]
+
+  if (outcome === 'verified_paid')
+    return [
+      `${hello} Aap ki registration mukammal ho gayi hai aur fee mil gayi hai.`,
+      `Ab aap ${office} aa kar apna ID card, delivery bag aur shirt le lein.`,
+      HOURS,
+    ]
+
+  if (outcome === 'verified_unpaid')
+    return [
+      `${hello} Aap ke documents check ho gaye hain.`,
+      `Apna asli CNIC le kar ${office} aayein aur counter par fee jama kara dein.`,
+      HOURS,
+    ]
+
+  return [
+    `${hello} Aap ke documents mil gaye hain, magar inhein staff khud dekhe ga.`,
+    `Apne asli documents le kar ${office} aayein — staff wahan check kar ke fee lein ge.`,
+    HOURS,
+  ]
+}
 
 /** The two registration offices, from the process document. */
 export const OFFICES = {

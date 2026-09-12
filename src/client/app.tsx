@@ -20,7 +20,7 @@ import {
 } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
 import { Camera, type Shot } from './camera.tsx'
-import { DocumentBubble, Picture, VoiceNote } from './media.tsx'
+import { DocumentBubble, Picture, Video, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
 import { useRecorder, type Recording } from './recorder.ts'
@@ -392,7 +392,14 @@ export function App() {
               ? askMessages(next)
               : merged.ineligible
                 ? []
-                : finished(merged.firstName, merged.collected['bill.billAddress'])),
+                : finished(
+                    // Which of the four they get. Payment is not wired into
+                    // the flow yet, so nobody reaches "paid" from here.
+                    merged.ineligible || (merged.missing ?? []).length > 0
+                      ? 'not_eligible'
+                      : 'not_auto_verified',
+                    merged.firstName,
+                  )),
           ]),
         )
         return merged
@@ -907,6 +914,13 @@ export function App() {
                 <Stamp m={m} />
               </div>
             )
+          if (m.kind === 'video')
+            return (
+              <div key={i} class="msg bot media shot">
+                <Video id={m.video ?? ''} caption="foodpanda rider training video" />
+                <Stamp m={m} />
+              </div>
+            )
           if (m.kind === 'audio') {
             const mine = m.role === 'user'
             // A line Uplift is still reading shows nothing at all. The words are
@@ -1124,6 +1138,8 @@ export function App() {
             class="camera"
             aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
             disabled={busy}
+            // Front camera for a selfie, back camera for everything else. The
+            // paperclip beside it is the way to send a file already on the phone.
             onClick={() => setCamOpen(current?.facing === 'user' ? 'user' : 'environment')}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">

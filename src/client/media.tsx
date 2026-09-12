@@ -164,3 +164,39 @@ export function DocumentBubble({
     </a>
   )
 }
+
+/**
+ * The training video, as a card that becomes a player when it is asked to.
+ *
+ * Not an iframe from the start: every rider would then have YouTube's player
+ * loading in the background of a conversation they are still having, and on a
+ * phone on mobile data that is a real cost. It also keeps the video from
+ * talking over the voice notes, which are playing themselves by then.
+ */
+export function Video({ id, caption }: { id: string; caption: string }) {
+  const [playing, setPlaying] = useState(false)
+
+  if (playing)
+    return (
+      <div class="video">
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0&playsinline=1`}
+          title={caption}
+          allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    )
+
+  return (
+    <button class="video poster" onClick={() => setPlaying(true)} aria-label={caption}>
+      <img src={`https://i.ytimg.com/vi/${id}/hqdefault.jpg`} alt="" loading="lazy" />
+      <span class="video-play" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30">
+          <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
+        </svg>
+      </span>
+      <span class="video-caption">{caption}</span>
+    </button>
+  )
+}

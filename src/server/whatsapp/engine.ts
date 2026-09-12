@@ -147,7 +147,9 @@ async function advance(to: string, session: Session, confirm: string) {
     await say(to, session, confirm)
     return
   }
-  await say(to, session, confirm, ...closing(session.firstName, session.collected['bill.billAddress']))
+  // The fee and the verification results decide which of the four is sent.
+  const outcome = session.ineligible ? 'not_eligible' : 'not_auto_verified'
+  await say(to, session, confirm, ...closing(outcome, session.firstName))
 }
 
 /**

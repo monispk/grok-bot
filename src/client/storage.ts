@@ -1,5 +1,5 @@
 export type Role = 'user' | 'assistant'
-export type Kind = 'text' | 'image' | 'audio' | 'document'
+export type Kind = 'text' | 'image' | 'audio' | 'document' | 'video'
 export type Message = {
   role: Role
   content: string
@@ -8,6 +8,8 @@ export type Message = {
   src?: string
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
+  /** A YouTube id, for the training video every closing message carries. */
+  video?: string
   /** Identifies the bubble for its whole life, however the list is rebuilt. */
   id?: string
   /** When it was said, for the time in the corner of the bubble. */

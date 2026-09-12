@@ -109,8 +109,8 @@ export function Camera({
   }
 
   return (
-    <div class="camera" role="dialog" aria-label={label}>
-      <div class="camera-stage">
+    <div class="camsheet" role="dialog" aria-label={label}>
+      <div class="camsheet-stage">
         <video
           ref={video}
           class={facing === 'user' ? 'mirror' : ''}
@@ -118,10 +118,10 @@ export function Camera({
           muted
           autoplay
         />
-        {!ready && <span class="camera-wait">Camera khul raha hai…</span>}
+        {!ready && <span class="camsheet-wait">Camera khul raha hai…</span>}
       </div>
-      <div class="camera-bar">
-        <button class="camera-cancel" onClick={onCancel} aria-label="Band karein">
+      <div class="camsheet-bar">
+        <button class="camsheet-cancel" onClick={onCancel} aria-label="Band karein">
           ✕
         </button>
         <button
@@ -132,7 +132,7 @@ export function Camera({
         >
           <span />
         </button>
-        <span class="camera-spacer" />
+        <span class="camsheet-spacer" />
       </div>
     </div>
   )
