@@ -357,7 +357,7 @@ export const WELCOME_LINES = [
  * Re-record with: npx tsx scripts/voice.mjs --raw welcome "<this text>"
  */
 export const WELCOME_SPOKEN = [
-  'السلام علیکم! Foodpanda delivery rider کی job میں، خوش آمدید۔',
+  'السلام علیکم! Foodpanda delivery rider کی job میں خوش آمدید۔',
   'میرا نام Rozeena ہے۔ اگر آپ اچھی job ڈھونڈ رہے ہیں، تو Foodpanda delivery rider کی job کے لیے apply کریں۔',
   'Registration کے لیے، تین چیزیں چاہئیں۔',
   'پہلی، driving license کی picture۔ دوسری، ID card کی picture۔ تیسری، registration fee پچیس سو روپے۔',
