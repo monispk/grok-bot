@@ -12,6 +12,7 @@
  */
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
+import { STEP_SPECS, WELCOME_LINES } from '../src/shared/steps.ts'
 
 const APP = process.env.APP ?? 'http://localhost:3099'
 const results = []
@@ -46,17 +47,28 @@ const page = await ctx.newPage()
  * The sequence, by name. Tests say which step they mean rather than which
  * number: the order has changed once already, and bare indices moved every
  * test onto the wrong question without a single failure to show for it.
- * Mirrors STEP_SPECS in src/shared/steps.ts.
+ *
+ * Read from the app rather than copied. A copy drifted the moment a step was
+ * inserted in the middle — it went on naming steps correctly while pointing at
+ * the wrong ones, which is the failure the names were meant to prevent.
  */
-const ORDER = [
-  'name',
-  'phone',
-  'smartphone',
-  'bike',
-  'license_front',
-  'cnic_front',
-  'selfie',
-  'location',
+const ORDER = STEP_SPECS.map((s) => s.id)
+
+/**
+ * What the opening should look like on screen, kind by kind: the photograph,
+ * the spoken welcome, a bubble per written line, then the first question and
+ * its recording.
+ *
+ * Derived, not written out. As a literal it went stale the moment the welcome
+ * gained a line, and then failed three tests that were about staging and
+ * grouping rather than about how many bubbles the welcome has.
+ */
+const WELCOME_SHAPE = [
+  'IMG',
+  'AUD',
+  ...WELCOME_LINES.map(() => 'TXT'),
+  'TXT',
+  ...(STEP_SPECS[0].audio ? ['AUD'] : []),
 ]
 const at = (id) => {
   const i = ORDER.indexOf(id)
@@ -162,7 +174,7 @@ await check('the welcome arrives one message at a time, pinned to the bottom', a
       c.querySelector('img.photo') ? 'IMG' : c.querySelector('.voice') ? 'AUD' : 'TXT',
     ),
   )
-  assert.deepEqual(kinds, ['IMG', 'AUD', 'TXT', 'TXT', 'TXT', 'TXT', 'AUD'])
+  assert.deepEqual(kinds, WELCOME_SHAPE)
 })
 
 await check('a returning rider sees the whole thread at once', async () => {
@@ -209,6 +221,31 @@ await check('a second wrong document is refused again', async () => {
     return h.filter((m) => (m.content || '').includes('nahi lag rahi')).length >= 2
   })
   assert.ok(twice, 'the second attempt got no answer at all')
+})
+
+await check('the camera and paperclip are live only when a document is asked for', async () => {
+  const composer = () =>
+    page.evaluate(() => ({
+      camera: !document.querySelector('button.camera')?.disabled,
+      clip: !document.querySelector('button.attach')?.disabled,
+    }))
+
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  assert.deepEqual(await composer(), { camera: true, clip: true }, 'a document step')
+
+  // A saved photograph is the one thing the face match exists to catch, so the
+  // selfie can only come off the camera.
+  await primeAt(at('selfie'), [{ role: 'assistant', content: 'Selfie bhejein.' }])
+  assert.deepEqual(await composer(), { camera: true, clip: false }, 'the selfie step')
+
+  await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Touch phone hai?' }])
+  assert.deepEqual(await composer(), { camera: false, clip: false }, 'a question step')
+
+  // Still on the page, not removed: buttons that come and go read as broken.
+  const there = await page.evaluate(
+    () => !!document.querySelector('button.camera') && !!document.querySelector('button.attach'),
+  )
+  assert.ok(there, 'the buttons disappeared instead of greying out')
 })
 
 /** Records for long enough that MediaRecorder emits real bytes, then sends. */
@@ -390,7 +427,7 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
   )
   assert.deepEqual(
     shape,
-    ['IMG', 'AUD', 'TXT', 'TXT', 'TXT', 'TXT', 'AUD'],
+    WELCOME_SHAPE,
     `the welcome gained voice notes it did not need: ${shape.join(',')}`,
   )
 
@@ -457,7 +494,7 @@ await check('lines arrive in groups, with a pause between them', async () => {
   }
 
   const shape = seen[seen.length - 1].kinds
-  assert.deepEqual(shape, ['IMG', 'AUD', 'TXT', 'TXT', 'TXT', 'TXT', 'AUD'])
+  assert.deepEqual(shape, WELCOME_SHAPE)
 
   // Time from each arrival to the next.
   const gaps = seen.slice(1).map((s, i) => ({ kind: s.kinds[s.kinds.length - 1], ms: s.at - seen[i].at }))
@@ -529,8 +566,8 @@ await check('Clear says the welcome again, a group at a time', async () => {
     { role: 'assistant', content: 'Ab apne CNIC ke saamne wali tasveer bhejein.' },
     { role: 'user', content: 'theek hai' },
   ])
-  await page.waitForSelector('header button.ghost')
-  await page.click('header button.ghost')
+  await page.waitForSelector('header button.clear')
+  await page.click('header button.clear')
 
   const counts = new Set()
   const done = await settle(async () => {

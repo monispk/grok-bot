@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "dev:mock": "npm run build && concurrently -k -n mock,tts,app -c gray,gray,cyan \"node scripts/mock-upstream.mjs\" \"node scripts/mock-uplift.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 UPLIFT_API_KEY=mock UPLIFT_VOICE_ID=helpdesk-agent UPLIFT_BASE_URL=http://localhost:4011/v1 PORT=3099 node dist/server/index.js\"",
     "test": "tsx --test src/server/*.test.ts",
-    "e2e": "node e2e/flow.mjs",
+    "e2e": "tsx e2e/flow.mjs",
     "await-deploy": "node scripts/await-deploy.mjs"
   },
   "dependencies": {

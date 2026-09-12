@@ -229,6 +229,18 @@ export function App() {
   const busy = streaming !== null || working
   const current = STEPS[step]
 
+  /**
+   * Whether the camera and paperclip are live.
+   *
+   * A photograph sent when none was asked for cannot be filed against anything,
+   * so it is answered with a line explaining that and thrown away. Greying the
+   * buttons out says the same thing before the rider has taken the picture,
+   * which is the half of it that saves them the trouble. They stay in place
+   * rather than disappearing: a composer whose buttons come and go reads as
+   * broken, and their being visible is how a rider learns they exist at all.
+   */
+  const wantsUpload = current?.kind === 'upload'
+
   useEffect(() => {
     fetch('/api/session')
       .then((r) => r.json())
@@ -1217,7 +1229,7 @@ export function App() {
         >
           Data
         </button>
-        <button class="ghost" onClick={reset} disabled={busy}>
+        <button class="ghost clear" onClick={reset} disabled={busy}>
           Clear
         </button>
       </header>
@@ -1451,11 +1463,11 @@ export function App() {
           <button
             class="attach"
             aria-label="Tasveer ya file bhejein"
-            disabled={busy}
-            // Not on the selfie step. A file from storage is somebody's saved
-            // photograph, which is the one thing the face match exists to
+            // Greyed out unless a file from storage is what is being asked for.
+            // Not on the selfie step either: a file from storage is somebody's
+            // saved photograph, which is the one thing the face match exists to
             // catch — the selfie has to be taken now, on the front camera.
-            hidden={current?.facing === 'user'}
+            disabled={busy || !wantsUpload || current?.facing === 'user'}
             onClick={() => picker.current?.click()}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
@@ -1472,9 +1484,9 @@ export function App() {
           <button
             class="camera"
             aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
-            disabled={busy}
             // Front camera for a selfie, back camera for everything else. The
             // paperclip beside it is the way to send a file already on the phone.
+            disabled={busy || !wantsUpload}
             onClick={() => setCamOpen(current?.facing === 'user' ? 'user' : 'environment')}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
