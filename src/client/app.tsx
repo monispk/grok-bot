@@ -149,7 +149,8 @@ const fromModel = (content: string): Message => ({
  */
 function append(existing: Message[], incoming: Message[]): Message[] {
   const out = [...existing]
-  for (const m of incoming) {
+  for (let i = 0; i < incoming.length; i++) {
+    const m = incoming[i]!
     // Only an *immediate* repeat is suppressed. Looking back past the rider's
     // own messages meant a second wrong upload got no answer at all, because the
     // refusal matched the one from the previous attempt.
@@ -159,6 +160,10 @@ function append(existing: Message[], incoming: Message[]): Message[] {
     if (m.role === 'assistant' && !m.kind && repeats) continue
     out.push(m)
     if (m.role === 'assistant' && !m.kind) {
+      // A step's question arrives as the words followed by its own recording.
+      // Looking one ahead stops a second copy being attached to the same line.
+      const carried = incoming[i + 1]
+      if (carried?.role === 'assistant' && carried.kind === 'audio' && !carried.speak) continue
       const spoken = audioForText(m.content)
       if (spoken)
         out.push({ role: 'assistant', content: '', kind: 'audio', sources: audioSources(spoken) })
@@ -566,14 +571,17 @@ export function App() {
         const merged = { ...f, ...patch, step: i + 1 }
         // Collection just ended. A verified rider with a wallet is asked to pay
         // before anything is concluded; everyone else is concluded here.
+        // A rider with both accounts is charged on Easypaisa: it is the rail
+        // that is live, and the recorded line says JazzCash is still coming.
+        const rail = merged.rail === 'both' ? 'easypaisa' : merged.rail
         const payable =
           !next &&
           !merged.ineligible &&
           outcomeFor(merged) === 'verified_unpaid' &&
-          (merged.rail === 'easypaisa' || merged.rail === 'jazzcash')
+          (rail === 'easypaisa' || rail === 'jazzcash')
         if (payable)
           merged.payment = {
-            rail: merged.rail!,
+            rail: rail!,
             state: 'initiated',
             amountPaisa: 0,
             ref: '',
@@ -752,7 +760,9 @@ export function App() {
             setFlow((f) => ({ ...f, noWallet: true, rail: 'neither' }))
             say(bot(SAY.noWallet.text))
           } else {
-            say(bot(current.need), ...askMessages(current).slice(1))
+            // Not "answer the question again" — the number itself is wrong,
+            // and a rider who mistyped one digit deserves to be told so.
+            say(bot(SAY.badNumber.text))
           }
           return
         }

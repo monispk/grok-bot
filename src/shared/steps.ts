@@ -233,47 +233,61 @@ export function asksSomething(text: string): boolean {
 }
 
 /**
- * A Pakistani mobile number out of whatever the rider typed or said, or null.
+ * A Pakistani mobile number out of whatever the rider typed or said.
  *
- * Returned in the shape the wallet check wants: 923001234567, no plus. Riders
- * write it every way there is — 0300-1234567, +92 300 1234567, 3001234567 —
- * and a transcribed voice note arrives with the digits spaced out. All of
- * those are the same number, and none of them should be a second question.
+ * Length alone is not enough. A number with one digit too many came back as
+ * unreadable, and the rider was asked again in the same words — with nothing
+ * to tell them they had simply mistyped. Operator codes run 0300 to 0349, with
+ * 0355 for SCO in Gilgit-Baltistan and Kashmir, then seven more digits.
+ *
+ * Returned as the wallet check wants it: 923001234567, no plus.
  */
+const MOBILE = /^3(?:[0-4]\d|55)\d{7}$/
+
 export function readPhone(text: string): string | null {
   const digits = text.replace(/[^0-9]/g, '')
-  // Longest first: a number written with the country code contains the local
-  // one, so testing the short form first would truncate it.
-  const m =
-    /(?:^|[^0-9])(?:0092|92)(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `) ??
-    /(?:^|[^0-9])0(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `) ??
-    /(?:^|[^0-9])(3\d{9})(?:[^0-9]|$)/.exec(` ${digits} `)
-  return m ? `92${m[1]}` : null
+  const local = digits.startsWith('0092')
+    ? digits.slice(4)
+    : digits.startsWith('92')
+      ? digits.slice(2)
+      : digits.startsWith('0')
+        ? digits.slice(1)
+        : digits
+  return MOBILE.test(local) ? `92${local}` : null
 }
 
-export type Rail = 'easypaisa' | 'jazzcash' | 'neither'
+export type Rail = 'easypaisa' | 'jazzcash' | 'both' | 'neither'
 
 /**
- * Which wallet the rider's number is on, out of whatever they answered.
+ * Which wallet the rider's number is on.
  *
- * "Neither" is a real answer, not a failure to understand one: they still have
- * a number, and the fee is taken at the counter instead.
+ * Order matters. "dono nahi" is neither and "dono hain" is both, and they share
+ * their first word — reading that word alone recorded a rider who had both
+ * accounts as having none, and sent them down the counter path.
  */
 export function readRail(text: string): Rail | null {
   const t = ` ${text.toLowerCase().replace(/[^a-z0-9؀-ۿ\s]/g, ' ')} `
   const has = (...w: string[]) => w.some((x) => t.includes(` ${x} `))
 
-  // Checked before the two rails: "mere paas jazzcash nahi hai" names one.
-  if (
-    readYesNo(text) === 'no' ||
-    has('koi', 'nahi', 'none', 'neither', 'dono', 'کوئی', 'نہیں') ||
-    /\bnahi\b/.test(t)
-  )
-    return 'neither'
-  if (has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*paisa/i.test(text)) return 'easypaisa'
-  if (has('jazzcash', 'jazz', 'jc', 'جاز') || /jazz\s*cash/i.test(text)) return 'jazzcash'
+  // "samajh nahi aaya" is not "I have neither". Taking any sentence with
+  // "nahi" in it as a denial turned a rider saying they had not understood
+  // into a rider with no wallet at all.
+  if (/samajh nahi|pata nahi|nahi pata|maloom nahi|nahi samjh|سمجھ نہیں|پتہ نہیں/.test(t))
+    return null
+
+  const denied = has('nahi', 'nahin', 'nai', 'nhi', 'no', 'none', 'neither', 'نہیں', 'کوئی')
+  const both = has('dono', 'donon', 'both', 'دونوں')
+  const easypaisa = has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*paisa/i.test(text)
+  const jazzcash = has('jazzcash', 'jazz', 'jc', 'جاز') || /jazz\s*cash/i.test(text)
+
+  // A denial beats everything: "dono nahi", "koi nahi", "easypaisa nahi hai".
+  if (denied) return 'neither'
+  if (both || (easypaisa && jazzcash)) return 'both'
+  if (easypaisa) return 'easypaisa'
+  if (jazzcash) return 'jazzcash'
   return null
 }
+
 
 export function readYesNo(text: string): 'yes' | 'no' | null {
   // A spoken answer comes back from Whisper in Urdu script, so both are read.

@@ -87,6 +87,15 @@ export const SAY = {
    * to five kilometres looks exactly like a good one and sends somebody across
    * a city for nothing.
    */
+  /**
+   * A number that is not a Pakistani mobile number. Said plainly, because
+   * repeating the question told a rider who had typed one digit too many that
+   * they had somehow failed to answer it.
+   */
+  badNumber: say(
+    'Ye number theek nahi lag raha. Baraye meherbani apna gyarah hindson ka mobile number check kar ke dobara likhein, jaise 0300 1234567.',
+    '/say-bad-number',
+  ),
   pickOffice: say(
     'Koi baat nahi. Aap khud bata dein: aap Islamabad ke F8 Markaz office aayein ge ya Rawalpindi ke Saddar office? Neeche apna office chunein.',
     '/say-pick-office',
@@ -133,13 +142,15 @@ export const SAY = {
     '/say-repeat',
   ),
   /** Said once, before anything is asked for, so the fee is never a surprise. */
+  /**
+   * Said once, before anything is asked for, so the fee is never a surprise —
+   * and carrying the note about voice notes, because a rider who reads poorly
+   * needs to know they can speak back before they meet a question they cannot
+   * read. It rides here rather than arriving as a third recording of its own.
+   */
   docsBriefing: say(
-    'Registration mukammal karne ke liye do cheezein chahiye:\n1. License ki picture\n2. CNIC ki picture\n\nRegistration fee Rs. 2,500 hai. Yeh foodpanda ki official fee hai — kisi shakhs ko cash na dein.\n\nMain ye sab aap se ek ek kar ke maangungi.',
+    'Registration mukammal karne ke liye do cheezein chahiye: License ki picture, aur CNIC ki picture. Registration fee Rs. 2,500 hai. Yeh foodpanda ki official fee hai, kisi shakhs ko cash na dein. Main ye sab aap se ek ek kar ke maangungi. Agar aap ka koi sawal ho to neeche microphone ka button daba kar kisi bhi waqt voice note bhej saktay hain.',
     '/say-docs-briefing',
-  ),
-  askWalletRail: say(
-    'Aap ke paas Easypaisa hai ya JazzCash?',
-    '/ask-wallet-rail',
   ),
   railComingSoon: say(
     'JazzCash par ye sahulat abhi jald aa rahi hai. Filhaal Easypaisa se ho sakti hai — kya Easypaisa se jama kar dein? Warna aap office par counter par bhi de saktay hain.',

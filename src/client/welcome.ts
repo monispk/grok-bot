@@ -1,4 +1,4 @@
-import { audioSources } from '../shared/steps.ts'
+import { audioSources, WELCOME_LINES } from '../shared/steps.ts'
 import { askMessages, STEPS } from './flow.ts'
 import type { Message } from './storage.ts'
 
@@ -16,16 +16,10 @@ export const VOICE_SOURCES = audioSources('/welcome')
 export const WELCOME: Message[] = [
   { role: 'assistant', content: '', kind: 'image', src: '/welcome.jpg' },
   { role: 'assistant', content: '', kind: 'audio', sources: VOICE_SOURCES },
-  {
-    role: 'assistant',
-    content: 'Assalam o Alaikum! Foodpanda delivery rider ki job mein khush aamdeed.',
-  },
-  {
-    role: 'assistant',
-    content:
-      'Mera naam Rozeena hai. Agar aap achi job dhoondh rahay hain tu Foodpanda delivery rider ki job ke liye apply karein.',
-  },
-  { role: 'assistant', content: 'Main aapki madad karungi. Chalein shuru karte hain.' },
+  // The same words WhatsApp opens with. They used to be written out again
+  // here, so the fee briefing added to the shared list never reached the web
+  // app at all — and nothing said so, because both copies looked right.
+  ...WELCOME_LINES.map((content) => ({ role: 'assistant' as const, content })),
   // The name question and its spoken version, straight from the shared step.
   ...askMessages(STEPS[0]!),
 ]

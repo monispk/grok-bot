@@ -82,9 +82,14 @@ const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length
  */
 async function convert(t: string): Promise<string | null> {
   const want = words(t)
+  // Reasoning tokens bill against this budget, so a fixed cap that suits a
+  // short refusal starves a long one: the welcome came back unconverted and
+  // was read aloud in Latin letters with an English accent. Scaled to the
+  // sentence, with room for the reasoning on top.
+  const budget = Math.min(4000, Math.max(900, t.length * 6))
+
   for (let attempt = 0; attempt < 2; attempt++) {
-    // Reasoning tokens bill against this, and a tight cap comes back empty.
-    const out = await completeJson(SYSTEM, t, 900)
+    const out = await completeJson(SYSTEM, t, budget)
     const text = typeof out?.['text'] === 'string' ? (out['text'] as string).trim() : ''
     if (!text) continue
     // No shrinkage at all. The conversion is word for word — Urdu words become
