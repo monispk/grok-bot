@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { distanceKm, nearestOffice, OFFICES } from '../shared/steps.ts'
+import { canPickFrom, distanceKm, nearestOffice, OFFICES } from '../shared/steps.ts'
 
 test('the two offices are where the addresses say they are', () => {
   const apart = distanceKm(OFFICES.f8, OFFICES.saddar)
@@ -24,4 +24,16 @@ test('distance is symmetric, and zero at the door', () => {
   const a = distanceKm(OFFICES.f8, OFFICES.saddar)
   const b = distanceKm(OFFICES.saddar, OFFICES.f8)
   assert.ok(Math.abs(a - b) < 1e-9)
+})
+
+test('a pin is only trusted when it says something useful', () => {
+  const blueArea = { lat: 33.7089, lng: 73.0551 }
+  assert.ok(canPickFrom({ ...blueArea, accuracy: 20 }), 'a good fix in Islamabad')
+  assert.ok(canPickFrom(blueArea), 'no accuracy reported at all')
+
+  // A fix this vague names a city, not an office.
+  assert.ok(!canPickFrom({ ...blueArea, accuracy: 5000 }), 'a five-kilometre fix')
+
+  // Lahore. "Nearest" is not a useful word at this range.
+  assert.ok(!canPickFrom({ lat: 31.5204, lng: 74.3587, accuracy: 30 }), 'another city')
 })

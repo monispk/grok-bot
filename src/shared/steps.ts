@@ -401,3 +401,21 @@ export function distanceKm(
 export function nearestOffice(at: { lat: number; lng: number }): OfficeId {
   return distanceKm(at, OFFICES.f8) <= distanceKm(at, OFFICES.saddar) ? 'f8' : 'saddar'
 }
+
+/** A fix vaguer than this says which city, not which office. */
+export const VAGUE_METRES = 2000
+/** Beyond this, "nearest" is not a useful word. */
+export const FAR_KM = 40
+
+/**
+ * Whether a pin is good enough to choose an office from.
+ *
+ * A refusal is obvious. A bad fix is not: an IP-derived position looks
+ * identical to a satellite one and can be a city out. So accuracy is checked
+ * as well as presence, and a rider far from both is asked rather than told.
+ */
+export function canPickFrom(at: { lat: number; lng: number; accuracy?: number }): boolean {
+  if (at.accuracy != null && at.accuracy > VAGUE_METRES) return false
+  const nearest = Math.min(distanceKm(at, OFFICES.f8), distanceKm(at, OFFICES.saddar))
+  return nearest <= FAR_KM
+}

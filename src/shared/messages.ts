@@ -81,6 +81,32 @@ export const SAY = {
     'Koi baat nahi. Phir bhi apna mobile number bhejein, hum isi number par aap se raabta karein ge.',
     '/say-no-wallet',
   ),
+  /**
+   * When the pin cannot be trusted — refused, never arrived, too vague, or a
+   * rider far from both offices. Asking is better than guessing: a fix accurate
+   * to five kilometres looks exactly like a good one and sends somebody across
+   * a city for nothing.
+   */
+  pickOffice: say(
+    'Koi baat nahi. Aap khud bata dein: aap Islamabad ke F8 Markaz office aayein ge ya Rawalpindi ke Saddar office? Neeche apna office chunein.',
+    '/say-pick-office',
+  ),
+  feeAsking: say(
+    'Ab registration fee aap ke wallet se li ja rahi hai. Apne phone par aane wali request manzoor kar dein.',
+    '/say-fee-asking',
+  ),
+  /**
+   * A rail can time out while the debit succeeds, so this never says the money
+   * was not taken — only that the result is not known yet.
+   */
+  feePending: say(
+    'Aap ki payment confirm ho rahi hai. Jaise hi mukammal ho gi, hum isi chat par bata dein ge.',
+    '/say-fee-pending',
+  ),
+  feeFailed: say(
+    'Fee abhi jama nahi hui. Koi baat nahi, aap office par counter par fee jama kara saktay hain.',
+    '/say-fee-failed',
+  ),
   underReview: say(
     'Aap ke documents mil gaye hain. Hamari team inhein check kar rahi hai. Jab ye mukammal ho jayen ge, hum isi number par aap se raabta karein ge. Abhi office aane ki zaroorat nahi.',
     '/say-under-review',

@@ -18,7 +18,14 @@ import {
   thanksGps,
   thanksName,
 } from './flow.ts'
-import { audioSources, distanceKm, nearestOffice, OFFICES, type Outcome } from '../shared/steps.ts'
+import {
+  audioSources,
+  canPickFrom,
+  distanceKm,
+  nearestOffice,
+  OFFICES,
+  type Outcome,
+} from '../shared/steps.ts'
 import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../shared/quiz.ts'
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
 import {
@@ -194,7 +201,8 @@ export function App() {
     const loaded = store.loadState()
     return loaded.applicationId ? loaded : { ...loaded, applicationId: crypto.randomUUID() }
   })
-  const { step, firstName, fullName, cnic, collected, ineligible, missing, phone, quiz } = flow
+  const { step, firstName, fullName, cnic, collected, ineligible, missing, phone, quiz, pickOffice } =
+    flow
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
@@ -477,14 +485,101 @@ export function App() {
   )
 
 
+  /**
+   * Ends the conversation: the closing for this outcome, the training video,
+   * and the quiz offer. Reached either straight from the last step or, when a
+   * fee is being taken, once the rail has answered.
+   */
+  const conclude = useCallback(
+    (outcome: Outcome, f: store.FlowState, before: Message[] = []) => {
+      setFlow((prev) => ({
+        ...prev,
+        quiz:
+          outcome === 'not_eligible'
+            ? prev.quiz
+            : (prev.quiz ?? {
+                offered: true,
+                declined: false,
+                done: false,
+                asked: [],
+                at: 0,
+                answers: [],
+              }),
+      }))
+      setMessages((m) =>
+        append(m, [...before, ...finished(outcome, f.firstName, OFFICES[f.branch ?? 'f8'].address)]),
+      )
+    },
+    [],
+  )
+
+  /**
+   * Takes the fee, once and only once, when the flow has handed over to it.
+   *
+   * Never blocks and never accuses: a rail that times out may still have taken
+   * the money, so that ends as "being confirmed" rather than as a failure, and
+   * a rider whose payment does not go through is told they can pay at the
+   * counter — not that something is wrong with them.
+   */
+  const paying = useRef(false)
+  useEffect(() => {
+    if (step < STEPS.length) return
+    if (flow.payment?.state !== 'initiated' || paying.current) return
+    paying.current = true
+
+    void (async () => {
+      let result: store.FlowState['payment'] = {
+        rail: flow.rail ?? 'easypaisa',
+        state: 'failed',
+        amountPaisa: 0,
+        ref: '',
+        detail: 'no answer',
+      }
+      try {
+        const res = await fetch('/api/pay', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ rail: flow.rail, phone: flow.phone, cnic: flow.cnic }),
+        })
+        const got = (await res.json()) as Partial<NonNullable<store.FlowState['payment']>>
+        if (got?.state) result = { ...result, ...got }
+      } catch {
+        /* left as failed; the counter is always open */
+      }
+
+      setFlow((f) => ({ ...f, payment: result }))
+      const note =
+        result.state === 'paid'
+          ? []
+          : result.state === 'pending'
+            ? [bot(SAY.feePending.text)]
+            : [bot(SAY.feeFailed.text)]
+      conclude(result.state === 'paid' ? 'verified_paid' : 'verified_unpaid', flow, note)
+    })()
+  }, [step, flow, conclude])
+
   /** Move to the next step, or finish. Called only once the input was accepted. */
   const advanceFrom = useCallback(
     (i: number, extra: Message[], patch: Partial<store.FlowState> = {}) => {
       const next = STEPS[i + 1]
       setFlow((f) => {
         const merged = { ...f, ...patch, step: i + 1 }
-        // Collection just ended, and the rider is eligible: the quiz is on offer.
-        if (!next && !merged.ineligible && outcomeFor(merged) !== 'not_eligible')
+        // Collection just ended. A verified rider with a wallet is asked to pay
+        // before anything is concluded; everyone else is concluded here.
+        const payable =
+          !next &&
+          !merged.ineligible &&
+          outcomeFor(merged) === 'verified_unpaid' &&
+          (merged.rail === 'easypaisa' || merged.rail === 'jazzcash')
+        if (payable)
+          merged.payment = {
+            rail: merged.rail!,
+            state: 'initiated',
+            amountPaisa: 0,
+            ref: '',
+            detail: '',
+          }
+        else if (!next && outcomeFor(merged) !== 'not_eligible')
           merged.quiz = merged.quiz ?? {
             offered: true,
             declined: false,
@@ -498,13 +593,16 @@ export function App() {
             ...extra,
             ...(next
               ? askMessages(next)
-              : merged.ineligible
-                ? []
-                : finished(
-                    outcomeFor(merged),
-                    merged.firstName,
-                    OFFICES[merged.branch ?? 'f8'].address,
-                  )),
+              : merged.payment?.state === 'initiated'
+                ? // The fee is being taken; the closing waits for the rail.
+                  [bot(SAY.feeAsking.text)]
+                : merged.ineligible
+                  ? []
+                  : finished(
+                      outcomeFor(merged),
+                      merged.firstName,
+                      OFFICES[merged.branch ?? 'f8'].address,
+                    )),
           ]),
         )
         return merged
@@ -921,6 +1019,21 @@ export function App() {
     [current, step, fullName, cnic, collected, say, advanceFrom],
   )
 
+  /**
+   * Finishes the location step with a branch, however it was arrived at.
+   * Offered as buttons when the pin cannot be trusted, so a rider is never
+   * stuck at the last step with three documents already sent.
+   */
+  const chooseOffice = useCallback(
+    (branch: 'f8' | 'saddar', extra: Record<string, string> = {}) => {
+      advanceFrom(step, [thanksGps()], {
+        branch,
+        collected: { ...collected, 'gps.office': OFFICES[branch].short, ...extra },
+      })
+    },
+    [step, collected, advanceFrom],
+  )
+
   const onGps = useCallback(() => {
     setError(null)
     if (!current || current.kind !== 'gps') return
@@ -933,6 +1046,24 @@ export function App() {
       (pos) => {
         setWorking(false)
         const { latitude, longitude } = pos.coords
+        const at = { lat: latitude, lng: longitude, accuracy: pos.coords.accuracy }
+        if (!canPickFrom(at)) {
+          // A fix arrived, but not one worth trusting — too vague to tell the
+          // offices apart, or a rider nowhere near either. Ask.
+          setFlow((f) => ({
+            ...f,
+            pickOffice: true,
+            collected: {
+              ...f.collected,
+              'gps.latitude': latitude.toFixed(6),
+              'gps.longitude': longitude.toFixed(6),
+              'gps.accuracyMetres': String(Math.round(pos.coords.accuracy)),
+              'gps.office': 'asked the rider — the pin was not usable',
+            },
+          }))
+          say(bot(SAY.pickOffice.text))
+          return
+        }
         advanceFrom(
           step,
           [
@@ -963,7 +1094,14 @@ export function App() {
       },
       () => {
         setWorking(false)
-        say(bot(SAY.locationDenied.text))
+        // Asked once, then offered the choice. Repeating the request forever
+        // stranded a verified rider at the last step over a GPS chip.
+        setFlow((f) => ({
+          ...f,
+          pickOffice: true,
+          collected: { ...f.collected, 'gps.office': 'asked the rider — no location' },
+        }))
+        say(bot(SAY.locationDenied.text), bot(SAY.pickOffice.text))
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
     )
@@ -1171,11 +1309,22 @@ export function App() {
         {error && <div class="err banner">{error}</div>}
       </div>
 
-      {current?.kind === 'gps' && (
+      {current?.kind === 'gps' && !pickOffice && (
         <div class="gpsbar">
           <button onClick={onGps} disabled={busy}>
             📍 Location bhejein
           </button>
+        </div>
+      )}
+
+      {current?.kind === 'gps' && pickOffice && (
+        <div class="gpsbar offices">
+          {(['f8', 'saddar'] as const).map((id) => (
+            <button key={id} onClick={() => chooseOffice(id)} disabled={busy}>
+              <b>{OFFICES[id].short}</b>
+              <span>{OFFICES[id].address.replace('foodpanda office, ', '')}</span>
+            </button>
+          ))}
         </div>
       )}
 
