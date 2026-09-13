@@ -1,11 +1,13 @@
 export type Role = 'user' | 'assistant'
-export type Kind = 'text' | 'image' | 'audio' | 'document' | 'video' | 'choice'
+export type Kind = 'text' | 'image' | 'audio' | 'document' | 'video' | 'choice' | 'location'
 export type Message = {
   role: Role
   content: string
   /** Attachments render as bubbles but are never sent to the model. */
   kind?: Kind
   src?: string
+  /** A place on a map: the picture is in `src`, this is where it points. */
+  place?: { lat: number; lng: number; address: string }
   sources?: { src: string; type: string }[]
   doc?: { name: string; mime: string; size: number }
   /** A YouTube id, for the training video every closing message carries. */
@@ -75,6 +77,14 @@ export type FlowState = {
   collected: Record<string, string>
   /** Screened out — no smartphone. Kept, so they can resume if that changes. */
   ineligible?: boolean
+  /**
+   * The directions to the office have been given. Three paths end there and a
+   * reload can revisit any of them; without this a rider could be sent to the
+   * branch twice in one conversation.
+   */
+  sentBranch?: boolean
+  /** The fee has already been offered a second attempt. Only ever one. */
+  payRetried?: boolean
   /**
    * An earlier application on this number, found when the number was given.
    * The rider is being asked whether to carry on with it; nothing moves until

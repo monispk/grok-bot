@@ -10,7 +10,8 @@ import { Dashboard } from './dashboard.tsx'
 import {
   alreadyAnswered,
   askMessages,
-  finished,
+  branch,
+  submitted,
   quizAsk,
   quizSay,
   STEPS,
@@ -30,6 +31,7 @@ import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../sh
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
 import {
   asksSomething,
+  blockedOn,
   dropRepeat,
   readPhone,
   readRail,
@@ -514,6 +516,31 @@ export function App() {
   }, [])
 
   /**
+   * Where to go, what to bring, what is owed — and the pin.
+   *
+   * The last thing a rider is told, on every path: after the quiz, after
+   * declining it, and straight away for anyone not offered one. Sent exactly
+   * once, which `sentBranch` is for — three call sites and a reload between
+   * them is more than enough to send it twice.
+   */
+  const goToBranch = useCallback((f: store.FlowState, before: Message[] = []) => {
+    if (f.sentBranch) return
+    const office = OFFICES[f.branch ?? 'f8']
+    const outcome = outcomeFor(f)
+    setFlow((prev) => ({ ...prev, sentBranch: true }))
+    setMessages((m) =>
+      append(m, [
+        ...before,
+        ...branch(office, {
+          // Only a rider the rail has actually taken money from owes nothing.
+          owesFee: f.payment?.state !== 'paid',
+          waitingFor: blockedOn(f.missing ?? []),
+        }),
+      ]),
+    )
+  }, [])
+
+  /**
    * One turn of the quiz: accept it or not, then ten answers.
    *
    * The questions are chosen once, when the rider says yes, and kept in the
@@ -529,8 +556,9 @@ export function App() {
       if (!q.asked.length) {
         const answer = readYesNo(text)
         if (answer === 'no') {
-          setFlow((f) => ({ ...f, quiz: { ...q, declined: true, done: true } }))
-          say(...quizSay('declined'))
+          const done = { ...q, declined: true, done: true }
+          setFlow((f) => ({ ...f, quiz: done }))
+          goToBranch({ ...flow, quiz: done }, quizSay('declined'))
           return
         }
         if (answer !== 'yes') {
@@ -556,42 +584,37 @@ export function App() {
       const answers = [...q.answers, { id: current.id, chose }]
       const next = q.at + 1
       if (next >= q.asked.length) {
-        setFlow((f) => ({ ...f, quiz: { ...q, answers, at: next, done: true } }))
-        say(...quizSay('closing'))
+        const done = { ...q, answers, at: next, done: true }
+        setFlow((f) => ({ ...f, quiz: done }))
+        goToBranch({ ...flow, quiz: done }, quizSay('closing'))
         return
       }
       setFlow((f) => ({ ...f, quiz: { ...q, answers, at: next } }))
       const following = QUESTIONS.find((x) => x.id === q.asked[next])
       if (following) say(...quizAsk(following, next + 1, q.asked.length))
     },
-    [quiz, say],
+    [quiz, say, flow, goToBranch],
   )
 
-
   /**
-   * Ends the conversation: the closing for this outcome, the training video,
-   * and the quiz offer. Reached either straight from the last step or, when a
-   * fee is being taken, once the rail has answered.
+   * The first half of the ending: how it went, the video, and the offer to
+   * answer the quiz now. The directions wait until that is settled.
    */
   const conclude = useCallback(
     (outcome: Outcome, f: store.FlowState, before: Message[] = []) => {
-      setFlow((prev) => ({
-        ...prev,
-        quiz:
-          outcome === 'not_eligible'
-            ? prev.quiz
-            : (prev.quiz ?? {
-                offered: true,
-                declined: false,
-                done: false,
-                asked: [],
-                at: 0,
-                answers: [],
-              }),
-      }))
-      setMessages((m) =>
-        append(m, [...before, ...finished(outcome, f.firstName, OFFICES[f.branch ?? 'f8'].address)]),
-      )
+      const withQuiz: store.FlowState = {
+        ...f,
+        quiz: f.quiz ?? {
+          offered: true,
+          declined: false,
+          done: false,
+          asked: [],
+          at: 0,
+          answers: [],
+        },
+      }
+      setFlow((prev) => ({ ...prev, quiz: withQuiz.quiz }))
+      setMessages((m) => append(m, [...before, ...submitted(outcome, f.firstName)]))
     },
     [],
   )
@@ -662,13 +685,28 @@ export function App() {
       }
 
       setFlow((f) => ({ ...f, payment: result }))
+
+      /**
+       * One retry, offered once.
+       *
+       * A rail can refuse and then accept the same payment seconds later —
+       * JazzCash did exactly that in testing, rejecting instantly and going
+       * through twenty seconds afterwards. A rider who has already approved
+       * once should not be sent to a counter over that.
+       */
+      if (result.state !== 'paid' && !flow.payRetried) {
+        setFlow((f) => ({ ...f, payRetried: true }))
+        say(bot(SAY.feeRetry.text))
+        return
+      }
+
       // Still pending after the wait is "not received" as far as the rider is
       // concerned — the counter is open — but it stays pending on the record,
       // because the money may yet move.
       const note = result.state === 'paid' ? [] : [bot(SAY.feeFailed.text)]
       conclude(result.state === 'paid' ? 'verified_paid' : 'verified_unpaid', flow, note)
     })()
-  }, [step, flow, conclude])
+  }, [step, flow, conclude, say])
 
   /** Move to the next step, or finish. Called only once the input was accepted. */
   const advanceFrom = useCallback(
@@ -701,7 +739,10 @@ export function App() {
             ref: '',
             detail: '',
           }
-        else if (!next && outcomeFor(merged) !== 'not_eligible')
+        // Everybody is offered the quiz now, because everybody is sent to an
+        // office — a rider waiting on a bike included, who is told to come once
+        // they have it. Answering here saves them the same queue.
+        else if (!next)
           merged.quiz = merged.quiz ?? {
             offered: true,
             declined: false,
@@ -716,15 +757,9 @@ export function App() {
             ...(next
               ? askMessages(next)
               : merged.payment?.state === 'initiated'
-                ? // The fee is being taken; the closing waits for the rail.
+                ? // The fee is being taken; the rest waits for the rail.
                   [bot(SAY.feeAsking.text)]
-                : merged.ineligible
-                  ? []
-                  : finished(
-                      outcomeFor(merged),
-                      merged.firstName,
-                      OFFICES[merged.branch ?? 'f8'].address,
-                    )),
+                : submitted(outcomeFor(merged), merged.firstName)),
           ]),
         )
         return merged
@@ -817,6 +852,27 @@ export function App() {
    */
   const processText = useCallback(
     async (text: string, withUser: Message[]) => {
+      /**
+       * The fee did not go through and the rider was asked whether to try
+       * again. Yes puts the payment back to 'initiated', which the effect
+       * above is watching; no goes on to the counter.
+       */
+      if (flow.payment && flow.payment.state !== 'paid' && flow.payRetried && !flow.quiz) {
+        const yn = readYesNo(text)
+        if (yn === 'yes') {
+          paying.current = false
+          setFlow((f) => ({ ...f, payment: { ...f.payment!, state: 'initiated' } }))
+          say(bot(SAY.feeAsking.text))
+          return
+        }
+        if (yn === 'no') {
+          conclude('verified_unpaid', flow, [bot(SAY.feeFailed.text)])
+          return
+        }
+        say(bot(SAY.repeat.text), bot(SAY.feeRetry.text))
+        return
+      }
+
       // The rider is being asked whether to carry on an earlier application.
       // Yes puts them back where they were, on this device; no leaves the
       // earlier one where it is (it may be a brother's) and carries on here.
@@ -1529,6 +1585,39 @@ export function App() {
                   </span>
                 </span>
                 <span class="picklabel">{m.content}</span>
+                <Stamp m={m} />
+              </div>
+            )
+          if (m.kind === 'location' && m.place)
+            // Not `shot`: that pins the timestamp over the picture, and here
+            // there is a caption under it for the stamp to sit beside.
+            return (
+              <div key={i} class="msg bot media place-msg">
+                <a
+                  class="place"
+                  href={`https://www.google.com/maps/search/?api=1&query=${m.place.lat},${m.place.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span class="placemap">
+                    {m.src && <img src={m.src} alt="" width={640} height={300} draggable={false} />}
+                    {/* Drawn here rather than into the picture, so it stays
+                        sharp on a dense screen and the picture stays a map. */}
+                    <svg class="placepin" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+                      <path
+                        d="M12 22s7-6.3 7-12A7 7 0 0 0 5 10c0 5.7 7 12 7 12z"
+                        fill="#ea4335"
+                        stroke="#fff"
+                        stroke-width="1.6"
+                      />
+                      <circle cx="12" cy="10" r="2.6" fill="#fff" />
+                    </svg>
+                  </span>
+                  <span class="placefoot">
+                    <strong>{m.content}</strong>
+                    <small>Google Maps mein kholein</small>
+                  </span>
+                </a>
                 <Stamp m={m} />
               </div>
             )

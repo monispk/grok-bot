@@ -607,6 +607,99 @@ await check('the fee waits for the wallet app, and is not called missing while t
   assert.ok(!(await stored()).some((m) => (m.content || '').includes('jama nahi hui')), 'a paid fee was called missing')
 })
 
+/**
+ * Runs a rider through the last step — the location — so the ending arrives
+ * the way it does in life, rather than by priming a state nothing produces.
+ */
+const throughTheLastStep = async (extra) => {
+  const near = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    permissions: ['geolocation'],
+    geolocation: { latitude: 33.7125, longitude: 73.0373, accuracy: 20 },
+  })
+  const pg = await near.newPage()
+  await pg.goto(`${APP}/?chrome=no`)
+  await pg.evaluate(
+    ([at, more]) => {
+      localStorage.clear()
+      localStorage.setItem('grok-bot:flow', JSON.stringify({
+        step: at, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '3520201427267',
+        collected: { 'checks.faceMatch': 'match (99.0)', 'checks.licenceVsCnic': 'match' },
+        ineligible: false, phone: '923348234444', rail: 'easypaisa', ...more,
+      }))
+      localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
+    },
+    [ORDER.indexOf('location'), extra],
+  )
+  await pg.reload()
+  await pg.waitForSelector('.replies .reply')
+  await pg.click('.replies .reply')
+  return pg
+}
+const textOf = async (pg) =>
+  (await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]')))
+    .map((m) => m.content || '').join('\n')
+const logOf = (pg) => pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
+const waitFor = async (pg, needle, ms = 40_000) => {
+  const until = Date.now() + ms
+  while (Date.now() < until) {
+    if ((await textOf(pg)).includes(needle)) return true
+    await pg.waitForTimeout(200)
+  }
+  return false
+}
+
+await check('the ending is submitted, then video, then the quiz — directions last', async () => {
+  // Verified with a wallet: the fee is taken, the mock rail settles it.
+  const pg = await throughTheLastStep({})
+  assert.ok(await waitFor(pg, 'application jama ho gayi'), `never submitted: ${(await textOf(pg)).slice(-300)}`)
+
+  const log = await logOf(pg)
+  const order = log.map((m) => (m.kind === 'video' ? 'VIDEO' : m.kind === 'location' ? 'PIN' : m.content || ''))
+  const idx = (n) => order.findIndex((t) => t.includes(n))
+  assert.ok(order.indexOf('VIDEO') > idx('application jama ho gayi'), 'the video came before the submission line')
+  // The office is not named yet: that waits until the quiz is settled.
+  assert.equal(idx('is office aayein'), -1, 'directions arrived before the quiz was offered')
+  assert.equal(order.indexOf('PIN'), -1, 'the pin arrived before the quiz was offered')
+
+  await pg.waitForSelector('.replies .reply')
+  await pg.click('.replies .reply:last-child')
+  assert.ok(await waitFor(pg, 'is office aayein'), 'declining the quiz never produced the directions')
+  const end = await logOf(pg)
+  assert.ok(end.some((m) => m.kind === 'location' && (m.src || '').includes('office-f8')), 'no map pin')
+  const text = await textOf(pg)
+  assert.ok(text.includes('asli CNIC saath laayein'), 'not told to bring their CNIC')
+  assert.ok(!text.includes('counter par jama karayein'), 'a rider who paid was asked to pay again')
+  await pg.context().close()
+})
+
+await check('a rider with no wallet is told to pay at the counter, once', async () => {
+  const pg = await throughTheLastStep({ rail: 'neither', noWallet: true })
+  assert.ok(await waitFor(pg, 'application jama ho gayi'), 'never submitted')
+  await pg.waitForSelector('.replies .reply')
+  await pg.click('.replies .reply:last-child')
+  assert.ok(await waitFor(pg, 'is office aayein'), 'never directed to an office')
+  const text = await textOf(pg)
+  assert.ok(text.includes('counter par jama karayein'), 'never told to pay at the office')
+  const log = await logOf(pg)
+  assert.equal(log.filter((m) => (m.content || '').includes('is office aayein')).length, 1, 'directed twice')
+  assert.equal(log.filter((m) => m.kind === 'location').length, 1, 'two pins')
+  await pg.context().close()
+})
+
+await check('a rider waiting on a bike is told to come once they have it', async () => {
+  const pg = await throughTheLastStep({ missing: ['bike'], rail: 'neither', noWallet: true })
+  assert.ok(await waitFor(pg, 'application jama ho gayi'), 'never submitted')
+  await pg.waitForSelector('.replies .reply')
+  await pg.click('.replies .reply:last-child')
+  assert.ok(await waitFor(pg, 'aa jaye, to is office aayein'), `never directed: ${(await textOf(pg)).slice(-300)}`)
+  const text = await textOf(pg)
+  assert.ok(text.includes('apni bike'), 'did not say what they are waiting for')
+  assert.ok(text.includes('counter par jama karayein'), 'an unpaid rider was not told about the fee')
+  assert.ok((await logOf(pg)).some((m) => m.kind === 'location'), 'no pin for a waiting rider')
+  await pg.context().close()
+})
+
 await check('the quiz is answered by tapping a reply button', async () => {
   await page.goto(APP)
   await page.evaluate((done) => {

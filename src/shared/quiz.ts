@@ -439,8 +439,8 @@ export const QUESTIONS: Question[] = [
 
 /** What the bot says around the questions. Each has a recording. */
 export const INTRO = "یہ video دیکھنے کے بعد میں آپ سے چند چھوٹے سوال پوچھنا چاہوں گی، صرف یہ دیکھنے کے لیے کہ سب کچھ clear ہے۔ اگر آپ ان کے جواب یہیں دے دیں تو branch پر آپ کا کام جلدی ہو جائے گا اور زیادہ انتظار نہیں کرنا پڑے گا۔ ورنہ یہ سوال وہاں پوچھے جائیں گے۔ دس سوال ہیں، ہر سوال کے تین جواب۔ بس صحیح جواب پر tap کرنا ہے۔"
-export const CLOSING = "شکریہ! آپ نے سارے سوال مکمل کر لیے۔ اب branch پر تشریف لائیں، آپ کا کام جلدی ہو جائے گا۔"
-export const DECLINED = "کوئی بات نہیں! یہ سوال branch پر پوچھ لیے جائیں گے۔"
+export const CLOSING = "شکریہ! آپ نے سارے سوال مکمل کر لیے۔ اس سے office میں آپ کا کام جلدی ہو جائے گا۔"
+export const DECLINED = "کوئی بات نہیں! یہ سوال office پر پوچھ لیے جائیں گے۔"
 export const UNCLEAR = "معذرت، سمجھ نہیں آیا۔ option a، option b، یا option c میں سے کون سا؟"
 
 /** How many a rider is asked, out of the bank. */

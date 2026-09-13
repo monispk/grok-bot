@@ -1350,3 +1350,30 @@ footer button.stop { background: var(--err); }
 .reply b { font-weight: 600; margin-right: 6px; }
 .reply.office { display: flex; flex-direction: column; gap: 2px; }
 .reply.office small { font-size: 12.5px; font-weight: 400; color: var(--muted); }
+
+/* ---------- a place on a map ---------- */
+
+/* The office, as a picture a rider can tap. WhatsApp shows a location this
+   way: a slab of map, the name under it, and the whole thing opens maps. */
+.place { display: block; text-decoration: none; color: inherit; border-radius: 6px; overflow: hidden; }
+.placemap { position: relative; display: block; line-height: 0; }
+.placemap img { display: block; width: 100%; height: auto; background: var(--panel); }
+
+/* Centred on the picture, which was cropped around the office. */
+.placepin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  /* The point of the pin is at its bottom edge, not its middle. */
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45));
+}
+
+.placefoot { display: block; padding: 7px 10px 2px; }
+.placefoot strong { display: block; font-size: 14px; font-weight: 500; }
+.placefoot small { font-size: 12.5px; color: var(--accent); }
+
+/* The time sits under the caption, as it does on any other bubble — over the
+   picture it landed on top of the words. */
+.msg.place-msg { padding: 3px 3px 0; }
+.msg.place-msg .stamp { justify-content: flex-end; margin: 0 6px 3px 0; }

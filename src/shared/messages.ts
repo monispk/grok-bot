@@ -194,6 +194,14 @@ export const SAY = {
     'Aap ki payment confirm ho rahi hai. Jaise hi mukammal ho gi, hum isi chat par bata dein ge.',
     '/say-fee-pending',
   ),
+  /**
+   * The fee did not go through. Offered once, because a rail can refuse and
+   * then accept the same payment seconds later.
+   */
+  feeRetry: say(
+    'Fee jama nahi hui. Kya aap dobara koshish karna chahenge? Haan ya nahi.',
+    '/say-fee-retry',
+  ),
   feeFailed: say(
     'Fee abhi jama nahi hui. Koi baat nahi, aap office par counter par fee jama kara saktay hain.',
     '/say-fee-failed',

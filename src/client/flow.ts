@@ -1,4 +1,12 @@
-import { audioSources, closing, STEP_SPECS, type Outcome, type StepSpec } from '../shared/steps.ts'
+import {
+  audioSources,
+  blockedOn,
+  branchLines,
+  STEP_SPECS,
+  submittedLines,
+  type Outcome,
+  type StepSpec,
+} from '../shared/steps.ts'
 import {
   CLOSING as QUIZ_CLOSING,
   DECLINED as QUIZ_DECLINED,
@@ -63,22 +71,39 @@ export const askMessages = (step: Step): Message[] => [
 export const TRAINING_VIDEO = 'pofJtK4o2z4'
 
 /**
- * The closing, in one of four shapes, each ending with the training video —
- * the one thing every rider is given regardless of how their application went.
+ * The first half of the ending: how it went, the video, and the offer to take
+ * the quiz now. The directions to the office follow later, from `branch`.
  */
-export const finished = (outcome: Outcome, firstName: string, branch?: string): Message[] => [
-  ...closing(outcome, firstName, branch).map(bot),
+export const submitted = (outcome: Outcome, firstName: string): Message[] => [
+  ...submittedLines(outcome, firstName).map(bot),
   {
     role: 'assistant',
     content: '',
     kind: 'video',
     video: TRAINING_VIDEO,
   },
-  // Offered after the video, never before: it tests what the video said. Not
-  // offered at all to a rider who did not meet a gate — they have been told to
-  // come back when they have the bike or the phone, and a quiz on top of that
-  // is noise.
-  ...(outcome === 'not_eligible' ? [] : [bot(QUIZ_INTRO), voice('/quiz/intro')]),
+  // Offered after the video, never before: it tests what the video said.
+  bot(QUIZ_INTRO),
+  voice('/quiz/intro'),
+]
+
+/**
+ * The second half: where to go, what to bring, what is owed — and the pin,
+ * because a rider who has never been to F-8 Markaz needs to see it, not read
+ * an address. Every path ends here, exactly once.
+ */
+export const branch = (
+  office: { address: string; short: string; lat: number; lng: number; map: string },
+  opts: { owesFee: boolean; waitingFor?: string | null },
+): Message[] => [
+  ...branchLines(office.address, opts).map(bot),
+  {
+    role: 'assistant',
+    content: office.short,
+    kind: 'location',
+    src: office.map,
+    place: { lat: office.lat, lng: office.lng, address: office.address },
+  },
 ]
 
 /** A quiz question, numbered so the rider knows how far in they are. */

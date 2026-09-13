@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { audioForText, SAY } from '../../shared/messages.ts'
 import {
   asksSomething,
-  closing,
+  branchLines,
+  OFFICES,
+  submittedLines,
   readYesNo,
   STEP_SPECS,
   dropRepeat,
@@ -148,8 +150,15 @@ async function advance(to: string, session: Session, confirm: string) {
     return
   }
   // The fee and the verification results decide which of the four is sent.
+  // WhatsApp gets both halves at once: it has no quiz to sit between them.
   const outcome = session.ineligible ? 'not_eligible' : 'not_verified'
-  await say(to, session, confirm, ...closing(outcome, session.firstName))
+  await say(
+    to,
+    session,
+    confirm,
+    ...submittedLines(outcome, session.firstName),
+    ...branchLines(OFFICES.f8.address, { owesFee: true }),
+  )
 }
 
 /**

@@ -517,71 +517,88 @@ export type Outcome =
 const HOURS = 'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.'
 
 /**
- * The closing message, one of four, from the process document.
+ * The end of the application, in two halves.
  *
- * They differ in what the rider must bring and what is still owed, so telling
- * everyone the same thing would send people to a branch without the documents
- * or the fee that visit depends on. A rider who did not meet a gate is not sent
- * anywhere at all — they are told to come back here.
+ * The first half says how it went and sends the rider to the training video.
+ * The second half — where to go, what to bring, what is still owed — is held
+ * back until after the quiz has been offered and either taken or declined, so
+ * a rider is not given directions and then asked to sit through ten questions
+ * before they can act on them. Both halves are reached by every path.
  */
-export function closing(outcome: Outcome, firstName: string, branch?: string): string[] {
-  const office = branch ?? OFFICES.f8.address
+export function submittedLines(outcome: Outcome, firstName: string): string[] {
   const hello = firstName ? `Shukriya ${firstName}!` : 'Shukriya!'
 
-  if (outcome === 'not_eligible')
-    return [
-      `${hello} Aap ki maloomat mehfooz kar li gayi hai.`,
-      'Jab aap ke paas bike aur touch phone dono aa jayen, tab isi chat par message karein — hum wahin se aage barha dein ge.',
-    ]
+  const how =
+    outcome === 'verified_paid'
+      ? `${hello} Aap ke documents check ho gaye hain aur fee bhi mil gayi hai.`
+      : outcome === 'verified_unpaid'
+        ? `${hello} Aap ke documents check ho gaye hain. Fee abhi jama nahi hui.`
+        : outcome === 'not_verified'
+          ? `${hello} Aap ke documents mil gaye hain. Inhein office par check kiya jaye ga.`
+          : `${hello} Aap ki maloomat mehfooz kar li gayi hai.`
 
-  if (outcome === 'verified_paid')
-    return [
-      `${hello} Aap ki registration mukammal ho gayi hai aur fee mil gayi hai.`,
-      `Ab aap ${office} aa kar apna ID card, delivery bag aur shirt le lein.`,
-      HOURS,
-    ]
+  return [how, 'Aap ki application jama ho gayi hai. Ab ye training video dekh lein.']
+}
 
-  if (outcome === 'verified_unpaid')
-    return [
-      `${hello} Aap ke documents check ho gaye hain.`,
-      `Apna asli CNIC le kar ${office} aayein aur counter par fee jama kara dein.`,
-      HOURS,
-    ]
+/** What the rider is still waiting on, in the words they used to say it. */
+export function blockedOn(missing: string[]): string | null {
+  const bike = missing.includes('bike')
+  const phone = missing.includes('smartphone')
+  if (bike && phone) return 'apni bike aur touch phone'
+  if (bike) return 'apni bike'
+  if (phone) return 'touch phone'
+  return null
+}
 
-  /**
-   * Nobody is sent to a branch on an unverified application. A rider who makes
-   * that journey — often across a city, often losing a day's earnings — and is
-   * turned away at the counter has paid for our uncertainty. They are told the
-   * truth instead: it is being looked at, and we will call.
-   */
-  return [
-    `${hello} Aap ke documents mil gaye hain. Hamari team inhein check kar rahi hai.`,
-    'Jab ye mukammal ho jayen ge, hum isi number par aap se raabta karein ge. Abhi office aane ki zaroorat nahi.',
-  ]
+/**
+ * Where to go, what to bring, and what is still owed.
+ *
+ * One shape for everybody, because a rider comparing notes with another rider
+ * should hear the same thing. Only two sentences vary: a rider still waiting
+ * on a bike or a phone is told to come once they have it, and a rider who has
+ * not paid is told the fee is taken at the counter.
+ */
+export function branchLines(
+  office: string,
+  opts: { owesFee: boolean; waitingFor?: string | null },
+): string[] {
+  const lines: string[] = []
+  lines.push(
+    opts.waitingFor
+      ? `Jab aap ke paas ${opts.waitingFor} aa jaye, to is office aayein:`
+      : 'Ab is office aayein:',
+  )
+  lines.push(office)
+  lines.push('Apna asli CNIC saath laayein — office par dikhana hoga.')
+  if (opts.owesFee)
+    lines.push('Registration fee pachees sau rupay office ke counter par jama karayein.')
+  lines.push(HOURS)
+  return lines
 }
 
 /**
  * The two registration offices, from the process document.
  *
- * The coordinates are approximate — F-8 Markaz and the Marir Chowk end of
- * Murree Road — and only ever used to decide which of two offices is nearer.
- * They are about twelve kilometres apart, so a few hundred metres of error
- * changes nothing; worth replacing with surveyed pins all the same.
+ * The coordinates are the offices themselves, given by Rozee. They were my
+ * own approximations until a rider was going to be shown the pin and walk to
+ * it — a use that will not tolerate being half a kilometre out.
  */
 export const OFFICES = {
   f8: {
     address:
       'foodpanda office, Office No. 1, First Floor, Al Babar Center, F8 Markaz, Islamabad',
     short: 'F8 Markaz, Islamabad',
-    lat: 33.7104,
-    lng: 73.0479,
+    map: '/office-f8.jpg',
+    lat: 33.7125,
+    lng: 73.0373,
   },
   saddar: {
     address:
       'foodpanda office, Office No. 2, First Floor, Al Naseer Plaza, Marir Metro Station ke paas, Main Murree Road, Rawalpindi',
     short: 'Saddar, Rawalpindi',
-    lat: 33.6007,
-    lng: 73.0679,
+    map: '/office-saddar.jpg',
+    lat: 33.5995,
+    lng: 73.0627,
   },
 } as const
 
