@@ -417,6 +417,7 @@ export type Variant =
   | 'v2+mobile+cnic'
   | 'v2+mobile+cnic-unhashed'
   | 'v2+mobile+cnic13'
+  | 'v2+mobile+cnic-dashed'
   | 'v1.1+ppmpf+cnic'
   | 'legacy-gateway'
 
@@ -515,6 +516,19 @@ export async function probeJazzcash(
       fields: {
         ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone),
         pp_CNIC: cnic.replace(/\D/g, ''),
+      },
+    },
+    /**
+     * Thirteen digits got past the hash and were called an invalid pp_CNIC;
+     * six digits failed the hash whether or not we hashed them, which only
+     * makes sense if the gateway normalises the value before hashing. So: the
+     * printed form, dashes and all.
+     */
+    'v2+mobile+cnic-dashed': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: {
+        ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone),
+        pp_CNIC: cnic.replace(/\D/g, '').replace(/^(\d{5})(\d{7})(\d)$/, '$1-$2-$3'),
       },
     },
     'v1.1+ppmpf+cnic': {
