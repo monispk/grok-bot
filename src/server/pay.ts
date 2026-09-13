@@ -14,6 +14,12 @@ import { CHARGE_PAISA, feeOverridden, rupees } from './fee.ts'
  * Both rails ship disabled. These are live merchant accounts — every initiate
  * is a real debit — so nothing here moves money until the enable flags are set
  * deliberately.
+ *
+ * Built against the rails' own specifications, in docs/rails: Easypaisa's
+ * "REST APIs without RSA", JazzCash's "MWallet REST API v1.1 (Without CNIC)",
+ * its "Status Inquiry Guide" and its "HMAC-SHA256 Calculation". Where this
+ * file disagreed with them it was this file that was wrong, and the comments
+ * below say how — the details cost a rider a real payment to find.
  */
 export type PayState = 'initiated' | 'pending' | 'paid' | 'failed'
 
@@ -46,10 +52,15 @@ const JC = {
   enabled:
     (process.env.JAZZCASH_ENABLED ?? 'false') !== 'false' &&
     (process.env.JAZZCASH_PRODUCTION_READY ?? 'false') !== 'false',
-  base: process.env.JAZZCASH_BASE_URL ?? '',
+  // The orchestrator host from the v1.1 guide. An older environment variable
+  // pointed at payments.jazzcash.com.pk, which serves a different API.
+  base: process.env.JAZZCASH_BASE_URL || 'https://onlinepayments.jazzcash.com.pk',
   merchantId: process.env.JAZZCASH_MERCHANT_ID ?? '',
   password: process.env.JAZZCASH_PASSWORD ?? '',
   salt: process.env.JAZZCASH_INTEGRITY_SALT ?? '',
+  // Mandatory, and must be the URL registered with JazzCash: any other
+  // value fails validation.
+  returnUrl: process.env.JAZZCASH_RETURN_URL ?? '',
   prefix: process.env.JAZZCASH_TXNREF_PREFIX ?? 'RzB',
   timeout: Number(process.env.JAZZCASH_TIMEOUT_SECONDS ?? 30) * 1000,
 }
@@ -80,12 +91,16 @@ const stamp = (d = new Date()) =>
  * salt. Responses and IPNs carry the same hash and are checked the same way —
  * an unsigned status is not a status.
  */
-export function secureHash(fields: Record<string, string>, salt: string): string {
+export function hashMessage(fields: Record<string, string>, salt: string): string {
   const ordered = Object.keys(fields)
     .filter((k) => k !== 'pp_SecureHash' && fields[k] !== '' && fields[k] != null)
     .sort()
     .map((k) => fields[k])
-  return createHmac('sha256', salt).update([salt, ...ordered].join('&')).digest('hex').toUpperCase()
+  return [salt, ...ordered].join('&')
+}
+
+export function secureHash(fields: Record<string, string>, salt: string): string {
+  return createHmac('sha256', salt).update(hashMessage(fields, salt)).digest('hex').toUpperCase()
 }
 
 export function hashMatches(body: Record<string, string>, salt: string): boolean {
@@ -120,6 +135,26 @@ function guardAmount() {
       `pay: charging ${rupees(CHARGE_PAISA)} — a test override is in force. ` +
         'Riders are being told a different figure.',
     )
+}
+
+/**
+ * Easypaisa's response codes, from the REST API guide. Written out because
+ * responseDesc is not always sent, and because "0013" tells a recruiter far
+ * more than a bare code does.
+ */
+const EP_CODES: Record<string, string> = {
+  '0000': 'SUCCESS',
+  '0001': 'SYSTEM ERROR',
+  '0002': 'REQUIRED FIELD MISSING',
+  '0003': 'INVALID ORDER ID',
+  '0004': 'INVALID MERCHANT ACCOUNT NUMBER',
+  '0005': 'MERCHANT ACCOUNT NOT ACTIVE',
+  '0006': 'INVALID STORE ID',
+  '0007': 'STORE NOT ACTIVE',
+  '0008': 'PAYMENT METHOD NOT ENABLED',
+  '0010': 'INVALID CREDENTIALS',
+  '0013': 'LOW BALANCE',
+  '0014': 'ACCOUNT DOES NOT EXIST',
 }
 
 /** Asks Easypaisa to debit the rider's mobile account. */
@@ -160,15 +195,28 @@ export async function payEasypaisa(phone: string, orderId: string): Promise<Atte
   if (!json) return { ...base, detail }
 
   const code = String(json['responseCode'] ?? json['response_code'] ?? '')
-  const message = String(json['responseDesc'] ?? json['response_message'] ?? '')
-  // 0000 is taken; 0001 is in progress and settles later.
+  const message = EP_CODES[code] ?? String(json['responseDesc'] ?? json['response_message'] ?? '')
   if (code === '0000') return { ...base, state: 'paid', detail: message || 'paid' }
-  if (code === '0001') return { ...base, state: 'pending', detail: message || 'in progress' }
+  // SYSTEM ERROR is not "in progress" — the spec has no in-progress code for
+  // an MA initiate — but the order may exist all the same, so it is left for
+  // the inquiry to settle rather than called a failure here.
+  if (code === '0001') return { ...base, state: 'pending', detail: `${message} — confirming by inquiry` }
   return { ...base, detail: message || `code ${code}` }
 }
 
-/** Asks JazzCash to debit the rider's mobile wallet. */
-export async function payJazzcash(phone: string, cnic: string, ref: string): Promise<Attempt> {
+/**
+ * Asks JazzCash to debit the rider's mobile wallet — MWallet REST API v1.1.
+ *
+ * The payload is exact. Its guide says parameters may not be added or removed
+ * and names must match, and this file used to send an older shape: pp_BankID,
+ * pp_ProductID, pp_SubMerchantID, pp_MobileNumber and pp_CNIC, against an
+ * endpoint (/ApplicationAPI/API/Payment/DoMWalletTransaction) that is not the
+ * orchestrator's. The wallet number belongs in ppmpf_1, and is mandatory.
+ *
+ * Amounts are paisa: the guide says multiply by 100, so Rs 2 is "200", which
+ * is what CHARGE_PAISA already holds. Expiry is one day after the transaction.
+ */
+export async function payJazzcash(phone: string, _cnic: string, ref: string): Promise<Attempt> {
   const base: Attempt = {
     rail: 'jazzcash',
     state: 'failed',
@@ -180,33 +228,31 @@ export async function payJazzcash(phone: string, cnic: string, ref: string): Pro
   guardAmount()
 
   const now = new Date()
-  const expires = new Date(now.getTime() + 60 * 60_000)
+  const expires = new Date(now.getTime() + 24 * 60 * 60_000)
   const fields: Record<string, string> = {
-    pp_Version: '1.1',
-    pp_TxnType: 'MWALLET',
-    pp_Language: 'EN',
-    pp_MerchantID: JC.merchantId,
-    pp_SubMerchantID: '',
-    pp_Password: JC.password,
-    pp_BankID: '',
-    pp_ProductID: '',
-    pp_TxnRefNo: ref,
-    // JazzCash takes paisa, and gets them.
     pp_Amount: String(CHARGE_PAISA),
-    pp_TxnCurrency: 'PKR',
-    pp_TxnDateTime: stamp(now),
     pp_BillReference: 'riderfee',
     pp_Description: 'foodpanda rider registration fee',
+    pp_Language: 'EN',
+    pp_MerchantID: JC.merchantId,
+    pp_Password: JC.password,
+    pp_ReturnURL: JC.returnUrl,
+    pp_TxnCurrency: 'PKR',
+    pp_TxnDateTime: stamp(now),
     pp_TxnExpiryDateTime: stamp(expires),
-    pp_ReturnURL: process.env.JAZZCASH_RETURN_URL ?? '',
-    pp_MobileNumber: localNumber(phone),
-    pp_CNIC: cnic.replace(/\D/g, '').slice(-6),
-    ppmpf_1: '',
+    pp_TxnRefNo: ref,
+    pp_TxnType: 'MWALLET',
+    pp_Version: '1.1',
+    ppmpf_1: localNumber(phone),
+    ppmpf_2: '',
+    ppmpf_3: '',
+    ppmpf_4: '',
+    ppmpf_5: '',
   }
   fields['pp_SecureHash'] = secureHash(fields, JC.salt)
 
   const { json, timedOut, detail } = await send(
-    `${JC.base}/ApplicationAPI/API/Payment/DoMWalletTransaction`,
+    `${JC.base}/payment-orchestrator/api/v1/rest/payments/m-wallet`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -220,8 +266,8 @@ export async function payJazzcash(phone: string, cnic: string, ref: string): Pro
 
   const code = String(json['pp_ResponseCode'] ?? '')
   const message = String(json['pp_ResponseMessage'] ?? '')
-  if (code === '000') return { ...base, state: 'paid', detail: message || 'paid' }
-  if (code === '121' || code === '124') return { ...base, state: 'pending', detail: message }
+  if (code === '000' || code === '121') return { ...base, state: 'paid', detail: message || 'paid' }
+  if (code === '124' || code === '157') return { ...base, state: 'pending', detail: message || 'in progress' }
   return { ...base, detail: message || `code ${code}` }
 }
 
@@ -268,7 +314,15 @@ export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
   return { ...base, detail: message || status || `code ${code}` }
 }
 
-/** Asks JazzCash what became of a transaction. Signed like everything else. */
+/**
+ * Asks JazzCash what became of a transaction — the Status Inquiry API.
+ *
+ * pp_ResponseCode here reports on the *inquiry*, and is "000" whenever the
+ * inquiry itself worked. The payment is pp_Status and pp_PaymentResponseCode,
+ * where 121 means completed and debited. Reading the wrong one, this file
+ * called a completed JazzCash payment "pending" — and after the wait, a rider
+ * who had paid would have been told their fee never arrived.
+ */
 export async function inquireJazzcash(ref: string): Promise<Attempt> {
   const base: Attempt = { rail: 'jazzcash', state: 'pending', amountPaisa: CHARGE_PAISA, ref, detail: '' }
   if (!jazzcashReady()) return { ...base, state: 'failed', detail: 'not enabled' }
@@ -279,16 +333,22 @@ export async function inquireJazzcash(ref: string): Promise<Attempt> {
   }
   fields['pp_SecureHash'] = secureHash(fields, JC.salt)
   const { json, timedOut, detail } = await send(
-    `${JC.base}/ApplicationAPI/API/PaymentInquiry/Inquire`,
+    `${JC.base}/payment-orchestrator/api/v1/rest/payments/status/inquiry`,
     { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) },
     JC.timeout,
   )
   if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
-  const code = String(json['pp_ResponseCode'] ?? '')
-  const message = String(json['pp_ResponseMessage'] ?? '')
-  if (code === '000') return { ...base, state: 'paid', detail: message || 'paid' }
-  if (code === '121' || code === '124' || code === '' ) return { ...base, detail: message || 'in progress' }
-  return { ...base, state: 'failed', detail: message || `code ${code}` }
+
+  const asked = String(json['pp_ResponseCode'] ?? '')
+  if (asked && asked !== '000')
+    return { ...base, detail: `inquiry ${asked}: ${String(json['pp_ResponseMessage'] ?? '')}` }
+
+  const status = String(json['pp_Status'] ?? '').toUpperCase()
+  const paidCode = String(json['pp_PaymentResponseCode'] ?? '')
+  const why = String(json['pp_PaymentResponseMessage'] ?? '') || status || paidCode
+  if (status === 'COMPLETED' || paidCode === '121') return { ...base, state: 'paid', detail: why || 'paid' }
+  if (status === 'PENDING' || paidCode === '124' || paidCode === '') return { ...base, detail: why || 'in progress' }
+  return { ...base, state: 'failed', detail: `${status || paidCode}: ${why}` }
 }
 
 export const inquire = (rail: 'easypaisa' | 'jazzcash', ref: string) =>
