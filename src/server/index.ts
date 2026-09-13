@@ -16,6 +16,7 @@ import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
 import { extractName } from './extract.ts'
+import { transcodeReady } from './audio.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, sweep } from './db.ts'
@@ -52,6 +53,8 @@ app.get('/healthz', (c) =>
     db: dbReady(),
     fee: FEE_PAISA,
     rails: anyRailReady(),
+    // Whether a 3gp or AMR voice note from a phone's recorder app can be read.
+    transcode: transcodeReady(),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),

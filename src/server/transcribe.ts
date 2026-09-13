@@ -1,4 +1,5 @@
 import { FormData } from 'undici'
+import { forWhisper } from './audio.ts'
 import { groqFetch } from './provider.ts'
 
 /**
@@ -25,17 +26,24 @@ const VOCABULARY =
 
 export type Transcript =
   | { ok: true; text: string }
-  | { ok: false; reason: 'empty' | 'too-big' | 'unavailable' | 'silent' }
+  | { ok: false; reason: 'empty' | 'too-big' | 'unavailable' | 'silent' | 'unreadable' }
 
 export async function transcribe(bytes: Uint8Array, mime: string): Promise<Transcript> {
   if (bytes.length < MIN_BYTES) return { ok: false, reason: 'empty' }
   if (bytes.length > MAX_BYTES) return { ok: false, reason: 'too-big' }
 
+  // The container is read from the bytes and, where Whisper cannot decode it,
+  // converted. The declared type is only a fallback for the extension.
+  const ready = await forWhisper(bytes)
+  if (!ready) return { ok: false, reason: 'unreadable' }
+  if (ready.converted) console.log(`whisper: converted ${ready.kind} to wav`)
+
   try {
     const form = new FormData()
     // Whisper picks the decoder from the extension, so the name has to match the
-    // container the browser actually recorded.
-    form.append('file', new Blob([bytes as BlobPart], { type: mime }), filename(mime))
+    // container that was actually recorded.
+    const name = ready.kind === 'unknown' ? filename(mime) : `speech.${ready.ext}`
+    form.append('file', new Blob([ready.bytes as BlobPart]), name)
     form.append('model', MODEL)
     form.append('language', LANGUAGE)
     form.append('prompt', VOCABULARY)

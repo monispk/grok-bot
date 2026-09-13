@@ -67,10 +67,42 @@ export const SAY = {
     'Aap ki awaaz saaf nahi aayi. Baraye meherbani dobara bolein, ya likh kar bhejein.',
     '/say-voice-unclear',
   ),
-  micDenied: say(
-    'Microphone ki ijazat nahi mili. Baraye meherbani apne phone mein microphone ki ijazat dein, ya apna jawab likh kar bhejein.',
-    '/say-mic-denied',
+  /**
+   * The microphone, one line per way it can be unavailable.
+   *
+   * There used to be one line for all of them, telling the rider to allow the
+   * microphone in their phone's settings. On UC Browser and Opera Mini — a
+   * seventh of the phones in Pakistan — there is no such setting; what they
+   * need is Chrome. A rider who had blocked it needs to be shown where; a rider
+   * on a call needs to end the call. Same failure on screen, four different
+   * things to do, so four lines, and a sheet for each.
+   */
+  micUnsupported: say(
+    'Is browser mein voice note nahi bhej sakte. Ye page Chrome mein kholein, neeche button dabayein. Ya apna jawab likh kar bhejein.',
+    '/say-mic-unsupported',
   ),
+  micAsk: say(
+    'Bolne ke liye microphone ki ijazat chahiye. Ab phone poochay ga, Allow dabayein.',
+    '/say-mic-ask',
+  ),
+  micBlocked: say(
+    'Microphone band hai. Isay kholne ke liye upar address ke saath taalay ke nishan par dabayein, phir Permissions mein Microphone ko Allow karein. Ya apna jawab likh kar bhejein.',
+    '/say-mic-blocked',
+  ),
+  micBusy: say(
+    'Microphone kisi aur app mein chal raha hai. Doosri app band kar ke dobara koshish karein.',
+    '/say-mic-busy',
+  ),
+  micNone: say(
+    'Is phone mein microphone nahi mil raha. Apna jawab likh kar bhejein.',
+    '/say-mic-none',
+  ),
+  /** Shown after a tap, because a tap is what a rider used to WhatsApp tries first. */
+  holdToTalk: say(
+    'Bolne ke liye microphone ko dabaye rakhein, bolein, phir chhor dein.',
+    '/say-hold-to-talk',
+  ),
+  micReady: say('Shukriya. Ab microphone ko dabaye rakh kar bolein.', '/say-mic-ready'),
   /**
    * "I have neither", said while the number is still being asked for. The
    * number is wanted regardless — it is how anyone reaches them — and the
@@ -189,7 +221,7 @@ export const SAY = {
   ),
   /** Everything that is not a requirement, kept out of the list above. */
   briefingNote: say(
-    'Ye foodpanda ki official fee hai, kisi shakhs ko cash na dein. Main ye sab aap se ek ek kar ke maangungi. Agar aap ka koi sawal ho to neeche microphone ka button daba kar kisi bhi waqt voice note bhej saktay hain.',
+    'Ye foodpanda ki official fee hai, kisi shakhs ko cash na dein. Main ye sab aap se ek ek kar ke maangungi. Agar aap ka koi sawal ho to neeche microphone ka button dabaye rakh kar kisi bhi waqt voice note bhej saktay hain.',
     '/say-briefing-note',
   ),
   railComingSoon: say(

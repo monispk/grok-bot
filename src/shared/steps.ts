@@ -443,7 +443,7 @@ export const WELCOME_SPOKEN = [
   'Registration کے لیے، تین چیزیں چاہئیں۔',
   'پہلی، driving license کی picture۔ دوسری، ID card کی picture۔ تیسری، registration fee پچیس سو روپے۔',
   'یہ foodpanda کی official fee ہے، کسی شخص کو cash نہ دیں۔ میں یہ سب، آپ سے ایک ایک کر کے مانگوں گی۔',
-  'اگر آپ کا کوئی سوال ہو، تو نیچے microphone کا button دبا کر، کسی بھی وقت voice note بھیج سکتے ہیں۔',
+  'اگر آپ کا کوئی سوال ہو، تو نیچے microphone کا button دبائے رکھ کر، کسی بھی وقت voice note بھیج سکتے ہیں۔',
 ].join('\n')
 
 /**

@@ -40,11 +40,13 @@ import {
   TYPE_NAME_PLEASE,
 } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
-import { Camera, type Shot } from './camera.tsx'
 import { DocumentBubble, Picture, Video, VoiceNote } from './media.tsx'
 import * as store from './storage.ts'
 import type { Message } from './storage.ts'
-import { useRecorder, type Recording } from './recorder.ts'
+import { useRecorder, type MicProblem, type Recording } from './recorder.ts'
+import { CANCEL_PX, useMicGesture } from './mic.tsx'
+import { MicSheet } from './micsheet.tsx'
+import { shrinkImage } from './image.ts'
 import { setOrder, stopAll } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
@@ -69,6 +71,8 @@ const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.
 const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
+
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 let seq = 0
 /**
@@ -214,8 +218,13 @@ export function App() {
   const [streaming, setStreaming] = useState<string | null>(null)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  /** Which way the camera should face while it is open, or null when it is not. */
-  const [camOpen, setCamOpen] = useState<'user' | 'environment' | null>(null)
+  /** The sheet explaining why the microphone cannot be used, or null. */
+  const [micSheet, setMicSheet] = useState<MicProblem | null>(null)
+  /** The "hold to talk" hint, shown for a moment after a tap. */
+  const [hint, setHint] = useState(false)
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Lines said once per visit, so reopening a sheet does not repeat them. */
+  const saidOnce = useRef(new Set<string>())
   /** Testing only: everything collected so far, on one screen. */
   const [dashOpen, setDashOpen] = useState(false)
   const [gate, setGate] = useState({ required: false, authed: true })
@@ -227,6 +236,8 @@ export function App() {
   const picker = useRef<HTMLInputElement | null>(null)
   const camera = useRef<HTMLInputElement | null>(null)
   const selfieCam = useRef<HTMLInputElement | null>(null)
+  /** The phone's own recorder app, for when the browser will not give up the mic. */
+  const recApp = useRef<HTMLInputElement | null>(null)
 
   const busy = streaming !== null || working
   const current = STEPS[step]
@@ -926,12 +937,65 @@ export function App() {
     [busy, current, messages, say, processText],
   )
 
-  const recorder = useRecorder(onVoice, () => say(bot(SAY.micDenied.text)))
+  /**
+   * A line said once per visit. The sheet it belongs to can be opened as often
+   * as the rider taps the microphone; the chat behind it says why only the
+   * first time. Repeating it on every tap is what read as the app being stuck.
+   */
+  const sayOnce = useCallback(
+    (key: keyof typeof SAY) => {
+      if (saidOnce.current.has(key)) return
+      saidOnce.current.add(key)
+      say(bot(SAY[key].text))
+    },
+    [say],
+  )
+
+  const showHint = useCallback(() => {
+    setHint(true)
+    if (hintTimer.current) clearTimeout(hintTimer.current)
+    hintTimer.current = setTimeout(() => setHint(false), 2200)
+    sayOnce('holdToTalk')
+  }, [sayOnce])
+
+  const onMicProblem = useCallback(
+    (p: MicProblem) => {
+      setMicSheet(p)
+      sayOnce(
+        p === 'unsupported'
+          ? 'micUnsupported'
+          : p === 'ask'
+            ? 'micAsk'
+            : p === 'blocked'
+              ? 'micBlocked'
+              : p === 'busy'
+                ? 'micBusy'
+                : 'micNone',
+      )
+    },
+    [sayOnce],
+  )
+
+  const recorder = useRecorder({ onDone: onVoice, onProblem: onMicProblem, onHint: showHint })
+  const mic = useMicGesture(recorder)
+
+  /**
+   * The sheet's own button: ask for the permission from a tap the browser will
+   * honour, or find out whether it has been given since. Either way the answer
+   * decides whether the sheet closes or explains again.
+   */
+  const tryMic = useCallback(async () => {
+    const got = await recorder.allow()
+    if (got === 'granted') {
+      setMicSheet(null)
+      say(bot(SAY.micReady.text))
+    } else onMicProblem(got)
+  }, [recorder, say, onMicProblem])
 
   const onFile = useCallback(
-    async (file: File) => {
+    async (raw: File) => {
       setError(null)
-      if (current?.imageOnly && !file.type.startsWith('image/')) {
+      if (current?.imageOnly && !raw.type.startsWith('image/')) {
         say(bot(current.wrong))
         return
       }
@@ -952,6 +1016,10 @@ export function App() {
         )
         return
       }
+
+      // A phone camera hands back several megabytes. Shrunk here, the same
+      // card is a few hundred kilobytes and the right way up.
+      const file = await shrinkImage(raw)
 
       // Show the photo straight away. A camera shot on a slow connection takes
       // seconds to upload and verify, and a rider who sees nothing assumes the
@@ -1379,54 +1447,26 @@ export function App() {
 
       {dashOpen && <Dashboard flow={flow} onClose={() => setDashOpen(false)} />}
 
-      {camOpen && (
-        <Camera
-          facing={camOpen}
-          label={camOpen === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
-          onCancel={() => setCamOpen(null)}
-          onShot={({ blob }) => {
-            setCamOpen(null)
-            void onFile(
-              new File([blob], camOpen === 'user' ? 'selfie.jpg' : 'photo.jpg', {
-                type: 'image/jpeg',
-              }),
-            )
-          }}
-          onUnavailable={() => {
-            // No camera, no permission, or an insecure origin. Fall back to the
-            // picker rather than leaving the button doing nothing.
-            setCamOpen(null)
-            ;(current?.facing === 'user' ? selfieCam : camera).current?.click()
+      {micSheet && (
+        <MicSheet
+          kind={micSheet}
+          onClose={() => setMicSheet(null)}
+          onAllow={tryMic}
+          onRetry={tryMic}
+          onRecorderApp={() => recApp.current?.click()}
+          onType={() => {
+            setMicSheet(null)
+            document.querySelector<HTMLTextAreaElement>('footer textarea')?.focus()
           }}
         />
       )}
+      {hint && (
+        <div class="toast" role="status">
+          Bolne ke liye dabaye rakhein
+        </div>
+      )}
 
-      {recorder.state === 'recording' ? (
-        <footer class="recbar">
-          <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
-            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-              <path
-                d="M4 7h16M10 4h4M9 7v12m3-12v12m3-12v12M6 7l1 13h10l1-13"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.7"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </button>
-          <span class="reclive">
-            <span class="recdot" />
-            {`${Math.floor(recorder.seconds / 60)}:${String(recorder.seconds % 60).padStart(2, '0')}`}
-          </span>
-          <button class="fab send" onClick={recorder.stop} aria-label="Bhejein">
-            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-              <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
-            </svg>
-          </button>
-        </footer>
-      ) : (
-      <footer>
+      <footer class={recorder.state}>
         <input
           ref={picker}
           class="hidden"
@@ -1439,8 +1479,10 @@ export function App() {
             if (f) void onFile(f)
           }}
         />
-        {/* capture="environment" opens the rear camera straight away on a phone.
-            Desktop browsers ignore it, so the button is hidden there. */}
+        {/* The phone's own camera app, back and front. It needs no permission
+            from the browser, which is how a rider whose browser refused the
+            camera still sends a photograph — and it gives the full-resolution
+            picture, which the in-chat preview never could. */}
         <input
           ref={camera}
           class="hidden"
@@ -1467,6 +1509,57 @@ export function App() {
             if (f) void onFile(f)
           }}
         />
+        {/* The phone's recorder app. Whatever it records, the server converts. */}
+        <input
+          ref={recApp}
+          class="hidden"
+          type="file"
+          accept="audio/*"
+          capture="environment"
+          onChange={(e) => {
+            const el = e.target as HTMLInputElement
+            const f = el.files?.[0]
+            el.value = ''
+            if (f) void onVoice({ blob: f, mime: f.type || 'audio/mp4', seconds: 0 })
+          }}
+        />
+
+        {recorder.state === 'locked' ? (
+          <>
+          <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                d="M4 7h16M10 4h4M9 7v12m3-12v12m3-12v12M6 7l1 13h10l1-13"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <span class="reclive">
+            <span class="recdot" />
+            {mmss(recorder.seconds)}
+          </span>
+          </>
+        ) : recorder.state === 'recording' || recorder.state === 'asking' ? (
+          <div class="rectray">
+            <span class="reclive">
+              <span class="recdot" />
+              {mmss(recorder.seconds)}
+            </span>
+            <span
+              class="slidecancel"
+              style={{
+                transform: `translateX(${mic.dx}px)`,
+                opacity: Math.max(0, 1 + mic.dx / CANCEL_PX),
+              }}
+            >
+              ‹ Cancel ke liye slide karein
+            </span>
+          </div>
+        ) : (
         <div class="pill">
           <textarea
             value={draft}
@@ -1513,8 +1606,11 @@ export function App() {
             aria-label={current?.facing === 'user' ? 'Selfie khenchein' : 'Tasveer khenchein'}
             // Front camera for a selfie, back camera for everything else. The
             // paperclip beside it is the way to send a file already on the phone.
+            // The click on the input has to happen inside this tap: a browser
+            // ignores one that arrives after an await, which is how the old
+            // fallback to this same input never opened anything.
             disabled={busy || !wantsUpload}
-            onClick={() => setCamOpen(current?.facing === 'user' ? 'user' : 'environment')}
+            onClick={() => (current?.facing === 'user' ? selfieCam : camera).current?.click()}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <path
@@ -1528,6 +1624,7 @@ export function App() {
             </svg>
           </button>
         </div>
+        )}
 
         {streaming !== null ? (
           <button class="fab stop" onClick={stop} aria-label="Rok dein">
@@ -1546,30 +1643,51 @@ export function App() {
               <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
             </svg>
           </button>
-        ) : (
-          <button
-            class="fab mic"
-            aria-label="Awaaz mein jawab dein"
-            disabled={busy}
-            onClick={() => void recorder.start()}
-          >
+        ) : recorder.state === 'locked' ? (
+          <button class="fab send" onClick={recorder.send} aria-label="Bhejein">
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-              <path
-                d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15z"
-                fill="currentColor"
-              />
-              <path
-                d="M18.5 11.2a6.5 6.5 0 0 1-13 0M12 17.8V21"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.9"
-                stroke-linecap="round"
-              />
+              <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
             </svg>
           </button>
+        ) : (
+          <span class="micwrap">
+            <span
+              class={`lockpill ${recorder.state === 'recording' ? 'up' : ''}`}
+              style={{ transform: `translate(-50%, ${mic.dy * 0.4}px)` }}
+              aria-hidden="true"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18">
+                <rect x="5" y="10" width="14" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" />
+              </svg>
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+              </svg>
+            </span>
+            {/* Held, not tapped. The gesture handlers are the whole feature. */}
+            <button
+              class={`fab mic ${recorder.state}`}
+              aria-label="Bolne ke liye dabaye rakhein"
+              disabled={busy}
+              {...mic.handlers}
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                <path
+                  d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15z"
+                  fill="currentColor"
+                />
+                <path
+                  d="M18.5 11.2a6.5 6.5 0 0 1-13 0M12 17.8V21"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </span>
         )}
       </footer>
-      )}
 
       <div class="credit">
         <span>Powered by</span>

@@ -39,6 +39,7 @@ const browser = await chromium.launch({
   ],
 })
 const ctx = await browser.newContext({
+  permissions: ['microphone'],
   viewport: { width: 390, height: 844 },
   permissions: ['microphone'],
 })
@@ -281,13 +282,172 @@ await check('saying "I have neither" at the number question is not asked again',
   assert.ok(!asked, 'the wallet question was asked after the rider said they had neither')
 })
 
-/** Records for long enough that MediaRecorder emits real bytes, then sends. */
-const speak = async (ms = 1200) => {
-  await page.click('button.mic')
-  await page.waitForSelector('footer.recbar')
-  await page.waitForTimeout(ms)
-  await page.click('footer.recbar button.send')
+/** Where the microphone button is, so the mouse can hold it. */
+const micAt = async () => {
+  const box = await page.locator('button.mic').boundingBox()
+  if (!box) throw new Error('no microphone button on screen')
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 }
+
+/** Holds the microphone for long enough that MediaRecorder emits real bytes, then lets go. */
+const speak = async (ms = 1200) => {
+  const { x, y } = await micAt()
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.waitForSelector('footer.recording')
+  await page.waitForTimeout(ms)
+  await page.mouse.up()
+}
+
+await check('a tap on the microphone is a hint, not a recording', async () => {
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('button.mic')
+  const before = (await stored()).length
+  const { x, y } = await micAt()
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.waitForTimeout(120)
+  await page.mouse.up()
+  await page.waitForSelector('.toast')
+  await page.waitForTimeout(600)
+  const sent = await page.evaluate(() => document.querySelectorAll('.msg.user .voice').length)
+  assert.equal(sent, 0, 'a tap sent a recording')
+  // The hint is also said aloud, once, so the rider who cannot read it hears it.
+  const said = (await stored()).filter((m) => (m.content || '').includes('dabaye rakhein'))
+  assert.equal(said.length, 1, 'the hold-to-talk line was not said exactly once')
+  assert.ok((await stored()).length > before)
+})
+
+await check('sliding left cancels the recording', async () => {
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('button.mic')
+  const { x, y } = await micAt()
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.waitForSelector('footer.recording')
+  await page.waitForTimeout(900)
+  await page.mouse.move(x - 160, y, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+  assert.ok(await page.$('footer.idle'), 'the composer did not come back')
+  const sent = await page.evaluate(() => document.querySelectorAll('.msg.user .voice').length)
+  assert.equal(sent, 0, 'a cancelled recording was sent')
+})
+
+await check('sliding up locks the recording, and the bar sends it', async () => {
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('button.mic')
+  const { x, y } = await micAt()
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.waitForSelector('footer.recording')
+  await page.mouse.move(x, y - 130, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForSelector('footer.locked', { timeout: 3000 })
+  // Hands off, still recording.
+  await page.waitForTimeout(1200)
+  assert.ok(await page.$('footer.locked .bin'), 'no bin while locked')
+  await page.click('footer.locked button.send')
+  const sent = await settle(async () =>
+    page.evaluate(() => document.querySelectorAll('.msg.user .voice').length === 1),
+  )
+  assert.ok(sent, 'the locked recording was not sent from the bar')
+})
+
+await check('a blocked microphone gets the guide, said once', async () => {
+  // Chrome answers a blocked site without a prompt. The old code asked on
+  // every tap and said the same thing every time.
+  const blocked = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  await blocked.addInitScript(() => {
+    const denied = { state: 'denied', addEventListener() {}, removeEventListener() {} }
+    navigator.permissions.query = () => Promise.resolve(denied)
+  })
+  const p2 = await blocked.newPage()
+  await p2.goto(APP)
+  await p2.evaluate(() => localStorage.clear())
+  await p2.reload()
+  await p2.waitForSelector('button.mic')
+  const box = await p2.locator('button.mic').boundingBox()
+  const tap = async () => {
+    await p2.mouse.move(box.x + 20, box.y + 20)
+    await p2.mouse.down()
+    await p2.waitForTimeout(100)
+    await p2.mouse.up()
+  }
+  await tap()
+  await p2.waitForSelector('.sheet')
+  const guide = await p2.evaluate(() => document.querySelector('.sheet')?.textContent || '')
+  assert.ok(guide.includes('Permissions'), 'the guide does not say where to go')
+  assert.ok(await p2.$('.sheet .sheet-steps'), 'no steps drawn')
+  // Close, tap again: the sheet returns, the chat does not repeat itself.
+  await p2.click('.sheetback', { position: { x: 10, y: 10 } })
+  await p2.waitForSelector('.sheet', { state: 'detached' })
+  await tap()
+  await p2.waitForSelector('.sheet')
+  const said = await p2.evaluate(() =>
+    JSON.parse(localStorage.getItem('grok-bot:history') || '[]').filter((m) =>
+      (m.content || '').includes('Microphone band hai'),
+    ).length,
+  )
+  assert.equal(said, 1, `the blocked line was said ${said} times`)
+  await blocked.close()
+})
+
+await check('a browser that cannot record is sent to Chrome', async () => {
+  const inApp = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    userAgent:
+      'Mozilla/5.0 (Linux; Android 12; V2027) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.163 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.35.108;]',
+  })
+  const p3 = await inApp.newPage()
+  await p3.goto(APP)
+  await p3.evaluate(() => localStorage.clear())
+  await p3.reload()
+  await p3.waitForSelector('button.mic')
+  const box = await p3.locator('button.mic').boundingBox()
+  await p3.mouse.move(box.x + 20, box.y + 20)
+  await p3.mouse.down()
+  await p3.waitForTimeout(100)
+  await p3.mouse.up()
+  await p3.waitForSelector('.sheet')
+  const href = await p3.evaluate(() => document.querySelector('.sheet a.sheet-main')?.getAttribute('href') || '')
+  assert.ok(href.startsWith('intent://'), `no Chrome link, got "${href}"`)
+  assert.ok(href.includes('package=com.android.chrome'))
+  await inApp.close()
+})
+
+await check("the camera button opens the phone's camera app, back or front", async () => {
+  // A phone, so the button is on screen: it is hidden where a mouse hovers.
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  })
+  const p4 = await phone.newPage()
+  const open = async (step, msg) => {
+    await p4.goto(APP)
+    await p4.evaluate(
+      ([s, h]) => {
+        localStorage.clear()
+        localStorage.setItem('grok-bot:flow', JSON.stringify({
+          step: s, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '', collected: {}, ineligible: false,
+        }))
+        localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: h }]))
+      },
+      [step, msg],
+    )
+    await p4.reload()
+    await p4.waitForSelector('button.camera:not([disabled])')
+    const [chooser] = await Promise.all([
+      p4.waitForEvent('filechooser', { timeout: 5000 }),
+      p4.tap('button.camera'),
+    ])
+    return chooser.element().getAttribute('capture')
+  }
+  assert.equal(await open(at('license_front'), 'License bhejein.'), 'environment')
+  assert.equal(await open(at('selfie'), 'Selfie bhejein.'), 'user')
+  await phone.close()
+})
 
 await check('a spoken answer is transcribed, answered, and the step asked again', async () => {
   await primeAt(at('license_front'), [
