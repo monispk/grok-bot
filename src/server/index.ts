@@ -497,6 +497,72 @@ app.post('/api/push/drain', guard, async (c) => {
   return c.json({ backfilled: filled, ...result, ...(await pending()) })
 })
 
+/**
+ * Every application, newest first — who applied, how far they got, and what
+ * was made of their documents.
+ *
+ * Read-only and summary-level: no document bytes, no history. Behind the
+ * password like everything else, because it is a list of real people's names,
+ * numbers and CNICs.
+ */
+app.get('/api/applications', guard, async (c) => {
+  const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 50)))
+  const rows = await query<{
+    id: string
+    phone: string | null
+    full_name: string | null
+    step: number
+    completed: boolean
+    flow: Record<string, unknown>
+    created_at: Date
+    updated_at: Date
+    pushed_at: Record<string, string>
+  }>(
+    `SELECT id, phone, full_name, step, completed, flow, created_at, updated_at, pushed_at
+       FROM applications
+      ORDER BY updated_at DESC
+      LIMIT $1`,
+    [limit],
+  )
+  if (!rows) return c.json({ error: 'no database' }, 503)
+
+  return c.json({
+    count: rows.length,
+    applications: rows.map((r) => {
+      const f = r.flow ?? {}
+      const collected = (f['collected'] ?? {}) as Record<string, string>
+      const payment = (f['payment'] ?? null) as Record<string, unknown> | null
+      const quiz = (f['quiz'] ?? null) as Record<string, unknown> | null
+      return {
+        id: r.id,
+        startedAt: r.created_at,
+        updatedAt: r.updated_at,
+        name: r.full_name,
+        phone: r.phone,
+        cnic: f['cnic'] ?? null,
+        step: `${r.step} of ${STEP_SPECS.length}`,
+        completed: r.completed,
+        wallet: f['rail'] ?? null,
+        missing: f['missing'] ?? [],
+        branch: f['branch'] ?? null,
+        checks: {
+          face: collected['checks.faceMatch'] ?? null,
+          licenceVsCnic: collected['checks.licenceVsCnic'] ?? null,
+          wallet: collected['checks.wallet'] ?? null,
+        },
+        documents: ['license', 'cnic_front', 'selfie'].filter((k) => collected[`${k}.uploadId`]),
+        payment: payment
+          ? { state: payment['state'], rail: payment['rail'], amountPaisa: payment['amountPaisa'], ref: payment['ref'] }
+          : null,
+        quiz: quiz
+          ? { offered: quiz['offered'], declined: quiz['declined'], done: quiz['done'], answered: (quiz['answers'] as unknown[] ?? []).length }
+          : null,
+        pushedFields: Object.keys(r.pushed_at ?? {}).length,
+      }
+    }),
+  })
+})
+
 app.get('/api/application/:id/push', guard, async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
