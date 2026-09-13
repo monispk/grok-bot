@@ -117,6 +117,13 @@ export async function init() {
      */
     `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed jsonb NOT NULL DEFAULT '{}'::jsonb`,
     `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed_at jsonb NOT NULL DEFAULT '{}'::jsonb`,
+    /*
+     * When each field was collected, as against when it was delivered. A
+     * recruiter looking at an application wants to know when the rider gave
+     * their number, not when our worker got round to forwarding it — and an
+     * application that stalls shows where, and for how long.
+     */
+    `ALTER TABLE applications ADD COLUMN IF NOT EXISTS field_at jsonb NOT NULL DEFAULT '{}'::jsonb`,
 
     `CREATE TABLE IF NOT EXISTS uploads (
       id          text PRIMARY KEY,

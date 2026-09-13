@@ -12,6 +12,7 @@
  */
 import { sameName } from '../shared/steps.ts'
 import { query } from './db.ts'
+import { flatten } from './push.ts'
 
 /** How long an unfinished application can be picked up again. */
 export const RESUME_DAYS = 7
@@ -28,12 +29,34 @@ export async function saveApplication(
   id: string,
   snap: Snapshot & { phone?: string; fullName?: string; step?: number; done?: boolean },
 ): Promise<boolean> {
+  /**
+   * Stamp whatever is new or changed with the moment it arrived.
+   *
+   * Read before the write, so the comparison is against what was there a
+   * moment ago. Each field keeps the time it last changed rather than the time
+   * the row was last touched — otherwise every stamp would move whenever
+   * anything did, and the record would say nothing about when the rider
+   * actually answered. An application that stalls then shows where, and for
+   * how long.
+   */
+  const before = await query<{ flow: Record<string, unknown>; field_at: Record<string, string> }>(
+    `SELECT flow, field_at FROM applications WHERE id = $1`,
+    [id],
+  )
+  const was = flatten(before?.[0]?.flow ?? {})
+  const now = flatten(snap.flow)
+  const at = new Date().toISOString()
+  const stamps: Record<string, string> = {}
+  for (const [k, v] of Object.entries(now))
+    if (JSON.stringify(v) !== JSON.stringify(was[k])) stamps[k] = at
+
   const rows = await query(
-    `INSERT INTO applications (id, phone, full_name, step, completed, flow, history, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+    `INSERT INTO applications (id, phone, full_name, step, completed, flow, history, field_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
      ON CONFLICT (id) DO UPDATE SET
        phone = EXCLUDED.phone, full_name = EXCLUDED.full_name, step = EXCLUDED.step,
        completed = EXCLUDED.completed, flow = EXCLUDED.flow, history = EXCLUDED.history,
+       field_at = applications.field_at || EXCLUDED.field_at,
        updated_at = now()
      RETURNING id`,
     [
@@ -44,6 +67,7 @@ export async function saveApplication(
       !!snap.done,
       JSON.stringify(snap.flow),
       JSON.stringify(snap.history),
+      JSON.stringify(stamps),
     ],
   )
   return !!rows?.length

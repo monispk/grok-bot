@@ -517,8 +517,9 @@ app.get('/api/applications', guard, async (c) => {
     created_at: Date
     updated_at: Date
     pushed_at: Record<string, string>
+    field_at: Record<string, string>
   }>(
-    `SELECT id, phone, full_name, step, completed, flow, created_at, updated_at, pushed_at
+    `SELECT id, phone, full_name, step, completed, flow, created_at, updated_at, pushed_at, field_at
        FROM applications
       ORDER BY updated_at DESC
       LIMIT $1`,
@@ -558,6 +559,9 @@ app.get('/api/applications', guard, async (c) => {
           ? { offered: quiz['offered'], declined: quiz['declined'], done: quiz['done'], answered: (quiz['answers'] as unknown[] ?? []).length }
           : null,
         pushedFields: Object.keys(r.pushed_at ?? {}).length,
+        // When each answer actually arrived, so a stalled application shows
+        // where it stopped and for how long.
+        collectedAt: r.field_at ?? {},
       }
     }),
   })

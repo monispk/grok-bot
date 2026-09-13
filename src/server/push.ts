@@ -67,7 +67,7 @@ export function forBackend(flow: Record<string, unknown>): Record<string, unknow
   return flat
 }
 
-type Row = { id: string; pushed: Record<string, unknown> }
+type Row = { id: string; pushed: Record<string, unknown>; field_at: Record<string, string> }
 
 /**
  * Queues whatever the backend has not seen. Called after the application is
@@ -80,14 +80,18 @@ export async function queueFields(
   known?: Record<string, unknown>,
 ): Promise<number> {
   if (!pushReady()) return 0
-  let sent = known
-  if (!sent) {
-    const rows = await query<Row>(`SELECT id, pushed FROM applications WHERE id = $1`, [id])
-    sent = rows?.[0]?.pushed ?? {}
-  }
+  // One read for both: what the backend has, and when each field was
+  // collected. Held locally rather than on the module, because two riders can
+  // be saving at the same moment and their stamps must not cross.
+  const rows = await query<Row>(`SELECT id, pushed, field_at FROM applications WHERE id = $1`, [id])
+  const sent = known ?? rows?.[0]?.pushed ?? {}
+  const stamps = rows?.[0]?.field_at ?? {}
   const changed = delta(forBackend(flow), sent)
   const names = Object.keys(changed)
   if (!names.length) return 0
+  const fieldsAt = Object.fromEntries(
+    names.filter((n) => stamps[n]).map((n) => [n, stamps[n] as string]),
+  )
 
   await query(
     `INSERT INTO outbox (application, endpoint, idempotency, body, kind, fields)
@@ -99,7 +103,10 @@ export async function queueFields(
       // The same change queued twice is the same delivery, so the key is the
       // content rather than the moment: a retry after a crash cannot duplicate.
       `${id}:fields:${createHash('sha256').update(JSON.stringify(changed)).digest('hex').slice(0, 32)}`,
-      JSON.stringify({ applicationId: id, fields: changed }),
+      // The backend gets when each field was collected as well as its value.
+      // "When did this rider give their number" is a different question from
+      // "when did we forward it", and only one of them is about the rider.
+      JSON.stringify({ applicationId: id, fields: changed, fieldsAt }),
       JSON.stringify(names),
     ],
   )
