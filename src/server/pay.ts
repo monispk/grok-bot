@@ -403,7 +403,14 @@ export const inquire = (rail: 'easypaisa' | 'jazzcash', ref: string) =>
  *
  * Temporary. Delete it once the working shape is known.
  */
-export type Variant = 'v1.1' | 'v1.1+legacy-fields' | 'v2' | 'legacy-gateway'
+export type Variant =
+  | 'v1.1'
+  | 'v1.1+legacy-fields'
+  | 'v1.1+mobile'
+  | 'v2'
+  | 'v2+mobile'
+  | 'v2+mobile+ppmpf'
+  | 'legacy-gateway'
 
 export async function probeJazzcash(
   variant: Variant,
@@ -445,9 +452,29 @@ export async function probeJazzcash(
         ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '',
       },
     },
+    // v1.1 named the wallet in ppmpf_1; adding pp_MobileNumber to it broke the
+    // hash, which says the gateway does not know that field at this version
+    // and leaves it out of its own calculation.
+    'v1.1+mobile': {
+      url: `${ORCH}/v1/rest/payments/m-wallet`,
+      fields: { ...common, pp_Version: '1.1', pp_MobileNumber: localNumber(phone) },
+    },
     v2: {
       url: `${ORCH}/v2/rest/payments/m-wallet`,
       fields: { ...common, pp_Version: '2.0', ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '' },
+    },
+    // v2 accepted the hash and asked for pp_MobileNumber by name, which is the
+    // first thing either version has asked us for.
+    'v2+mobile': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: { ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone) },
+    },
+    'v2+mobile+ppmpf': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: {
+        ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone),
+        ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '',
+      },
     },
     // The host the environment file named before the guides arrived. It could
     // not be reached from a laptop, which proves nothing: that laptop is also
