@@ -255,9 +255,14 @@ export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
   if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
   const code = String(json['responseCode'] ?? '')
   const status = String(json['transactionStatus'] ?? json['status'] ?? '').toUpperCase().replace(/\s+/g, '')
-  const message = String(json['responseDesc'] ?? '')
-  if (status === 'PAID' || status === 'SUCCESS') return { ...base, state: 'paid', detail: message || status }
-  if (/FAILED|EXPIRED|REVERSED|CANCEL/.test(status)) return { ...base, state: 'failed', detail: message || status }
+  // responseDesc says whether the *inquiry* worked ("SUCCESS"), which is not
+  // the news. The transaction's own reason is in errorCode / errorReason —
+  // "NO_RESPONSE_FROM_EWP: you did not approve the transaction" — and that
+  // is what the recruiter and the logs need to see.
+  const why = [json['errorCode'], json['errorReason']].filter(Boolean).map(String).join(': ')
+  const message = why || String(json['responseDesc'] ?? '')
+  if (status === 'PAID' || status === 'SUCCESS') return { ...base, state: 'paid', detail: `PAID${why ? ` (${why})` : ''}` }
+  if (/FAILED|EXPIRED|REVERSED|CANCEL/.test(status)) return { ...base, state: 'failed', detail: `${status}: ${message}` }
   // UNPAID, PENDING, IN PROGRESS, or an inquiry that answered without a
   // status: not yet, as far as anyone knows.
   return { ...base, detail: message || status || `code ${code}` }
