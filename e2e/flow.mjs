@@ -13,6 +13,7 @@
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 import { STEP_SPECS, WELCOME_LINES } from '../src/shared/steps.ts'
+import { GAP_MS } from '../src/client/autoplay.ts'
 
 const APP = process.env.APP ?? 'http://localhost:3099'
 const results = []
@@ -653,11 +654,14 @@ await check('voice notes play themselves, one at a time, with a pause', async ()
     assert.ok(open <= 1, 'two voice notes played over each other')
   }
 
-  // At least two seconds between one finishing and the next starting.
+  // At least GAP_MS between one finishing and the next starting. Read from the
+  // app: as a literal it would have to be remembered every time the pause is
+  // tuned, and a test that is edited to match whatever the code does is not a
+  // test. The 50ms is timer slack, not tolerance for a shorter pause.
   for (let i = 0; i < log.length - 1; i++) {
     if (log[i].e !== 'end' || log[i + 1]?.e !== 'play') continue
     const gap = log[i + 1].at - log[i].at
-    assert.ok(gap >= 1950, `only ${gap}ms between voice notes; asked for two seconds`)
+    assert.ok(gap >= GAP_MS - 50, `only ${gap}ms between voice notes; asked for ${GAP_MS}`)
   }
 })
 

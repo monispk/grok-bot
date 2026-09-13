@@ -15,7 +15,14 @@
  * first tap. And if the rider presses play on something themselves, that is an
  * instruction: the queue gets out of the way.
  */
-const GAP_MS = 2000
+/**
+ * The silence between one voice note finishing and the next starting.
+ *
+ * A minimum, not a fixed delay: a clip still being synthesised plays the moment
+ * it arrives rather than waiting a further pause on top. Exported so the
+ * browser test measures against this number instead of its own copy of it.
+ */
+export const GAP_MS = 1200
 /** How long to hold the queue for a clip that may never arrive. */
 const PATIENCE_MS = 20_000
 
