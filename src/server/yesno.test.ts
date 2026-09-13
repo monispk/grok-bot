@@ -205,3 +205,19 @@ test('a question the model asks back is not passed on', () => {
     'Rs. 2,500 security deposit hai. Ye poora wapas mil jata hai.',
   )
 })
+
+test('"I don\'t know" stays unanswerable however it is spelled', () => {
+  // Found by running twenty conversations: "pata nhi" was not on the list of
+  // exact phrases, so the nhi in it read as a denial and a rider who did not
+  // know what a wallet was got recorded as having none.
+  for (const unsure of [
+    'pata nhi', 'pata nahi', 'pta nhi', 'mujhe nahi pata',
+    'kuch samajh nahi aaya', 'smjh nhi aya', 'سمجھ نہیں آیا', 'پتہ نہیں',
+  ]) {
+    assert.equal(readRail(unsure), null, unsure)
+    assert.equal(readYesNo(unsure), null, unsure)
+  }
+  // And a real denial is still a denial.
+  assert.equal(readRail('koi nahi'), 'neither')
+  assert.equal(readYesNo('nhi'), 'no')
+})

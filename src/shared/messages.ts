@@ -82,6 +82,20 @@ export const SAY = {
     '/say-no-wallet',
   ),
   /**
+   * A phone number typed at the name question.
+   *
+   * The model was asked whether it was a name and said yes, so a rider was
+   * greeted as "Shukriya 03051234567" and their real name, sent next, was
+   * refused as a bad phone number. The name is matched against the CNIC and the
+   * licence, so a wrong one fails a check nobody can trace back to this. A
+   * string with no letters in it is not a name, whatever the model thinks —
+   * and the number is kept, so it is not asked for twice.
+   */
+  numberNotName: say(
+    'Ye aap ka mobile number lagta hai, wo hum aage poochein ge. Pehle apna poora naam likhein, jaisa ID Card par hai.',
+    '/say-number-not-name',
+  ),
+  /**
    * The rider names their wallet at the number question — which answers the
    * question after this one, not this one. Recorded, then the number is asked
    * for again, naming the account so they know which number is wanted.

@@ -223,7 +223,13 @@ export function stripAskBack(reply: string): string {
   // "(Sirf ek batayein)." was the aside left behind when the question in front
   // of it went, which reads as a stray instruction to nobody.
   const aside = (p: string) => /^\(.*\)\s*[.۔]?$/.test(p.trim())
-  const kept = parts.filter((p) => !asksBack(p) && !aside(p))
+  // Only from the end. A model that asks a question of its own puts it last,
+  // and taking them wherever they fell also took answers that quote the
+  // rider's own question back to them — "Aap ne poocha 'salary kitni hai?'" —
+  // which is the whole answer gone.
+  const kept = [...parts]
+  while (kept.length && (asksBack(kept[kept.length - 1]!) || aside(kept[kept.length - 1]!)))
+    kept.pop()
   return kept.join(' ').trim()
 }
 
@@ -308,6 +314,23 @@ export function readPhone(text: string): string | null {
  */
 const NEGATIVE_SHAPE = /^n[aeiou]*h[aeiou]*n?$/
 
+/**
+ * "I don't know" / "I didn't understand", which is not an answer at all.
+ *
+ * Counted as a refusal it records a rider as having no wallet, or no bike,
+ * because they were unsure what was being asked. The list of exact phrases this
+ * used to be missed "pata nhi" — the same word, three letters shorter — so it
+ * is built from the unsure word plus any spelling of the negative instead.
+ */
+const UNSURE_WORD = /\b(pata|pta|maloom|malum|samajh|samjh|smjh|samjha)\b/
+const UNSURE_URDU = /سمجھ|پتہ|پتا|معلوم/
+
+export function saysUnsure(text: string): boolean {
+  const t = text.toLowerCase()
+  if (UNSURE_WORD.test(t) && saysNo(t, ['no'])) return true
+  return UNSURE_URDU.test(text) && /نہیں|نہ\b/.test(text)
+}
+
 export function saysNo(text: string, extra: readonly string[] = []): boolean {
   const words = text.toLowerCase().split(/[^a-z]+/).filter(Boolean)
   return words.some((w) => NEGATIVE_SHAPE.test(w) || extra.includes(w))
@@ -329,8 +352,7 @@ export function readRail(text: string): Rail | null {
   // "samajh nahi aaya" is not "I have neither". Taking any sentence with
   // "nahi" in it as a denial turned a rider saying they had not understood
   // into a rider with no wallet at all.
-  if (/samajh nahi|pata nahi|nahi pata|maloom nahi|nahi samjh|سمجھ نہیں|پتہ نہیں/.test(t))
-    return null
+  if (saysUnsure(text)) return null
 
   // Not 'na' or a bare 'n': "easypaisa hai na" is a rider agreeing, and both
   // would have read it as a denial.
@@ -355,8 +377,7 @@ export function readYesNo(text: string): 'yes' | 'no' | null {
 
   // "pata nahi" is not an answer at all. Counted as a no, it would record a
   // rider as having no bike because they were unsure what was being asked.
-  if (/samajh nahi|pata nahi|nahi pata|maloom nahi|nahi samjh|سمجھ نہیں|پتہ نہیں/.test(t + text))
-    return null
+  if (saysUnsure(text)) return null
 
   // Negation first, otherwise. "mere paas nahi hai" carries every word that
   // means yes and one that means no, and the no is the answer.

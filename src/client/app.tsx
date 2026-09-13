@@ -804,6 +804,16 @@ export function App() {
         return
       }
 
+      // The name step. A phone number is not a name, whatever the model makes
+      // of it — checked here rather than asked, the same way the number itself
+      // is. Kept rather than discarded: it is the answer to the next question.
+      const early = readPhone(text)
+      if (early) {
+        setFlow((f) => ({ ...f, phone: early }))
+        say(bot(SAY.numberNotName.text))
+        return
+      }
+
       setWorking(true)
       let named: { is_name?: boolean; first_name?: string; full_name?: string } = {}
       try {
