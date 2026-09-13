@@ -462,7 +462,7 @@ export function detailPage(
 
 <div class="panel"><h2>Documents</h2>
   <div class="docs">${docs || '<small>None uploaded.</small>'}</div>
-  <small>Identity papers, so they are kept for a day and then deleted. Click one to see it full size.</small>
+  <small>Identity papers, so they are kept for sixty days and then deleted. Click one to see it full size.</small>
 </div>
 
 <div class="panel"><h2>Training quiz</h2>
@@ -472,9 +472,9 @@ export function detailPage(
 <div class="panel"><h2>Conversation</h2>
   <details><summary>Show the whole thread (${(r.history ?? []).length} messages)</summary>
     <div class="chat">${transcript}</div>
-    <small>Both sides can be played back. Voice notes are kept for a month;
-    documents, being identity papers, for a day — an older thread keeps its
-    words and loses its pictures.</small>
+    <small>Both sides can be played back. Recordings and documents are kept
+    for sixty days and then deleted; after that a thread keeps its words and
+    loses its pictures and players.</small>
   </details>
 </div>
 </div></body></html>`

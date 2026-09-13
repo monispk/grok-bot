@@ -121,11 +121,11 @@ export const get = (id: string): Upload | undefined => store.get(id)
  * see what a rider actually sent.
  *
  * These are CNICs, licences and photographs of faces — the exact set identity
- * theft is built from — so the window is short and deliberate: KEEP_HOURS, a
- * day by default, swept from the same timer as everything else. Long enough
- * for a recruiter to look at an application the morning after it arrived,
- * short enough that a leak is a day of applications rather than a year of
- * them.
+ * theft is built from — so the window is deliberate and finite: KEEP_DAYS,
+ * sixty by default, swept from the same timer as everything else. Long enough
+ * that an application can still be reviewed, argued about and acted on months
+ * after it arrived, short enough that a leak is a season of applications
+ * rather than every one ever taken.
  *
  * Written after the response, never in front of the rider.
  */

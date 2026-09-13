@@ -141,24 +141,23 @@ export async function init() {
 
 /** Drops what nobody will ask for again. Called on the same sweep as the rest. */
 export async function sweep() {
-  await query(`DELETE FROM speech  WHERE used_at    < now() - interval '30 days'`)
-  // Documents are identity papers. Kept only long enough for a recruiter to
-  // look at an application the morning after it arrived.
-  const hours = Number(process.env.DOCUMENT_KEEP_HOURS ?? 24)
-  await query(
-    `DELETE FROM uploads WHERE kind <> 'voice' AND created_at < now() - ($1 || ' hours')::interval`,
-    [hours],
-  )
   /*
-   * A voice note is not an identity paper — it is one half of a conversation,
-   * and the other half is kept for thirty days in `speech`. Deleting the
-   * rider's words on the documents' schedule would leave a thread in which
-   * only Rozeena could still be heard. So it keeps the conversation's window,
-   * not the documents'.
+   * Sixty days, for everything a rider handed over and everything they were
+   * told — documents, their voice notes, and the lines Rozeena spoke back.
+   *
+   * One window rather than three. Documents used to go after a day and voice
+   * notes after a month, which meant an application could be looked at in a
+   * state it was never in: a thread with the pictures missing, or one where
+   * only Rozeena could still be heard. Whatever the window is, both halves of
+   * a conversation should reach the end of it together.
    */
-  const voiceDays = Number(process.env.VOICE_KEEP_DAYS ?? 30)
-  await query(
-    `DELETE FROM uploads WHERE kind = 'voice' AND created_at < now() - ($1 || ' days')::interval`,
-    [voiceDays],
-  )
+  const days = Number(process.env.KEEP_DAYS ?? 60)
+  const older = `created_at < now() - ($1 || ' days')::interval`
+
+  await query(`DELETE FROM uploads WHERE ${older}`, [days])
+  // Speech is deduplicated by the words, so one row serves every rider who
+  // heard that line, and `used_at` moves each time it is played. A line still
+  // in use is never swept; this only drops what nobody has needed for sixty
+  // days.
+  await query(`DELETE FROM speech WHERE used_at < now() - ($1 || ' days')::interval`, [days])
 }
