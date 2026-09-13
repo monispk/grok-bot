@@ -22,7 +22,7 @@
  * it arrives rather than waiting a further pause on top. Exported so the
  * browser test measures against this number instead of its own copy of it.
  */
-export const GAP_MS = 1200
+export const GAP_MS = 1000
 /** How long to hold the queue for a clip that may never arrive. */
 const PATIENCE_MS = 20_000
 
