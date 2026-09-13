@@ -120,7 +120,7 @@ export const STEP_SPECS: StepSpec[] = [
     kind: 'upload',
     facing: 'user',
     imageOnly: true,
-    ask: 'Shukriya! Ab ek chhoti selfie se aap ki pehchan verify karni hai. Neeche button dabayen — camera khud khul jayega. Selfie ho jane ke baad main khud aage barh jaungi.',
+    ask: 'Ab ek chhoti selfie se aap ki pehchan verify karni hai. Neeche camera ka button dabayen — camera khud khul jayega. Selfie ho jane ke baad main khud aage barh jaungi.',
     need: 'Iske liye aap ki selfie chahiye.',
     webHint: 'Neeche camera ka nishan daba kar apni tasveer khenchein.',
     waHint: 'Apni selfie khenchein aur isi chat mein bhej dein.',

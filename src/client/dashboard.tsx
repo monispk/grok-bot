@@ -84,7 +84,20 @@ export function Dashboard({
           <Row label="Full name" value={flow.fullName || '—'} />
           <Row label="Phone" value={flow.phone || '—'} />
           <Row label="CNIC number" value={flow.cnic || '—'} />
-          <Row label="Wallet" value={flow.noWallet ? 'has neither' : 'not stated'} />
+          <Row
+            label="Wallet"
+            value={
+              flow.rail === 'both'
+                ? 'Easypaisa and JazzCash'
+                : flow.rail === 'easypaisa'
+                  ? 'Easypaisa'
+                  : flow.rail === 'jazzcash'
+                    ? 'JazzCash'
+                    : flow.rail === 'neither' || flow.noWallet
+                      ? 'has neither'
+                      : 'not stated'
+            }
+          />
         </Section>
 
         <Section title="Eligibility">

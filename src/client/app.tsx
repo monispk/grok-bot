@@ -1483,8 +1483,18 @@ export function App() {
             )
           if (m.kind === 'choice')
             return (
-              <div key={i} class="msg user media choice">
-                {m.src && <img class="pick" src={m.src} alt="" draggable={false} />}
+              <div key={i} class="msg user choice">
+                {/* Width and height given, so the bubble has its size before
+                    the picture loads — a flex column shrank it to a sliver
+                    on a Samsung while the image was still on its way. */}
+                <span class="pickwrap">
+                  {m.src && <img class="pick" src={m.src} width={120} height={103} alt="" draggable={false} />}
+                  <span class="pickbadge" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="14" height="14">
+                      <path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                </span>
                 <span class="picklabel">{m.content}</span>
                 <Stamp m={m} />
               </div>

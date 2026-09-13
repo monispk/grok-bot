@@ -1304,10 +1304,26 @@ footer button.stop { background: var(--err); }
 .choice img { display: block; width: 100%; height: auto; }
 .choice span { font-size: 12.5px; line-height: 1.25; padding: 0 6px; text-align: center; }
 
-/* The answer, in the thread: the picture that was tapped, small, with its words. */
-.msg.choice { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px; }
-.msg.choice .pick { display: block; width: 120px; height: auto; border-radius: 8px; }
-.msg.choice .picklabel { font-size: 13.5px; padding: 0 4px; }
+/* The answer, in the thread: the picture that was tapped, small, with its
+   words, and a tick to say it was the one chosen. Block layout with the
+   picture's size declared: as a flex column it collapsed to a sliver on a
+   Samsung while the image was still loading. */
+.msg.choice { flex: none; padding: 4px 6px 4px 4px; text-align: right; }
+.pickwrap { position: relative; display: inline-block; }
+.msg.choice .pick { display: block; width: 120px; height: 103px; border-radius: 8px; background: var(--in); }
+.pickbadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1fa855;
+  box-shadow: 0 0 0 2px #fff;
+  display: grid;
+  place-items: center;
+}
+.msg.choice .picklabel { display: block; font-size: 13.5px; padding: 4px 4px 0; }
 
 /* ---------- reply buttons ---------- */
 
