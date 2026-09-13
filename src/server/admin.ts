@@ -299,3 +299,42 @@ export function detailPage(
 </div>
 </div></body></html>`
 }
+
+/**
+ * The way in.
+ *
+ * The API answers an unauthenticated request with JSON, which is right for the
+ * app and useless for a page — a recruiter opening this saw the word
+ * "Unauthorized" and nothing else. The password is the same one the chat uses.
+ */
+export function loginPage(wrong = false): string {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in</title><style>${STYLE}
+.signin{max-width:340px;margin:14vh auto;display:flex;flex-direction:column;gap:12px}
+.signin input,.signin button{font:inherit;font-size:16px;min-height:46px;padding:0 14px;border-radius:10px;border:1px solid var(--rule)}
+.signin input{background:var(--paper);color:var(--ink)}
+.signin button{border:0;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.signin .err{color:var(--bad);font-size:13.5px}
+</style></head><body>
+<form class="signin" onsubmit="go(event)">
+  <h1>Rider applications</h1>
+  <p><small>Staff only. Same password as the chat.</small></p>
+  <input id="p" type="password" placeholder="Password" autofocus autocomplete="current-password">
+  <button type="submit">Sign in</button>
+  ${wrong ? '<p class="err">That password was not accepted.</p>' : ''}
+  <p class="err" id="e" hidden>That password was not accepted.</p>
+</form>
+<script>
+async function go(ev){
+  ev.preventDefault()
+  const res = await fetch('/api/login', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body: JSON.stringify({ password: document.getElementById('p').value }),
+  })
+  if (res.ok) location.reload()
+  else document.getElementById('e').hidden = false
+}
+</script>
+</body></html>`
+}

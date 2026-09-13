@@ -23,7 +23,7 @@ import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { visionReady } from './vision.ts'
-import { detailPage, listPage, type Row as AdminRow, type Waiting } from './admin.ts'
+import { detailPage, listPage, loginPage, type Row as AdminRow, type Waiting } from './admin.ts'
 import { QUESTIONS } from '../shared/quiz.ts'
 import {
   backfill,
@@ -511,7 +511,10 @@ app.post('/api/push/drain', guard, async (c) => {
  * The recruiter's view. Behind the same password as everything else, because
  * it is a list of real people's names, numbers and CNICs.
  */
-app.get('/admin', guard, async (c) => {
+app.get('/admin', async (c) => {
+  // Not `guard`: that answers with JSON, which is right for the app and
+  // useless for a page. A person gets a way in instead.
+  if (!isAuthed(c)) return c.html(loginPage())
   const id = c.req.query('id') ?? ''
   const waiting =
     (await query<Waiting>(
