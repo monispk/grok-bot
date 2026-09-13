@@ -415,6 +415,8 @@ export type Variant =
   | 'v2+mobile'
   | 'v2+mobile+ppmpf'
   | 'v2+mobile+cnic'
+  | 'v2+mobile+cnic-unhashed'
+  | 'v2+mobile+cnic13'
   | 'v1.1+ppmpf+cnic'
   | 'legacy-gateway'
 
@@ -444,7 +446,7 @@ export async function probeJazzcash(
   }
 
   const ORCH = `${JC.base}/payment-orchestrator/api`
-  const shapes: Record<Variant, { url: string; fields: Record<string, string> }> = {
+  const shapes: Record<Variant, { url: string; fields: Record<string, string>; unhashed?: string[] }> = {
     'v1.1': {
       url: `${ORCH}/v1/rest/payments/m-wallet`,
       fields: { ...common, pp_Version: '1.1', ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '' },
@@ -491,6 +493,30 @@ export async function probeJazzcash(
         pp_CNIC: cnic.replace(/\D/g, '').slice(-6),
       },
     },
+    /**
+     * The same payload, with pp_CNIC left out of the hash.
+     *
+     * v2 accepted our hash and then asked for pp_CNIC; adding pp_CNIC made the
+     * hash wrong. Both can only be true if their calculation runs over a fixed
+     * list for the version rather than over whatever was sent — which is not
+     * what the HMAC guide says, but is what the gateway does.
+     */
+    'v2+mobile+cnic-unhashed': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: {
+        ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone),
+        pp_CNIC: cnic.replace(/\D/g, '').slice(-6),
+      },
+      unhashed: ['pp_CNIC'],
+    },
+    // Or the six digits are simply not what it wanted.
+    'v2+mobile+cnic13': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: {
+        ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone),
+        pp_CNIC: cnic.replace(/\D/g, ''),
+      },
+    },
     'v1.1+ppmpf+cnic': {
       url: `${ORCH}/v1/rest/payments/m-wallet`,
       fields: {
@@ -519,8 +545,9 @@ export async function probeJazzcash(
     },
   }
 
-  const { url, fields } = shapes[variant]
-  fields['pp_SecureHash'] = secureHash(fields, JC.salt)
+  const { url, fields, unhashed = [] } = shapes[variant]
+  const forHash = Object.fromEntries(Object.entries(fields).filter(([k]) => !unhashed.includes(k)))
+  fields['pp_SecureHash'] = secureHash(forHash, JC.salt)
   const { json, timedOut, detail } = await send(
     url,
     { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) },
