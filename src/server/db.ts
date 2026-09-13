@@ -59,17 +59,27 @@ export async function init() {
     console.log('postgres: no DATABASE_URL, running from memory')
     return
   }
-  const ok = await query(`
-    CREATE TABLE IF NOT EXISTS speech (
+
+  /**
+   * One statement per entry, applied one at a time.
+   *
+   * They used to be a single query, which Postgres runs in one implicit
+   * transaction: one ALTER that could not apply rolled back the entire schema
+   * and left the app running from memory, announcing only "schema failed".
+   * Which statement, and why, was not recoverable afterwards. Now a failure
+   * names itself and costs only its own table.
+   */
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS speech (
       id          text PRIMARY KEY,
       mime        text NOT NULL,
       bytes       bytea NOT NULL,
       said        text NOT NULL,
       created_at  timestamptz NOT NULL DEFAULT now(),
       used_at     timestamptz NOT NULL DEFAULT now()
-    );
+    )`,
 
-    CREATE TABLE IF NOT EXISTS outbox (
+    `CREATE TABLE IF NOT EXISTS outbox (
       id            bigserial PRIMARY KEY,
       application   uuid NOT NULL,
       endpoint      text NOT NULL,
@@ -78,16 +88,16 @@ export async function init() {
       attempts      int NOT NULL DEFAULT 0,
       next_attempt  timestamptz NOT NULL DEFAULT now(),
       created_at    timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS outbox_due ON outbox (next_attempt);
-    /* What the row is: a batch of fields, a document, or the final submission. */
-    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'fields';
-    /* Which fields this row carries, so they can be marked when it lands. */
-    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS fields jsonb NOT NULL DEFAULT '[]'::jsonb;
-    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS last_error text;
-    CREATE INDEX IF NOT EXISTS outbox_app ON outbox (application);
+    )`,
+    `CREATE INDEX IF NOT EXISTS outbox_due ON outbox (next_attempt)`,
+    // What the row carries: a batch of fields, or a document.
+    `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'fields'`,
+    // Which fields, so they can be marked delivered when it lands.
+    `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS fields jsonb NOT NULL DEFAULT '[]'::jsonb`,
+    `ALTER TABLE outbox ADD COLUMN IF NOT EXISTS last_error text`,
+    `CREATE INDEX IF NOT EXISTS outbox_app ON outbox (application)`,
 
-    CREATE TABLE IF NOT EXISTS applications (
+    `CREATE TABLE IF NOT EXISTS applications (
       id          uuid PRIMARY KEY,
       phone       text,
       full_name   text,
@@ -97,21 +107,18 @@ export async function init() {
       history     jsonb NOT NULL,
       created_at  timestamptz NOT NULL DEFAULT now(),
       updated_at  timestamptz NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS applications_phone ON applications (phone, updated_at DESC);
+    )`,
+    `CREATE INDEX IF NOT EXISTS applications_phone ON applications (phone, updated_at DESC)`,
     /*
-     * What the backend has acknowledged, field by field.
-     *
-     * "pushed" is the last acknowledged value of each field, so the next push
-     * can carry only what changed. "pushed_at" is when each was acknowledged,
-     * which is what somebody asking "what has actually reached them?" wants to
-     * see. Kept beside the application rather than derived from the outbox,
-     * because the outbox is emptied and this is the record.
+     * What the backend has acknowledged, field by field. "pushed" is the last
+     * value it accepted, so the next push carries only what changed;
+     * "pushed_at" is when each landed, which is what anyone asking "what has
+     * actually reached them?" wants to see.
      */
-    ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed jsonb NOT NULL DEFAULT '{}'::jsonb;
-    ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed_at jsonb NOT NULL DEFAULT '{}'::jsonb;
+    `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed jsonb NOT NULL DEFAULT '{}'::jsonb`,
+    `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed_at jsonb NOT NULL DEFAULT '{}'::jsonb`,
 
-    CREATE TABLE IF NOT EXISTS uploads (
+    `CREATE TABLE IF NOT EXISTS uploads (
       id          text PRIMARY KEY,
       application uuid,
       kind        text NOT NULL,
@@ -119,9 +126,17 @@ export async function init() {
       bytes       bytea NOT NULL,
       sha256      text NOT NULL,
       created_at  timestamptz NOT NULL DEFAULT now()
-    );
-  `)
-  console.log(ok ? 'postgres: ready' : 'postgres: schema failed, running from memory')
+    )`,
+  ]
+
+  let failed = 0
+  for (const statement of statements) {
+    if ((await query(statement)) === null) {
+      failed++
+      console.error(`postgres: failed — ${statement.replace(/\s+/g, ' ').slice(0, 100)}`)
+    }
+  }
+  console.log(failed ? `postgres: ${failed} statement(s) failed` : 'postgres: ready')
 }
 
 /** Drops what nobody will ask for again. Called on the same sweep as the rest. */

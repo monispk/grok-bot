@@ -74,7 +74,7 @@ Rules:
 - Never output Urdu or Arabic script. Not one character.
 
 Reply with JSON only: {"lines": ["...", "..."]} — the same number of strings,
-in the same order as the input.\`
+in the same order as the input.`
 
 app.get('/healthz', (c) =>
   c.json({
