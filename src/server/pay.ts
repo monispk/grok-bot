@@ -33,6 +33,9 @@ const EP = {
   password: process.env.EASYPAISA_PASSWORD ?? '',
   storeId: process.env.EASYPAISA_STORE_ID ?? '',
   accountNum: process.env.EASYPAISA_ACCOUNT_NUM ?? '',
+  // Easypaisa refuses an initiate without an email ("REQUIRED FIELD MISSING").
+  // Nothing is sent to it; it is the merchant's contact on the transaction.
+  email: process.env.EASYPAISA_EMAIL ?? 'riders@rozee.pk',
   initiateTimeout: Number(process.env.EASYPAISA_INITIATE_TIMEOUT ?? 30) * 1000,
   inquireTimeout: Number(process.env.EASYPAISA_INQUIRE_TIMEOUT ?? 20) * 1000,
 }
@@ -141,12 +144,13 @@ export async function payEasypaisa(phone: string, orderId: string): Promise<Atte
       },
       body: JSON.stringify({
         orderId,
-        storeId: EP.storeId,
-        // The rails are quoted in rupees, not paisa, on this endpoint.
-        transactionAmount: (CHARGE_PAISA / 100).toFixed(0),
+        storeId: /^\d+$/.test(EP.storeId) ? Number(EP.storeId) : EP.storeId,
+        // The rails are quoted in rupees, not paisa, on this endpoint, and
+        // Easypaisa wants a decimal: "2.0", not "2".
+        transactionAmount: (CHARGE_PAISA / 100).toFixed(1),
         transactionType: 'MA',
         mobileAccountNo: localNumber(phone),
-        emailAddress: '',
+        emailAddress: EP.email,
       }),
     },
     EP.initiateTimeout,
@@ -244,7 +248,7 @@ export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
         'content-type': 'application/json',
         credentials: Buffer.from(`${EP.username}:${EP.password}`).toString('base64'),
       },
-      body: JSON.stringify({ orderId, storeId: EP.storeId, accountNum: EP.accountNum }),
+      body: JSON.stringify({ orderId, storeId: /^\d+$/.test(EP.storeId) ? Number(EP.storeId) : EP.storeId, accountNum: EP.accountNum }),
     },
     EP.inquireTimeout,
   )
