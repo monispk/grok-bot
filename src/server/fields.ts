@@ -213,15 +213,37 @@ export function inspect(kind: DocKind, reading: Reading): Inspection {
   if (kind === 'license') {
     fields.cnic = cnicOf(text)
     fields.name = labelled(reading.lines, 'Name')
-    fields.number = labelled(reading.lines, 'License No')
+    fields.number =
+      labelled(reading.lines, 'License No') ?? labelled(reading.lines, 'Licence No')
     const licExpiryRaw =
       labelled(reading.lines, 'Expiry Date') ?? dateUnder(reading.words, 'Expiry Date')
     const licExpiry = licExpiryRaw ? parseDate(licExpiryRaw) : null
     fields.expiry = licExpiry?.iso ?? null
     fields.expired = licExpiry ? String(licExpiry.date.getTime() < Date.now()) : null
 
-    if (!all.includes('drivinglicen')) missing.push('driving licence heading')
-    if (!fields.cnic) missing.push('cnic number')
+    /**
+     * Several marks, any two. Requiring the heading alone threw away a card
+     * whose every field had been read correctly: these are photographs of
+     * laminated plastic, and the glare falls where it falls — on that licence
+     * it sat across DRIVING LICENSE and ate the N. A card carries its nature
+     * in a dozen places, so no single one of them decides.
+     */
+    const marks = has(
+      'drivinglicen',
+      'licenseno',
+      'licenceno',
+      'trafficpolice',
+      'licencingauthority',
+      'licensingauthority',
+      'issuedate',
+      'expirydate',
+      'dateofbirth',
+    )
+    if (marks < 2) missing.push('driving licence labels')
+    // One identifier off the card is enough to tie it to a rider. Demanding
+    // the CNIC specifically failed a licence whose number was perfectly clear,
+    // and a mismatched CNIC is caught later regardless.
+    if (!fields.cnic && !fields.number) missing.push('licence or cnic number')
   }
 
   let override: string | null = null
