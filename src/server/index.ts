@@ -478,7 +478,8 @@ app.post('/api/pay/probe', guard, async (c) => {
   if (!Number.isFinite(amount) || amount <= 0 || amount > 500_00)
     return c.json({ error: 'amountPaisa must be 1..50000' }, 400)
   console.warn(`pay probe: ${variant} → ${phone} for ${amount} paisa`)
-  return c.json(await probeJazzcash(variant, phone, amount))
+  const cnic = typeof body['cnic'] === 'string' ? body['cnic'] : ''
+  return c.json(await probeJazzcash(variant, phone, amount, cnic))
 })
 
 app.post('/api/wallet', guard, async (c) => {

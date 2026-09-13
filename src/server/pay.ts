@@ -52,9 +52,13 @@ const JC = {
   enabled:
     (process.env.JAZZCASH_ENABLED ?? 'false') !== 'false' &&
     (process.env.JAZZCASH_PRODUCTION_READY ?? 'false') !== 'false',
-  // The orchestrator host from the v1.1 guide. An older environment variable
-  // pointed at payments.jazzcash.com.pk, which serves a different API.
-  base: process.env.JAZZCASH_BASE_URL || 'https://onlinepayments.jazzcash.com.pk',
+  /**
+   * The orchestrator. Given with or without its path — an environment file has
+   * carried both — so the path is stripped here and added once by each caller.
+   */
+  base: (process.env.JAZZCASH_BASE_URL || 'https://onlinepayments.jazzcash.com.pk')
+    .replace(/\/+$/, '')
+    .replace(/\/payment-orchestrator$/, ''),
   merchantId: process.env.JAZZCASH_MERCHANT_ID ?? '',
   password: process.env.JAZZCASH_PASSWORD ?? '',
   salt: process.env.JAZZCASH_INTEGRITY_SALT ?? '',
@@ -410,12 +414,15 @@ export type Variant =
   | 'v2'
   | 'v2+mobile'
   | 'v2+mobile+ppmpf'
+  | 'v2+mobile+cnic'
+  | 'v1.1+ppmpf+cnic'
   | 'legacy-gateway'
 
 export async function probeJazzcash(
   variant: Variant,
   phone: string,
   amountPaisa: number,
+  cnic = '',
 ): Promise<{ variant: Variant; url: string; sent: string[]; answer: Record<string, unknown> | null; detail: string }> {
   const ref = `${JC.prefix}${stamp()}`
   const now = new Date()
@@ -468,6 +475,30 @@ export async function probeJazzcash(
     'v2+mobile': {
       url: `${ORCH}/v2/rest/payments/m-wallet`,
       fields: { ...common, pp_Version: '2.0', pp_MobileNumber: localNumber(phone) },
+    },
+    /**
+     * v2 asked for pp_MobileNumber, then for pp_CNIC. The guide we were given
+     * is "MWallet v1.1 (Without CNIC)" — so v2 is the with-CNIC API, and this
+     * account may be provisioned for that one. JazzCash takes the last six
+     * digits of the card.
+     */
+    'v2+mobile+cnic': {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: {
+        ...common,
+        pp_Version: '2.0',
+        pp_MobileNumber: localNumber(phone),
+        pp_CNIC: cnic.replace(/\D/g, '').slice(-6),
+      },
+    },
+    'v1.1+ppmpf+cnic': {
+      url: `${ORCH}/v1/rest/payments/m-wallet`,
+      fields: {
+        ...common,
+        pp_Version: '1.1',
+        pp_CNIC: cnic.replace(/\D/g, '').slice(-6),
+        ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '',
+      },
     },
     'v2+mobile+ppmpf': {
       url: `${ORCH}/v2/rest/payments/m-wallet`,
