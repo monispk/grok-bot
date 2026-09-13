@@ -60,21 +60,6 @@ const clientIp = (c: { req: { header: (k: string) => string | undefined } }) =>
 // rather than by polling the Railway CLI, which is slow and easy to get wrong.
 const COMMIT = (process.env.RAILWAY_GIT_COMMIT_SHA ?? '').slice(0, 7)
 
-const ROMANISE = `You convert Urdu script into Roman Urdu for a chat app used by
-Pakistani delivery riders, many of whom read poorly.
-
-Rules:
-- Output Urdu words in Latin letters, the way Pakistanis type them on a phone:
-  "kya", "hai", "karein", "chahiye", "zaroori", "saath", "nahi", "ke liye".
-- Words already in Latin letters stay EXACTLY as they are: foodpanda, app,
-  order, customer, shift, selfie, helmet, t-shirt, location, restaurant, ID,
-  login, delivery, bag, GPS, rider, pick up.
-- Do not translate into English. Do not simplify or shorten. Same meaning,
-  same word order, same punctuation.
-- Never output Urdu or Arabic script. Not one character.
-
-Reply with JSON only: {"lines": ["...", "..."]} — the same number of strings,
-in the same order as the input.`
 
 app.get('/healthz', (c) =>
   c.json({
@@ -501,23 +486,6 @@ app.post('/api/pay/status', guard, async (c) => {
  */
 app.get('/api/models', guard, async (c) => c.json(await listModels()))
 
-/**
- * Urdu script into Roman Urdu, in batches. Temporary: the quiz bank arrived in
- * Urdu script and the rest of the app writes Roman, so it was being shown to
- * riders in two alphabets at once. Delete once the bank is converted.
- */
-app.post('/api/romanise', guard, async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { lines?: unknown }
-  const lines = Array.isArray(body.lines) ? body.lines.filter((l) => typeof l === 'string') : []
-  if (!lines.length) return c.json({ error: 'nothing to convert' }, 400)
-  const out = await completeJson(ROMANISE, JSON.stringify({ lines }), 3000)
-  return c.json(out ?? { error: 'the model did not answer' })
-})
-
-/**
- * What the backend has, and what it still owes. Field by field, because that
- * is the question worth asking of a queue that drains in the background.
- */
 /**
  * Sends whatever is waiting, now, rather than at the next tick. For turning the
  * push on without waiting, and for seeing what a failing backend says.
