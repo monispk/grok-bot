@@ -23,6 +23,8 @@ import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { visionReady } from './vision.ts'
+import { detailPage, listPage, type Row as AdminRow, type Waiting } from './admin.ts'
+import { QUESTIONS } from '../shared/quiz.ts'
 import {
   backfill,
   drain,
@@ -505,6 +507,37 @@ app.post('/api/push/drain', guard, async (c) => {
  * password like everything else, because it is a list of real people's names,
  * numbers and CNICs.
  */
+/**
+ * The recruiter's view. Behind the same password as everything else, because
+ * it is a list of real people's names, numbers and CNICs.
+ */
+app.get('/admin', guard, async (c) => {
+  const id = c.req.query('id') ?? ''
+  const waiting =
+    (await query<Waiting>(
+      `SELECT application, fields, attempts, last_error FROM outbox ORDER BY id`,
+    )) ?? []
+
+  if (id) {
+    if (!isUuid(id)) return c.text('Bad id', 400)
+    const rows = await query<AdminRow>(
+      `SELECT id, phone, full_name, step, completed, flow, history, created_at, updated_at, pushed_at
+         FROM applications WHERE id = $1`,
+      [id],
+    )
+    const row = rows?.[0]
+    if (!row) return c.text('Not found', 404)
+    return c.html(detailPage(row, waiting, pushReady(), QUESTIONS))
+  }
+
+  const rows = await query<AdminRow>(
+    `SELECT id, phone, full_name, step, completed, flow, history, created_at, updated_at, pushed_at
+       FROM applications ORDER BY updated_at DESC LIMIT 200`,
+  )
+  if (!rows) return c.text('No database', 503)
+  return c.html(listPage(rows, waiting, pushReady()))
+})
+
 app.get('/api/applications', guard, async (c) => {
   const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 50)))
   const rows = await query<{
