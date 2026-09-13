@@ -50,6 +50,12 @@ function Section({ title, children }: { title: string; children: preact.Componen
 const stateOf = (v: string | undefined): State =>
   !v || v === 'not checked' ? 'pending' : v.startsWith('match') ? 'pass' : 'fail'
 
+const RAIL_NAME: Record<string, string> = {
+  easypaisa: 'Easypaisa',
+  jazzcash: 'JazzCash',
+  both: 'Easypaisa and JazzCash',
+}
+
 export function Dashboard({
   flow,
   syncedAt,
@@ -99,6 +105,41 @@ export function Dashboard({
             }
           />
         </Section>
+
+        {flow.payment && (
+          <Section title="Payment">
+            <Row label="Rail" value={RAIL_NAME[flow.payment.rail] ?? flow.payment.rail} />
+            <Row
+              label="Status"
+              value={
+                flow.payment.state === 'paid'
+                  ? 'paid'
+                  : flow.payment.state === 'failed'
+                    ? 'not paid'
+                    : flow.payment.state === 'pending'
+                      ? 'being confirmed'
+                      : 'started'
+              }
+              state={
+                flow.payment.state === 'paid'
+                  ? 'pass'
+                  : flow.payment.state === 'failed'
+                    ? 'fail'
+                    : 'pending'
+              }
+            />
+            <Row
+              label="Amount"
+              value={
+                flow.payment.amountPaisa
+                  ? `Rs. ${(flow.payment.amountPaisa / 100).toLocaleString('en-US')}`
+                  : '—'
+              }
+            />
+            <Row label="Reference" value={flow.payment.ref || '—'} />
+            {flow.payment.detail ? <Row label="Rail said" value={flow.payment.detail} /> : null}
+          </Section>
+        )}
 
         <Section title="Eligibility">
           {gates.map((g) => {

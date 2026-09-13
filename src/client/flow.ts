@@ -32,6 +32,17 @@ export const STEPS: Step[] = STEP_SPECS.map((s) => ({
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
 /**
+ * A line of ours that has no recording because it is built per rider — it
+ * carries their name, or the office they were sent to. `unscripted` hands it
+ * to Uplift, so the ending is spoken like everything else.
+ *
+ * The ending was silent: every other line the bot says is either pre-recorded
+ * or comes from the model, and these are neither. Uplift caches by the words,
+ * so the office address is read once for everybody.
+ */
+const spoken = (content: string): Message => ({ role: 'assistant', content, unscripted: true })
+
+/**
  * Whether a step's answer is already on file.
  *
  * Only the typed steps can be answered out of turn, and one of them routinely
@@ -75,7 +86,7 @@ export const TRAINING_VIDEO = 'pofJtK4o2z4'
  * the quiz now. The directions to the office follow later, from `branch`.
  */
 export const submitted = (outcome: Outcome, firstName: string): Message[] => [
-  ...submittedLines(outcome, firstName).map(bot),
+  ...submittedLines(outcome, firstName).map(spoken),
   {
     role: 'assistant',
     content: '',
@@ -96,7 +107,7 @@ export const branch = (
   office: { address: string; short: string; lat: number; lng: number; map: string },
   opts: { owesFee: boolean; waitingFor?: string | null },
 ): Message[] => [
-  ...branchLines(office.address, opts).map(bot),
+  ...branchLines(office.address, opts).map(spoken),
   {
     role: 'assistant',
     content: office.short,

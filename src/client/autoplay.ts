@@ -157,9 +157,21 @@ export function watch(el: HTMLAudioElement): () => void {
   }
 }
 
-/** Silences everything except the one clip that is about to be heard. */
+/**
+ * Silences everything except the one clip that is about to be heard — and
+ * counts what it silenced as heard.
+ *
+ * A rider who interrupts one clip to play another has moved on. Left in the
+ * queue, the interrupted one started again the moment the new one ended,
+ * which is the opposite of what the tap meant. The queue picks up after the
+ * one they chose instead.
+ */
 function hushOthers(except: HTMLAudioElement | null) {
-  for (const el of all) if (el !== except && !el.paused) el.pause()
+  for (const el of all) {
+    if (el === except || el.paused) continue
+    el.pause()
+    for (const [id, player] of players) if (player === el) finished.add(id)
+  }
 }
 
 const heard = new Set<string>()

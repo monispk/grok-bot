@@ -23,9 +23,10 @@ import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { visionReady } from './vision.ts'
+import { forBackend, pending, pushReady, queueDocument, queueFields, startPushing } from './push.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
-import { init as initDb, dbReady, sweep } from './db.ts'
+import { init as initDb, dbReady, query, sweep } from './db.ts'
 import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace, ocrReady } from './rozee.ts'
@@ -68,6 +69,7 @@ app.get('/healthz', (c) =>
     rizq: rizqReady(),
     // The licence reader of last resort, for cards the labels do not know.
     vision: visionReady(),
+    push: pushReady(),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
@@ -294,6 +296,11 @@ app.post('/api/upload', guard, async (c) => {
     else face = { outcome: 'unavailable', reason: 'the CNIC is no longer held', latency: 0 }
   }
 
+  // The picture itself goes to the backend too, with what we made of it. The
+  // bytes are read when the row is sent, not held in it.
+  const application = typeof body?.['applicationId'] === 'string' ? body['applicationId'] : ''
+  if (application && kind) void queueDocument(application, id, kind, verification)
+
   return c.json({ id, name, mime, size, verification, face })
 })
 
@@ -308,7 +315,7 @@ app.get('/api/upload/:id', guard, (c) => {
 
 // Asking for a line to be spoken costs an Uplift call, so it is gated.
 app.post('/api/speak', guard, async (c) => {
-  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  if (!allow(clientIp(c), 'speech')) return c.json({ error: 'Rate limited' }, 429)
   if (!speechReady()) return c.json({ ok: false, reason: 'unavailable' })
 
   const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
@@ -358,7 +365,10 @@ app.put('/api/application/:id', guard, async (c) => {
     step,
     done: step >= STEP_SPECS.length,
   })
-  return c.json({ ok })
+  // Queued, not sent: the rider's next message must not wait on somebody
+  // else's server. A worker drains the queue behind them.
+  const queued = ok ? await queueFields(id, flow) : 0
+  return c.json({ ok, queued })
 })
 
 app.post('/api/application/:id/close', guard, async (c) => {
@@ -461,6 +471,36 @@ app.post('/api/pay/status', guard, async (c) => {
  * app actually runs.
  */
 app.get('/api/models', guard, async (c) => c.json(await listModels()))
+
+/**
+ * What the backend has, and what it still owes. Field by field, because that
+ * is the question worth asking of a queue that drains in the background.
+ */
+app.get('/api/application/:id/push', guard, async (c) => {
+  const id = c.req.param('id')
+  if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
+  const rows = await query<{ flow: Record<string, unknown>; pushed_at: Record<string, string> }>(
+    `SELECT flow, pushed_at FROM applications WHERE id = $1`,
+    [id],
+  )
+  const row = rows?.[0]
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  type Owed = { kind: string; fields: string[]; attempts: number; last_error: string | null }
+  const owed = await query<Owed>(
+    `SELECT kind, fields, attempts, last_error FROM outbox WHERE application = $1 ORDER BY id`,
+    [id],
+  )
+  const now = forBackend(row.flow)
+  return c.json({
+    endpoint: pushReady(),
+    delivered: row.pushed_at ?? {},
+    waiting: (owed ?? []).flatMap((o: Owed) => o.fields),
+    neverQueued: Object.keys(now).filter(
+      (f) => !(f in (row.pushed_at ?? {})) && !(owed ?? []).some((o: Owed) => o.fields.includes(f)),
+    ),
+    attempts: owed ?? [],
+  })
+})
 
 app.post('/api/wallet', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
@@ -593,6 +633,7 @@ app.use(
 app.get('*', page)
 
 startWarmer()
+startPushing()
 warmOcr()
 announceFee()
 // Not awaited: a database that is slow to answer should delay nobody. Every

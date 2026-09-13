@@ -77,7 +77,39 @@ http
     // Non-streaming JSON calls (name extraction). Treat anything that is not a
     // question as a name, which is enough to exercise the flow offline.
     if (body.response_format?.type === 'json_object') {
-      const text = (body.messages?.at(-1)?.content ?? '').trim()
+      const last = body.messages?.at(-1)?.content
+      /**
+       * A vision call sends content as an array of parts, not a string. This
+       * assumed a string and threw on it, which killed the whole mock and took
+       * the browser suite down with it in a way that looked like the app.
+       */
+      if (Array.isArray(last)) {
+        /*
+         * Not a licence, unless asked for one. A stand-in that says yes to
+         * every picture takes the refusal path out of the tests entirely —
+         * which it did: a made-up photograph was accepted as a driving
+         * licence because this answered for it.
+         */
+        const yes = process.env.MOCK_VISION === 'licence'
+        res.writeHead(200, { 'content-type': 'application/json' })
+        return res.end(JSON.stringify({
+          choices: [{ message: { content: JSON.stringify(
+            yes
+              ? {
+                  is_licence: true,
+                  authority: 'Traffic Police, Sindh',
+                  name: 'MOCK RIDER',
+                  number: 'SI-24-000000',
+                  cnic: '3520201427267',
+                  expiry: '2030-01-01',
+                  readable: true,
+                }
+              : { is_licence: false, readable: true },
+          ) } }],
+          usage: { total_tokens: 1300 },
+        }))
+      }
+      const text = (typeof last === 'string' ? last : '').trim()
       const isName = text.length > 0 && !text.includes('?')
       const parts = text.replace(/^(mera naam|my name is)\s+/i, '').split(/\s+/)
       res.writeHead(200, { 'content-type': 'application/json' })

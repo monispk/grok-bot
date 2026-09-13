@@ -537,7 +537,14 @@ export function submittedLines(outcome: Outcome, firstName: string): string[] {
           ? `${hello} Aap ke documents mil gaye hain. Inhein office par check kiya jaye ga.`
           : `${hello} Aap ki maloomat mehfooz kar li gayi hai.`
 
-  return [how, 'Aap ki application jama ho gayi hai. Ab ye training video dekh lein.']
+  return [
+    how,
+    // The office and the CNIC are named here as well as at the end. A rider
+    // who stops reading after the good news should still know the two things
+    // that decide whether their journey is wasted.
+    'Aap ki application jama ho gayi hai. Ab aap ko office aana hoga, apna asli CNIC le kar.',
+    'Office aane se pehle, ye training video zaroor dekh lein.',
+  ]
 }
 
 /** What the rider is still waiting on, in the words they used to say it. */

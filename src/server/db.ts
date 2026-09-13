@@ -80,6 +80,12 @@ export async function init() {
       created_at    timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS outbox_due ON outbox (next_attempt);
+    /* What the row is: a batch of fields, a document, or the final submission. */
+    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'fields';
+    /* Which fields this row carries, so they can be marked when it lands. */
+    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS fields jsonb NOT NULL DEFAULT '[]'::jsonb;
+    ALTER TABLE outbox ADD COLUMN IF NOT EXISTS last_error text;
+    CREATE INDEX IF NOT EXISTS outbox_app ON outbox (application);
 
     CREATE TABLE IF NOT EXISTS applications (
       id          uuid PRIMARY KEY,
@@ -93,6 +99,17 @@ export async function init() {
       updated_at  timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS applications_phone ON applications (phone, updated_at DESC);
+    /*
+     * What the backend has acknowledged, field by field.
+     *
+     * "pushed" is the last acknowledged value of each field, so the next push
+     * can carry only what changed. "pushed_at" is when each was acknowledged,
+     * which is what somebody asking "what has actually reached them?" wants to
+     * see. Kept beside the application rather than derived from the outbox,
+     * because the outbox is emptied and this is the record.
+     */
+    ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed jsonb NOT NULL DEFAULT '{}'::jsonb;
+    ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed_at jsonb NOT NULL DEFAULT '{}'::jsonb;
 
     CREATE TABLE IF NOT EXISTS uploads (
       id          text PRIMARY KEY,

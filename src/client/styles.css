@@ -1353,6 +1353,10 @@ footer button.stop { background: var(--err); }
 }
 .reply:active { background: var(--line); }
 .reply:disabled { opacity: .5; cursor: default; }
+/* Roman Urdu reads left to right, and a lettered option reads as a list — so
+   the answers are aligned, not centred, and their letters line up. */
+.reply.answer { display: flex; align-items: baseline; gap: 8px; text-align: left; }
+.reply.answer b { flex: none; font-weight: 600; }
 .reply b { font-weight: 600; margin-right: 6px; }
 .reply.office { display: flex; flex-direction: column; gap: 2px; }
 .reply.office small { font-size: 12.5px; font-weight: 400; color: var(--muted); }

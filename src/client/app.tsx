@@ -1309,6 +1309,9 @@ export function App() {
         const body = new FormData()
         body.append('file', file)
         if (current.doc) body.append('kind', current.doc)
+        // So the server can forward the picture to the backend against the
+        // right application.
+        if (flow.applicationId) body.append('applicationId', flow.applicationId)
         if (fullName) body.append('expectedName', fullName)
         if (cnic) body.append('expectedCnic', cnic)
         // The selfie is checked against the CNIC already uploaded. Both are
@@ -1733,7 +1736,7 @@ export function App() {
           ) : (
             <div class="replies">
               {(QUESTIONS.find((x) => x.id === quiz.asked[quiz.at])?.options ?? []).map((o) => (
-                <button key={o.key} class="reply" onClick={() => void onReply(`${o.key.toUpperCase()}) ${o.text}`, o.key)}>
+                <button key={o.key} class="reply answer" onClick={() => void onReply(`${o.key.toUpperCase()}) ${o.text}`, o.key)}>
                   <b>{o.key.toUpperCase()}</b>
                   {o.text}
                 </button>

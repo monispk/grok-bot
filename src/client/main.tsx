@@ -1,6 +1,7 @@
 import { render } from 'preact'
 import { App } from './app.tsx'
 import { chromeHandoff } from './device.ts'
+import { keepFresh } from './fresh.ts'
 import { caps } from './recorder.ts'
 import './styles.css'
 
@@ -46,3 +47,7 @@ if (handoff) {
 // Drawn regardless. A browser that blocks the hand-off, or one that shows
 // Chrome beside itself, leaves the rider looking at this page.
 render(<App />, document.getElementById('app')!)
+
+// And, after it is drawn, a word with the server about whether this page is
+// still the current one.
+keepFresh()
