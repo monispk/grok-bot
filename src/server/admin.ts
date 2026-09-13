@@ -331,8 +331,12 @@ export function detailPage(
     ${kv('Licence name vs CNIC', c['checks.licenceVsCnic'])}
     ${kv('Wallet in rider’s name', c['checks.wallet'])}
     ${kv('Licence number', c['license.number'])}
-    ${kv('Licence expiry', c['license.expiry'])}
-    ${kv('Licence expired', c['license.expired'])}
+    ${kv(
+      'Licence expiry',
+      c['license.expiry']
+        ? `${c['license.expiry']}${c['license.expired'] === 'true' ? ' — EXPIRED' : ''}`
+        : 'not read',
+    )}
     ${kv('Name on CNIC', c['cnic_front.name'])}
     ${kv('Read by', c['license.readBy'] ?? 'local OCR')}
   </div>

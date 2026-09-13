@@ -89,6 +89,47 @@ export async function verifyDocument(opts: {
   const sparse = !reading || (isPhoto && reading.words.length < SPARSE_WORDS)
 
   const found = reading && !sparse ? inspect(kind, reading) : null
+
+  /**
+   * A licence that read, but not completely.
+   *
+   * The expiry is the field that decides whether a licence is any use, and the
+   * local reader loses it about a third of the time — the same card, uploaded
+   * three times, gave the date twice. It passed anyway, because nothing
+   * required it, so an application could reach a branch with no idea whether
+   * the licence had run out.
+   *
+   * So when the labels found a licence but not its dates, the picture is
+   * looked at for the missing parts only. What the local reader found is kept:
+   * it read those from the actual pixels, and a model asked to fill a gap
+   * should not get to overwrite what was not a gap.
+   */
+  if (found?.pass && kind === 'license' && isPhoto && visionReady() && !found.fields.expiry) {
+    const seen = await readLicence(bytes, mime)
+    if (seen?.isLicence && (seen.expiry || seen.number || seen.name)) {
+      const filled: Record<string, string | null> = { ...found.fields }
+      let used = false
+      for (const [key, value] of [
+        ['expiry', seen.expiry],
+        ['number', seen.number],
+        ['name', seen.name],
+        ['cnic', seen.cnic],
+      ] as const) {
+        if (!filled[key] && value) {
+          filled[key] = value
+          used = true
+        }
+      }
+      if (filled.expiry && !filled.expired)
+        filled.expired = String(new Date(filled.expiry).getTime() < Date.now())
+      if (used) {
+        filled.readBy = 'local OCR + vision'
+        console.log(`vision: filled ${Object.keys(filled).filter((k) => !found.fields[k]).join(', ')} on a licence`)
+        return settle(filled, true, null, found.missing, expectedName, expectedCnic)
+      }
+    }
+  }
+
   if (found?.pass)
     return settle(found.fields, true, null, found.missing, expectedName, expectedCnic)
 
