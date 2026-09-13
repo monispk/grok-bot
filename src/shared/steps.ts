@@ -234,6 +234,24 @@ export function stripAskBack(reply: string): string {
 }
 
 /**
+ * Removes a sentence in which the model claims to have received something.
+ *
+ * It never has. Documents go to the server, which checks them and says so in
+ * its own words; the model sees only text. Handed the word "Sent" at the
+ * licence step it wrote "Aapka license front tasveer mil gaya" and went on to
+ * the deposit — and a rider who has just been told their licence arrived has
+ * no reason to send it. The prompt forbids this too; this is the part that
+ * cannot be ignored.
+ */
+export function stripReceipt(reply: string): string {
+  const got = /mil\s*ga(?:ya|yi|ye|i)|receiv|mausool|موصول|مل\s*گ(?:یا|ئی|ئے)/i
+  const thing =
+    /tasveer|tasvir|photo|picture|document|license|licence|cnic|selfie|card|file|bill|location|تصویر|لائسنس|کارڈ/i
+  const parts = reply.split(/(?<=[.?!؟۔])\s+|\n+/).filter((p) => p.trim())
+  return parts.filter((p) => !(got.test(p) && thing.test(p))).join(' ').trim()
+}
+
+/**
  * Reads yes or no from a rider's reply. Deterministic rather than a model call:
  * it is one word, it must be reliable, and a wrong reading here either turns
  * away someone eligible or walks someone through an application they cannot
@@ -389,9 +407,16 @@ export function readYesNo(text: string): 'yes' | 'no' | null {
   // that could work, and being told it was not understood is a poor reward.
   if (
     said('haan', 'han', 'hann', 'ji', 'jee', 'g', 'yes', 'yep', 'yup', 'y', 'ok', 'okay',
-         'theek', 'bilkul', 'zaroor', 'hai', 'aah', 'ah', 'ahan')
+         'theek', 'bilkul', 'zaroor', 'aah', 'ah', 'ahan')
   )
     return 'yes'
+
+  // What follows is weak evidence — "hai" is also the verb in every question
+  // ("salary kitni milti hai?") — so a question with nothing stronger in it is
+  // not an answer. "salary kitni milti hai" was read as yes to owning a
+  // smartphone, thanked, and the flow moved on.
+  if (asksSomething(text)) return null
+  if (said('hai')) return 'yes'
 
   /**
    * A whole sentence rather than a word: "mere paas touch phone hai", or the

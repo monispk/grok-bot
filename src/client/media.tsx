@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { register, takeOver } from './autoplay.ts'
+import { markReady, register, takeOver } from './autoplay.ts'
 
 const mmss = (s: number, roundUp = false) => {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -37,7 +37,11 @@ export function VoiceNote({
 
   // Only after every candidate has genuinely failed is the bubble dropped.
   const current = ordered[attempt]
-  if (!current) return null
+  if (!current) {
+    // Nothing left to wait for: the thread's pacing must not hold for it.
+    if (playId) markReady(playId)
+    return null
+  }
 
   // Hands its player to the queue, which decides when — the thread's order,
   // not the order things happened to finish loading in. A clip restored from
@@ -98,7 +102,12 @@ export function VoiceNote({
       <audio
         ref={ref}
         preload="metadata"
-        onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
+        onLoadedMetadata={(e) => {
+          setDuration((e.target as HTMLAudioElement).duration)
+          // The note is there to be heard. The next thing said counts its
+          // pause from here, not from the empty bubble that came first.
+          if (playId) markReady(playId)
+        }}
         onTimeUpdate={(e) => setPos((e.target as HTMLAudioElement).currentTime)}
         /*
          * 'playing', not 'play'. The first fires when playback actually

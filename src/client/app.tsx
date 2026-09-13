@@ -37,6 +37,7 @@ import {
   readYesNo,
   stripAskBack,
   stripEcho,
+  stripReceipt,
   TYPE_NAME_PLEASE,
 } from '../shared/steps.ts'
 import { render as renderMarkdown } from './markdown.ts'
@@ -47,26 +48,13 @@ import { useRecorder, type MicProblem, type Recording } from './recorder.ts'
 import { CANCEL_PX, useMicGesture } from './mic.tsx'
 import { MicSheet } from './micsheet.tsx'
 import { shrinkImage } from './image.ts'
-import { setOrder, stopAll } from './autoplay.ts'
+import { BEAT_MS, GROUP_MS, MAX_TICKS, VOICE_PATIENCE_MS, WORD_MS } from './pace.ts'
+import { isReady, setOrder, stopAll, whenReady } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
 const HISTORY_WINDOW = 12
 
-/**
- * Messages the bot sends arrive as a batch — the welcome is six at once — which
- * lands as a wall of text nobody reads. They are revealed instead in the groups
- * a person would say them in: a line, its voice note just behind it, then a
- * pause before the next thing is said. A rider who is listening rather than
- * reading needs that pause to keep up.
- */
-const WORD_MS = 18
-/** A voice note follows the words it speaks almost at once: one utterance. */
-const BEAT_MS = 160
-/** The pause between one thing being said and the next. */
-const GROUP_MS = 700
-/** Long messages reveal several words a tick so none outstays this budget. */
-const MAX_TICKS = 14
 const ACCEPT = 'image/jpeg,image/png,image/gif,application/pdf,.jpg,.jpeg,.png,.gif,.pdf'
 const CAMERA_ACCEPT = 'image/*'
 
@@ -202,6 +190,10 @@ export function App() {
     [],
   )
   const [revealed, setRevealed] = useState(boot.revealed)
+  /** Bumped to re-run the reveal while it is waiting on a voice note. */
+  const [nudge, setNudge] = useState(0)
+  /** When each voice note was put on screen, so the wait for it has a limit. */
+  const shownAt = useRef(new Map<string, number>())
   /**
    * Everything already in the thread when the page opened. Those are read back
    * silently; only what arrives from here on is played aloud.
@@ -284,10 +276,32 @@ export function App() {
     // follows on a beat. Anything else is the next thing being said, and waits.
     const prev = messages[revealed - 1]
     const attached = m.kind === 'audio' && prev?.role === 'assistant'
+
+    // The next thing is not said until the last thing can be heard: if the
+    // previous line's voice note is still being made, or is made but has not
+    // loaded yet, wait for it. Then the pair — words, then voice — lands
+    // whole, and the two seconds are counted from the voice, not from the
+    // words. Without this the next question was on screen while the answer's
+    // note was still an empty bubble, and on a slow connection the pause
+    // was spent loading the clip: two lines and two notes, as one lump.
+    if (!attached && prev?.role === 'assistant' && prev.kind === 'audio' && prev.id && !isReady(prev.id)) {
+      const waited = Date.now() - (shownAt.current.get(prev.id) ?? prev.at ?? 0)
+      if (waited < VOICE_PATIENCE_MS) {
+        const off = whenReady(prev.id, () => setNudge((n) => n + 1))
+        const t = setTimeout(() => setNudge((n) => n + 1), VOICE_PATIENCE_MS - waited)
+        return () => {
+          off()
+          clearTimeout(t)
+        }
+      }
+    }
     const lead = revealed === 0 ? 0 : attached ? BEAT_MS : GROUP_MS
 
     if (m.kind && m.kind !== 'text') {
-      const t = setTimeout(() => setRevealed((r) => r + 1), lead)
+      const t = setTimeout(() => {
+        if (m.kind === 'audio' && m.id) shownAt.current.set(m.id, Date.now())
+        setRevealed((r) => r + 1)
+      }, lead)
       return () => clearTimeout(t)
     }
 
@@ -319,7 +333,7 @@ export function App() {
       clearTimeout(start)
       if (ticking) clearInterval(ticking)
     }
-  }, [revealed, messages])
+  }, [revealed, messages, nudge])
   /**
    * The whole thing, not a list of fields. Naming them one by one meant every
    * field added afterwards was silently left out of storage — the phone number,
@@ -377,13 +391,22 @@ export function App() {
         } catch {
           /* no voice for this one; the words are still on screen */
         }
+        // Without audio the bubble is an empty box, so it is dropped entirely.
+        // Dropping it shifts everything after it up a slot, and `revealed`
+        // counts slots: left alone, the message that had been waiting its turn
+        // was suddenly below the line and appeared with no pause at all.
+        const gone = sources
+          ? []
+          : messagesRef.current
+              .map((x, i) => (x.speak === words && !x.sources ? i : -1))
+              .filter((i) => i >= 0)
         setMessages((list) =>
           list.flatMap((x) => {
             if (x.speak !== words || x.sources) return [x]
-            // Without audio the bubble is an empty box, so drop it entirely.
             return sources ? [{ ...x, sources, pending: false }] : []
           }),
         )
+        if (gone.length) setRevealed((r) => r - gone.filter((i) => i < r).length)
       })()
     }
   }, [messages])
@@ -671,7 +694,7 @@ export function App() {
               // recording attached. And strip any question of its own it has
               // asked the rider: the flow asks the questions, and one from both
               // at once leaves the rider with two to answer and no answer.
-              const kept = stripAskBack(pending ? stripEcho(acc, pending) : acc)
+              const kept = stripReceipt(stripAskBack(pending ? stripEcho(acc, pending) : acc))
               if (kept) {
                 const next = append(messagesRef.current, [fromModel(kept)])
                 setMessages(next)
@@ -750,9 +773,13 @@ export function App() {
       }
 
       if (current.kind !== 'text') {
-        // A document or location was asked for. Text cannot satisfy it, so treat
-        // it as a question, answer it, then ask again. The step does not move.
-        await runFaq(withUser, current.ask)
+        // A document or location was asked for, and text cannot satisfy it. A
+        // question is answered, then the step is asked again. Anything else —
+        // "Sent", "ho gaya", "ok" — gets the step's own line and nothing more:
+        // handed "Sent", the model told a rider their licence had arrived and
+        // moved on to the deposit, when nothing had arrived at all. The step
+        // does not move until the server has the file and has checked it.
+        if (asksSomething(text)) await runFaq(withUser, current.ask)
         say(bot(current.wrong), ...(current.audio ? askMessages(current).slice(1) : []))
         return
       }

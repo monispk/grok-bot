@@ -14,6 +14,7 @@ import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 import { STEP_SPECS, WELCOME_LINES } from '../src/shared/steps.ts'
 import { GAP_MS } from '../src/client/autoplay.ts'
+import { BEAT_MS, GROUP_MS } from '../src/client/pace.ts'
 
 const APP = process.env.APP ?? 'http://localhost:3099'
 const results = []
@@ -168,7 +169,7 @@ await check('the welcome arrives one message at a time, pinned to the bottom', a
 
   assert.ok(done, 'the welcome never finished arriving')
   assert.ok(counts.size > 3, `messages appeared in ${counts.size} steps, so they were not staged`)
-  assert.ok(elapsed < 8000, `the welcome took ${elapsed}ms, which is a wait rather than a flourish`)
+  assert.ok(elapsed < 6 * GROUP_MS + 4000, `the welcome took ${elapsed}ms, which is a wait rather than a rhythm`)
   assert.ok(worstGap < 24, `drifted ${Math.round(worstGap)}px from the bottom; the rider would have to scroll`)
 
   const kinds = await page.evaluate(() =>
@@ -482,6 +483,7 @@ await check("the camera button opens the phone's camera app, back or front", asy
       [step, msg],
     )
     await p4.reload()
+    await p4.waitForSelector(`.scroll .msg:has-text("${msg}")`)
     await p4.waitForSelector('button.camera:not([disabled])')
     const [chooser] = await Promise.all([
       p4.waitForEvent('filechooser', { timeout: 5000 }),
@@ -681,8 +683,17 @@ await spoken('a line with a recording is not also read by Uplift', async () => {
 
   // Answering the smartphone gate brings up the bike gate, which also has a
   // recording — the case this test exists for.
-  await settle(async () => (await stored()).some((m) => (m.content || '').includes('bike')))
-  await page.waitForTimeout(2500)
+  // On screen, not merely in storage: the thread is paced in pairs now, and
+  // storage has the question two seconds before the rider does.
+  const onScreen = await settle(async () =>
+    page.evaluate(() => {
+      const els = [...document.querySelectorAll('.scroll > .msg')]
+      const i = els.findIndex((e) => (e.textContent || '').includes('bike'))
+      return i >= 0 && !!els[i + 1]?.querySelector('.voice')
+    }),
+  )
+  assert.ok(onScreen, 'the bike question never reached the screen with its voice note')
+  await page.waitForTimeout(600)
 
   // "Theek hai." has a recording of its own now, so the thread holds two voice
   // notes and both are correct. What must never happen is a question carrying
@@ -740,16 +751,115 @@ await check('lines arrive in groups, with a pause between them', async () => {
   // A voice note rides just behind the line it speaks.
   const attached = [gaps[0], gaps[gaps.length - 1]]
   for (const g of attached)
-    assert.ok(g.ms < 450, `a voice note trailed its line by ${g.ms}ms; it should arrive with it`)
+    assert.ok(g.ms < BEAT_MS + 300, `a voice note trailed its line by ${g.ms}ms; it should arrive with it`)
 
   // Between one thing being said and the next there is a real pause.
   const between = gaps.filter((g) => g.kind === 'TXT').map((g) => g.ms)
   assert.ok(between.length >= 3, `only saw ${between.length} gaps between lines`)
   for (const ms of between)
-    assert.ok(ms > 400, `only ${ms}ms before the next line; too quick to follow`)
+    assert.ok(ms > GROUP_MS - 100, `only ${ms}ms before the next line; asked for ${GROUP_MS}`)
 
   const total = seen[seen.length - 1].at - seen[0].at
-  assert.ok(total < 9000, `the welcome took ${total}ms, which is a wait rather than a rhythm`)
+  assert.ok(total < 6 * GROUP_MS + 4000, `the welcome took ${total}ms, which is a wait rather than a rhythm`)
+})
+
+/**
+ * Watches the thread arrive and notes when each thing first appeared: a bot
+ * line by its words, a voice note by the line above it. The pacing rule is
+ * about these moments — words, then the voice, then two seconds — so the test
+ * measures exactly those.
+ */
+const arrivals = async (pg, doneWhen, timeout = 40_000) => {
+  const first = new Map()
+  const until = Date.now() + timeout
+  while (Date.now() < until) {
+    const now = Date.now()
+    const keys = await pg.evaluate(() => {
+      const out = []
+      let lastText = 'start'
+      for (const c of document.querySelectorAll('.scroll > .msg')) {
+        if (c.classList.contains('user')) {
+          lastText = 'rider'
+          out.push('rider')
+        } else if (c.querySelector('.voice')) out.push(`voice after ${lastText}`)
+        else if (c.querySelector('img.photo')) out.push('photo')
+        else {
+          lastText = (c.textContent || '').trim().slice(0, 24)
+          out.push(lastText)
+        }
+      }
+      return out
+    })
+    for (const k of keys) if (!first.has(k)) first.set(k, now)
+    if (doneWhen(keys)) break
+    await pg.waitForTimeout(40)
+  }
+  return first
+}
+
+const seenAt = (first, needle) => {
+  for (const [k, at] of first) if (k.includes(needle)) return at
+  return null
+}
+
+await check('the next pair waits for the last voice note, then the pause', async () => {
+  // Reported: two lines and two voice notes landing as one lump. The rule is
+  // words, then the voice note, then two seconds before the next words. Here
+  // the answer's voice note takes the mock 2.5 seconds to make.
+  await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Touch phone hai?' }])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'salary kitni milti hai')
+  await page.click('footer button.send')
+
+  const first = await arrivals(page, (k) => k.some((x) => x.startsWith('Kya aap ke paas apna')) && k[k.length - 1].startsWith('voice after Kya'))
+  const trail = [...first].map(([k, at]) => `${k} @${at - first.get('rider')}ms`).join('\n')
+  const answer = seenAt(first, 'Aap ne poocha')
+  const answerVoice = seenAt(first, 'voice after Aap ne poocha')
+  const question = seenAt(first, 'Kya aap ke paas apna')
+  assert.ok(answer && answerVoice && question, `could not see the arrivals:\n${trail}`)
+  assert.ok(answerVoice - answer < 4000, `the answer's voice note took ${answerVoice - answer}ms`)
+  const gap = question - answerVoice
+  assert.ok(gap >= GROUP_MS - 100, `the question came ${gap}ms after the answer's voice note; asked for ${GROUP_MS}\n${trail}`)
+})
+
+await check('a voice note that fails to arrive does not let the next pair jump the queue', async () => {
+  // The empty bubble is removed, which shifts every later message up a slot.
+  // The message waiting its turn used to land at once because of it.
+  await page.route('**/api/speak', (route) => route.fulfill({ status: 500, body: '{"ok":false}' }))
+  await page.route('**/api/speak/**', (route) => route.fulfill({ status: 404, body: '' }))
+  await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Touch phone hai?' }])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'salary kitni milti hai')
+  await page.click('footer button.send')
+
+  const first = await arrivals(page, (k) => k.some((x) => x.startsWith('Kya aap ke paas apna')))
+  await page.unroute('**/api/speak')
+  await page.unroute('**/api/speak/**')
+  const trail = [...first].map(([k, at]) => `${k} @${at - first.get('rider')}ms`).join('\n')
+  const answer = seenAt(first, 'Aap ne poocha')
+  const question = seenAt(first, 'Kya aap ke paas apna')
+  assert.ok(answer && question, `could not see the arrivals:\n${trail}`)
+  const gap = question - answer
+  assert.ok(gap >= GROUP_MS - 100, `the question came ${gap}ms after the answer; asked for ${GROUP_MS}\n${trail}`)
+})
+
+await check('"Sent" at a document step sends nothing and moves nowhere', async () => {
+  // Reported: the rider typed "Sent"; the model said the licence had arrived
+  // and talked about the deposit. Nothing had arrived.
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'Sent')
+  await page.click('footer button.send')
+  const asked = await settle(async () =>
+    (await stored()).some((m) => (m.content || '').includes('tasveer chahiye')),
+  )
+  assert.ok(asked, 'the step was not asked again')
+  await page.waitForTimeout(1500)
+  const log = await stored()
+  assert.ok(!log.some((m) => /Aap ne poocha/.test(m.content || '')), 'the model was consulted about "Sent"')
+  assert.ok(!log.some((m) => /mil ga/i.test(m.content || '')), 'something claimed to have been received')
+  const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
+  assert.equal(ORDER[step], 'license_front', 'the step moved on without a document')
 })
 
 await spoken('nothing spins while a line is being read', async () => {

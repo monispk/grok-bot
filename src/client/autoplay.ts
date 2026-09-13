@@ -132,6 +132,39 @@ export function setOrder(ids: string[]) {
   pump()
 }
 
+/**
+ * Which voice notes can be heard right now — their player has enough of the
+ * clip to start, or has given up trying. The thread's pacing waits on this:
+ * the next thing said comes two seconds after the last voice note is *there*,
+ * not two seconds after an empty bubble was put in its place. On a 3G phone
+ * those are not the same moment.
+ */
+const heard = new Set<string>()
+const waiting = new Map<string, Set<() => void>>()
+
+export function markReady(id: string) {
+  if (heard.has(id)) return
+  heard.add(id)
+  waiting.get(id)?.forEach((cb) => cb())
+  waiting.delete(id)
+}
+
+export const isReady = (id: string) => heard.has(id)
+
+/** Calls back once the note can be heard; at once if it already can. */
+export function whenReady(id: string, cb: () => void): () => void {
+  if (heard.has(id)) {
+    cb()
+    return () => {}
+  }
+  const set = waiting.get(id) ?? new Set<() => void>()
+  set.add(cb)
+  waiting.set(id, set)
+  return () => {
+    set.delete(cb)
+  }
+}
+
 /** A voice note's player now exists and can be heard. */
 export function register(id: string, el: HTMLAudioElement) {
   if (players.get(id) === el) return

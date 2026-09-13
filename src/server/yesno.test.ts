@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { asksSomething, readPhone, readRail, readYesNo, stripAskBack } from '../shared/steps.ts'
+import { asksSomething, readPhone, readRail, readYesNo, stripAskBack, stripReceipt } from '../shared/steps.ts'
 
 test('reads yes', () => {
   for (const t of ['haan', 'Ji haan', 'jee', 'yes', 'G', 'bilkul', 'ji hai'])
@@ -220,4 +220,34 @@ test('"I don\'t know" stays unanswerable however it is spelled', () => {
   // And a real denial is still a denial.
   assert.equal(readRail('koi nahi'), 'neither')
   assert.equal(readYesNo('nhi'), 'no')
+})
+
+test('the model may not claim to have received a document', () => {
+  // Reported: at the licence step a rider typed "Sent". The model answered
+  // "Aapka license front tasveer mil gaya" and moved on to the deposit.
+  // Nothing had arrived. Only the server, which checks the file, may say so.
+  assert.equal(
+    stripReceipt(
+      'Aapka license front tasveer mil gaya. Ab aap Rs. 2,500 security deposit easypaisa ya JazzCash se jama kar sakte hain.',
+    ),
+    'Ab aap Rs. 2,500 security deposit easypaisa ya JazzCash se jama kar sakte hain.',
+  )
+  assert.equal(stripReceipt('Aap ki CNIC ki tasveer mil gayi hai, shukriya.'), '')
+  assert.equal(stripReceipt('آپ کا لائسنس مل گیا۔'), '')
+  // Receiving something that is not a document is a different sentence.
+  assert.equal(stripReceipt('Paise har hafte mil jate hain.'), 'Paise har hafte mil jate hain.')
+  assert.equal(stripReceipt('Bag aur shirt branch par mil jati hai.'), 'Bag aur shirt branch par mil jati hai.')
+})
+
+test('a question is not a yes just because it ends in "hai"', () => {
+  // Found by tracing: "salary kitni milti hai" answered the smartphone gate
+  // with a yes, because "hai" was in the list of yes-words.
+  assert.equal(readYesNo('salary kitni milti hai'), null)
+  assert.equal(readYesNo('kya bike zaroori hai?'), null)
+  assert.equal(readYesNo('office kahan hai'), null)
+  // A plain "hai" is still a yes, and a real answer with a question in it keeps its answer.
+  assert.equal(readYesNo('hai'), 'yes')
+  assert.equal(readYesNo('mere paas hai'), 'yes')
+  assert.equal(readYesNo('haan hai, magar salary kitni hai?'), 'yes')
+  assert.equal(readYesNo('nahi hai, kya zaroori hai?'), 'no')
 })

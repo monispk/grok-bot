@@ -16,6 +16,7 @@
 import assert from 'node:assert/strict'
 import { chromium } from 'playwright'
 import { STEP_SPECS } from '../src/shared/steps.ts'
+import { GROUP_MS, VOICE_PATIENCE_MS } from '../src/client/pace.ts'
 
 const APP = process.env.APP ?? 'http://localhost:3099'
 const ORDER = STEP_SPECS.map((s) => s.id)
@@ -37,18 +38,22 @@ const settle = async (predicate, timeout = 30_000) => {
 const state = () => page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}'))
 const history = () => page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
 
-/** Waits until nothing is streaming and the thread has stopped growing. */
+/**
+ * Waits until nothing is streaming and the thread has stopped growing — for
+ * longer than the pause between pairs, or the next answer goes in mid-pause.
+ */
 const quiet = async () => {
   let last = -1
   let stable = 0
-  const until = Date.now() + 30_000
+  const ticks = Math.ceil((GROUP_MS + VOICE_PATIENCE_MS / 4) / 150)
+  const until = Date.now() + 45_000
   while (Date.now() < until) {
     const n = await page.evaluate(
       () => document.querySelectorAll('.scroll > *').length + (document.querySelector('.fab.stop') ? 1000 : 0),
     )
     stable = n === last ? stable + 1 : 0
     last = n
-    if (stable >= 8) return
+    if (stable >= ticks) return
     await page.waitForTimeout(150)
   }
 }
