@@ -1,6 +1,8 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { Hono } from 'hono'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { Hono, type Context } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import { authRequired, grant, guard, isAuthed } from './auth.ts'
 import { allow } from './limit.ts'
@@ -24,8 +26,8 @@ import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, sweep } from './db.ts'
 import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
-import { facialReady, matchFace } from './rozee.ts'
-import { checkWallet } from './rizq.ts'
+import { facialReady, matchFace, ocrReady } from './rozee.ts'
+import { checkWallet, rizqReady } from './rizq.ts'
 import { anyRailReady, newRef, payEasypaisa, payJazzcash } from './pay.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
@@ -57,6 +59,11 @@ app.get('/healthz', (c) =>
     rails: anyRailReady(),
     // Whether a 3gp or AMR voice note from a phone's recorder app can be read.
     transcode: transcodeReady(),
+    // The verifications. A missing credential used to show up only as "not
+    // run" on the rider's data screen, after a real CNIC had been uploaded.
+    ocr: ocrReady(),
+    facial: facialReady(),
+    rizq: rizqReady(),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
@@ -499,6 +506,42 @@ const AUDIO_TYPES: Record<string, string> = {
   '.m4a': 'audio/mp4',
 }
 
+/**
+ * What a phone may keep, and for how long. Nothing was said before, so phones
+ * kept the old index.html and the old bundle on their own judgement — and a
+ * focus group tested a build that had been replaced twice. The page itself is
+ * always re-checked; the bundles it names carry a hash in the name and never
+ * change, so they can be kept for good; everything else for a day.
+ */
+const cacheFor = (path: string, c: Context) => {
+  if (path.endsWith('index.html')) c.header('cache-control', 'no-cache')
+  else if (path.includes('/assets/')) c.header('cache-control', 'public, max-age=31536000, immutable')
+  else c.header('cache-control', 'public, max-age=86400')
+}
+
+/**
+ * The page carries the whole app, so it is re-checked on every open — and
+ * with a tag that check is a 304 and a few hundred bytes, not 160 KB on 3G.
+ * Held in memory with its hash: the static handler streams, and a streamed
+ * body cannot be tagged.
+ */
+const PAGE = (() => {
+  try {
+    return readFileSync('./dist/client/index.html')
+  } catch {
+    return null // no build yet; the static handler below will 404 as before
+  }
+})()
+const PAGE_TAG = PAGE ? `"${createHash('sha1').update(PAGE).digest('hex').slice(0, 20)}"` : ''
+const page = (c: Context) => {
+  if (!PAGE) return c.text('Not built', 503)
+  const headers = { etag: PAGE_TAG, 'cache-control': 'no-cache' }
+  if (c.req.header('if-none-match') === PAGE_TAG) return c.body(null, 304, headers)
+  return c.body(PAGE as unknown as ArrayBuffer, 200, { ...headers, 'content-type': 'text/html; charset=utf-8' })
+}
+app.get('/', page)
+app.get('/index.html', page)
+
 app.use(
   '/*',
   serveStatic({
@@ -507,10 +550,11 @@ app.use(
       const ext = path.slice(path.lastIndexOf('.'))
       const type = AUDIO_TYPES[ext]
       if (type) c.header('content-type', type)
+      cacheFor(path, c)
     },
   }),
 )
-app.get('*', serveStatic({ path: './dist/client/index.html' }))
+app.get('*', page)
 
 startWarmer()
 warmOcr()
