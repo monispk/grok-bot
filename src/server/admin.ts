@@ -30,6 +30,105 @@ const esc = (v: unknown) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
   )
 
+/**
+ * Every document on an application, in the order the rider sent them.
+ *
+ * Read off the collected fields rather than a list of the three we expect.
+ * The list was the three: a CNIC back, a utility bill, a second attempt at a
+ * licence — anything the flow learns to ask for — was uploaded, verified,
+ * stored, and then shown to nobody.
+ */
+const DOC_ORDER = ['license', 'cnic_front', 'cnic_back', 'bill', 'selfie']
+
+export function uploaded(c: Record<string, string>): { kind: string; id: string }[] {
+  return Object.keys(c)
+    .filter((k) => k.endsWith('.uploadId') && c[k])
+    .map((k) => ({ kind: k.slice(0, -'.uploadId'.length), id: c[k]! }))
+    .sort((a, b) => {
+      const i = DOC_ORDER.indexOf(a.kind)
+      const j = DOC_ORDER.indexOf(b.kind)
+      return (i < 0 ? DOC_ORDER.length : i) - (j < 0 ? DOC_ORDER.length : j)
+    })
+}
+
+/** One message of a thread, as it was stored by the app. */
+type Msg = {
+  role?: string
+  content?: string
+  kind?: string
+  src?: string
+  sources?: { src: string; type: string }[]
+  doc?: { name?: string; mime?: string; size?: number }
+  video?: string
+  place?: { lat?: number; lng?: number; address?: string }
+  at?: number
+}
+
+/**
+ * One bubble of the conversation, as it happened.
+ *
+ * This used to render every attachment as the word "[audio]" or "[document]",
+ * which told a recruiter that something was sent and nothing about what. A
+ * thread is the record of an application: the picture the rider sent is the
+ * evidence, and the voice note is the rider's own words — the transcript
+ * beneath it is only our reading of them, and the times it is wrong are
+ * exactly the times somebody comes looking.
+ *
+ * Everything here is a URL this same server already serves: /api/upload for
+ * what the rider sent, /api/speak and the recorded clips for what we said.
+ */
+export function bubble(m: Msg): string {
+  const side = m.role === 'user' ? 'me' : 'bot'
+  const wrap = (inner: string) => (inner ? `<div class="msg ${side}">${inner}</div>` : '')
+  const words = (m.content ?? '').trim()
+
+  if (m.kind === 'audio') {
+    const srcs = (m.sources ?? []).filter((s) => s?.src && !s.src.startsWith('blob:'))
+    // Voice notes whose recording did not outlive the retention window still
+    // have their words. A player pointing nowhere would be worse than none.
+    if (!srcs.length)
+      return wrap(words ? `<div class="said">${esc(words)}</div>` : '')
+    const tags = srcs
+      .map((x) => `<source src="${esc(x.src)}" type="${esc(x.type)}">`)
+      .join('')
+    return wrap(
+      `<audio controls preload="none" class="player">${tags}</audio>` +
+        (words ? `<div class="said">${esc(words)}</div>` : ''),
+    )
+  }
+
+  if ((m.kind === 'document' || m.kind === 'image' || m.kind === 'choice') && m.src) {
+    const pdf = m.doc?.mime === 'application/pdf'
+    const caption = m.doc?.name
+      ? `<div class="said">${esc(m.doc.name)}${m.doc.size ? ` · ${Math.round(m.doc.size / 1024)} KB` : ''}</div>`
+      : words
+        ? `<div class="said">${esc(words)}</div>`
+        : ''
+    const shown = pdf
+      ? `<div class="said">PDF — open</div>`
+      : `<img src="${esc(m.src)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'said',textContent:'no longer held'}))">`
+    return wrap(
+      `<a href="${esc(m.src)}" target="_blank" rel="noopener">${shown}</a>${caption}`,
+    )
+  }
+
+  if (m.kind === 'location' && m.place) {
+    const at = `${m.place.lat},${m.place.lng}`
+    return wrap(
+      `<a href="https://www.google.com/maps/search/?api=1&amp;query=${esc(at)}" target="_blank" rel="noopener">` +
+        (m.src ? `<img src="${esc(m.src)}" alt="" loading="lazy" onerror="this.remove()">` : '') +
+        `</a><div class="said">${esc(m.place.address ?? words)}</div>`,
+    )
+  }
+
+  if (m.kind === 'video' && m.video)
+    return wrap(
+      `<a href="https://www.youtube.com/watch?v=${esc(m.video)}" target="_blank" rel="noopener">training video</a>`,
+    )
+
+  return wrap(words ? esc(words) : '')
+}
+
 /** Pakistan time, because that is where everyone reading this is. */
 const PKT = { timeZone: 'Asia/Karachi', hour12: false } as const
 
@@ -177,6 +276,11 @@ display:flex;flex-direction:column;gap:4px;max-height:420px;overflow:auto;margin
 .msg{max-width:76%;padding:5px 9px;border-radius:8px;font-size:12.5px;line-height:1.45}
 .msg.bot{background:var(--paper);border:1px solid var(--rule);align-self:flex-start}
 .msg.me{background:var(--good-soft);align-self:flex-end}
+.msg img{display:block;max-width:190px;border-radius:6px;border:1px solid var(--rule);
+background:var(--ground)}
+.msg a{color:inherit;text-decoration:none}
+.msg .player{display:block;width:230px;height:32px;margin:1px 0}
+.msg .said{font-size:11.5px;color:var(--dim);margin-top:4px;line-height:1.4}
 .fieldlist{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .fieldlist code{font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:2px 6px;
 border-radius:4px;background:var(--code);color:var(--dim)}
@@ -212,11 +316,10 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
         return `<span class="mark ${cls}" title="${esc(v)}">${glyph}</span>`
       }
 
-      const shots = ['license', 'cnic_front', 'selfie']
-        .filter((k) => c[`${k}.uploadId`])
+      const shots = uploaded(c)
         .map(
-          (k) =>
-            `<img class="thumb" src="/api/upload/${esc(c[`${k}.uploadId`])}" alt="${esc(k)}" title="${esc(k.replace('_', ' '))}" loading="lazy" onerror="this.remove()">`,
+          ({ kind, id }) =>
+            `<img class="thumb" src="/api/upload/${esc(id)}" alt="${esc(kind)}" title="${esc(kind.replace(/_/g, ' '))}" loading="lazy" onerror="this.remove()">`,
         )
         .join('')
 
@@ -281,13 +384,12 @@ export function detailPage(
   const kv = (label: string, value: unknown) =>
     `<div class="kv"><span>${esc(label)}</span><b>${esc(value ?? '—') || '—'}</b></div>`
 
-  const docs = ['license', 'cnic_front', 'selfie']
-    .filter((k) => c[`${k}.uploadId`])
+  const docs = uploaded(c)
     .map(
-      (k) => `<figure><a href="/api/upload/${esc(c[`${k}.uploadId`])}" target="_blank" rel="noopener">
-        <img src="/api/upload/${esc(c[`${k}.uploadId`])}" alt="${esc(k)}" loading="lazy"
+      ({ kind, id }) => `<figure><a href="/api/upload/${esc(id)}" target="_blank" rel="noopener">
+        <img src="/api/upload/${esc(id)}" alt="${esc(kind)}" loading="lazy"
         onerror="this.closest('figure').innerHTML='<small>no longer held</small>'"></a>
-        <figcaption>${esc(k.replace('_', ' '))}</figcaption></figure>`,
+        <figcaption>${esc(kind.replace(/_/g, ' '))}</figcaption></figure>`,
     )
     .join('')
 
@@ -299,14 +401,7 @@ export function detailPage(
     })
     .join('')
 
-  const transcript = (r.history ?? [])
-    .map((m) => {
-      const msg = m as { role?: string; content?: string; kind?: string }
-      const text = msg.kind && msg.kind !== 'text' ? `[${msg.kind}]` : msg.content
-      if (!text) return ''
-      return `<div class="msg ${msg.role === 'user' ? 'me' : 'bot'}">${esc(text)}</div>`
-    })
-    .join('')
+  const transcript = (r.history ?? []).map((m) => bubble(m as Msg)).filter(Boolean).join('')
 
   const fields = (names: string[], cls: string) =>
     names.length
@@ -377,6 +472,9 @@ export function detailPage(
 <div class="panel"><h2>Conversation</h2>
   <details><summary>Show the whole thread (${(r.history ?? []).length} messages)</summary>
     <div class="chat">${transcript}</div>
+    <small>Both sides can be played back. Voice notes are kept for a month;
+    documents, being identity papers, for a day — an older thread keeps its
+    words and loses its pictures.</small>
   </details>
 </div>
 </div></body></html>`

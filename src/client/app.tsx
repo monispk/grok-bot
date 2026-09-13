@@ -1175,12 +1175,18 @@ export function App() {
 
       setWorking(true)
       let heard = ''
+      // Where the clip was kept, so the bubble can stop pointing at a blob URL
+      // that dies with the page — the rider replays their own voice note after
+      // a reload, and a reviewer can hear what the transcript was made from.
+      let kept = ''
       try {
         const body = new FormData()
         body.append('file', new File([blob], 'speech', { type: mime }))
+        if (flow.applicationId) body.append('applicationId', flow.applicationId)
         const res = await fetch('/api/transcribe', { method: 'POST', body })
-        const data = (await res.json()) as { ok?: boolean; text?: string }
+        const data = (await res.json()) as { ok?: boolean; text?: string; id?: string }
         if (data.ok && data.text) heard = data.text.trim()
+        if (data.id) kept = `/api/upload/${data.id}`
       } catch {
         /* handled below */
       }
@@ -1188,7 +1194,15 @@ export function App() {
 
       const settle = (content: string) =>
         withVoice.map((x) =>
-          x.tmp === tmp ? { ...x, content, pending: false, tmp: undefined } : x,
+          x.tmp === tmp
+            ? {
+                ...x,
+                content,
+                pending: false,
+                tmp: undefined,
+                ...(kept ? { src: kept, sources: [{ src: kept, type: mime }] } : {}),
+              }
+            : x,
         )
 
       if (!heard) {
@@ -1201,7 +1215,7 @@ export function App() {
       setMessages(settled)
       await processText(heard, settled)
     },
-    [busy, current, messages, say, processText],
+    [busy, current, messages, say, processText, flow.applicationId],
   )
 
   /**

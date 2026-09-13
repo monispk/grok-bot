@@ -145,5 +145,20 @@ export async function sweep() {
   // Documents are identity papers. Kept only long enough for a recruiter to
   // look at an application the morning after it arrived.
   const hours = Number(process.env.DOCUMENT_KEEP_HOURS ?? 24)
-  await query(`DELETE FROM uploads WHERE created_at < now() - ($1 || ' hours')::interval`, [hours])
+  await query(
+    `DELETE FROM uploads WHERE kind <> 'voice' AND created_at < now() - ($1 || ' hours')::interval`,
+    [hours],
+  )
+  /*
+   * A voice note is not an identity paper — it is one half of a conversation,
+   * and the other half is kept for thirty days in `speech`. Deleting the
+   * rider's words on the documents' schedule would leave a thread in which
+   * only Rozeena could still be heard. So it keeps the conversation's window,
+   * not the documents'.
+   */
+  const voiceDays = Number(process.env.VOICE_KEEP_DAYS ?? 30)
+  await query(
+    `DELETE FROM uploads WHERE kind = 'voice' AND created_at < now() - ($1 || ' days')::interval`,
+    [voiceDays],
+  )
 }

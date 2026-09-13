@@ -171,16 +171,29 @@ export function keepable(messages: Message[]): Message[] {
   // back as pending. Persist the bubble, drop what cannot survive a reload.
   return messages
       .slice(-MAX)
-      // A clip nothing could be heard in leaves no transcript, so it would come
-      // back as an empty bubble. It was answered at the time; drop it.
-      .filter((m) => !(m.role === 'user' && m.kind === 'audio' && !m.content.trim()))
+      // A clip nothing could be heard in leaves no transcript. Keep it if the
+      // recording itself survived — an unclear clip is exactly the one someone
+      // reviewing the thread wants to play — and drop the empty bubble if not.
+      .filter(
+        (m) =>
+          !(
+            m.role === 'user' &&
+            m.kind === 'audio' &&
+            !m.content.trim() &&
+            !m.sources?.some((s) => !s.src.startsWith('blob:'))
+          ),
+      )
       // A line that was never actually spoken is a spinner, not a voice note.
       .filter((m) => !(m.kind === 'audio' && m.speak && !m.sources))
-      // A rider's own voice note lives in a blob URL that dies with the page.
-      // Keep what was heard as plain text rather than a player pointing nowhere.
+      // A rider's own voice note used to live only in a blob URL, which dies
+      // with the page, so it was kept as plain text rather than a player
+      // pointing nowhere. Now the clip is stored when it is transcribed: keep
+      // the player when it points somewhere real, and fall back to the words.
       .map((m) =>
         m.role === 'user' && m.kind === 'audio'
-          ? { role: m.role, content: m.content }
+          ? m.sources?.some((s) => !s.src.startsWith('blob:'))
+            ? { role: m.role, content: m.content, kind: m.kind, src: m.src, sources: m.sources }
+            : { role: m.role, content: m.content }
           : m.src?.startsWith('blob:') || m.pending
             ? { ...m, src: m.src?.startsWith('blob:') ? undefined : m.src, pending: false, tmp: undefined }
             : m,

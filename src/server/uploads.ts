@@ -74,6 +74,46 @@ export function accept(name: string, bytes: Uint8Array): Accepted | Rejected {
   return { ok: true, upload }
 }
 
+/**
+ * Audio, which cannot be sniffed the way a JPEG can.
+ *
+ * A container's magic bytes say WebM or MP4, not which codec is inside, and
+ * what arrives depends entirely on the handset — Chrome sends WebM/Opus, iOS
+ * Safari MP4/AAC, and older Androids whatever they have. So the declared type
+ * is checked against a short list and the bytes are taken at their word. They
+ * are never rendered as a document, only played back.
+ */
+const AUDIO = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/mpeg', 'audio/aac', 'audio/wav']
+
+/**
+ * Holds a rider's voice note the same way a document is held.
+ *
+ * Their own words are half of the conversation, and the transcript is only
+ * our reading of them. Whoever looks at a disputed application needs to hear
+ * what was actually said — and the rider needs it too: the bubble used to
+ * point at a blob URL that died with the page, so their voice notes came back
+ * from a reload as bare text.
+ */
+export function hold(mime: string, bytes: Uint8Array): Upload | null {
+  const type = mime.split(';')[0]!.trim().toLowerCase()
+  if (!AUDIO.includes(type)) return null
+  if (bytes.length === 0 || bytes.length > MAX_FILE) return null
+  sweep()
+  if (total + bytes.length > MAX_TOTAL) return null
+
+  const upload: Upload = {
+    id: crypto.randomUUID(),
+    name: `voice.${type.split('/')[1] ?? 'bin'}`,
+    mime: type,
+    size: bytes.length,
+    bytes,
+    at: Date.now(),
+  }
+  store.set(upload.id, upload)
+  total += bytes.length
+  return upload
+}
+
 export const get = (id: string): Upload | undefined => store.get(id)
 
 /**

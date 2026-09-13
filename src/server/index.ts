@@ -14,7 +14,7 @@ import {
   type Msg,
   listModels,
 } from './provider.ts'
-import { accept, find as findUpload, get as getUpload, keep } from './uploads.ts'
+import { accept, find as findUpload, get as getUpload, hold, keep } from './uploads.ts'
 import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
@@ -425,8 +425,24 @@ app.post('/api/transcribe', guard, async (c) => {
   if (!(file instanceof File)) return c.json({ ok: false, reason: 'empty' }, 400)
 
   const bytes = new Uint8Array(await file.arrayBuffer())
-  const result = await transcribe(bytes, file.type || 'audio/webm')
-  return c.json(result)
+  const mime = file.type || 'audio/webm'
+  const result = await transcribe(bytes, mime)
+
+  /**
+   * Kept, like a document, and for the same day.
+   *
+   * A voice note is the rider's own half of the conversation; the transcript
+   * is only our reading of it. Whoever reviews an application — or argues
+   * with one — needs to be able to hear it, and so does the rider, whose own
+   * bubble used to point at a blob URL that died with the page.
+   */
+  const held = hold(mime, bytes)
+  if (held) {
+    const application = typeof body?.['applicationId'] === 'string' ? body['applicationId'] : ''
+    void keep(held, application || null, 'voice')
+  }
+
+  return c.json({ ...result, id: held?.id })
 })
 
 app.post('/api/extract-name', guard, async (c) => {
