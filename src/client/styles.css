@@ -1301,16 +1301,22 @@ footer button.stop { background: var(--err); }
 
 .choice:active { transform: scale(.95); }
 .choice:disabled { opacity: .5; cursor: default; }
-.choice img { display: block; width: 100%; height: auto; }
+/* The aspect ratio is declared so the button has its full height before the
+   picture arrives. Without it the thread was scrolled to the bottom while the
+   buttons were still flat, and they ended up below the fold. */
+.choice img { display: block; width: 100%; height: auto; aspect-ratio: 400 / 343; }
 .choice span { font-size: 12.5px; line-height: 1.25; padding: 0 6px; text-align: center; }
 
 /* The answer, in the thread: the picture that was tapped, small, with its
-   words, and a tick to say it was the one chosen. Block layout with the
-   picture's size declared: as a flex column it collapsed to a sliver on a
-   Samsung while the image was still loading. */
-.msg.choice { flex: none; padding: 4px 6px 4px 4px; text-align: right; }
+   words, and a tick to say it was the one chosen.
+
+   Named apart from `.choice`, which is the button it was tapped from. Sharing
+   the name gave this bubble the button's `flex: 1`, and inside the thread's
+   flex column that collapsed it to a few pixels — the same collision that once
+   threw the composer's camera button into the header. */
+.msg.picked { flex: none; padding: 4px 6px 4px 4px; text-align: right; }
 .pickwrap { position: relative; display: inline-block; }
-.msg.choice .pick { display: block; width: 120px; height: 103px; border-radius: 8px; background: var(--in); }
+.msg.picked .pick { display: block; width: 120px; height: 103px; border-radius: 8px; background: var(--in); }
 .pickbadge {
   position: absolute;
   top: 6px;
@@ -1323,7 +1329,7 @@ footer button.stop { background: var(--err); }
   display: grid;
   place-items: center;
 }
-.msg.choice .picklabel { display: block; font-size: 13.5px; padding: 4px 4px 0; }
+.msg.picked .picklabel { display: block; font-size: 13.5px; padding: 4px 4px 0; }
 
 /* ---------- reply buttons ---------- */
 

@@ -443,6 +443,9 @@ export function App() {
     }
   }, [messages])
 
+  /** Whether the rider is at the foot of the thread, or has scrolled up to re-read. */
+  const atBottom = useRef(true)
+
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
@@ -453,6 +456,39 @@ export function App() {
     const id = requestAnimationFrame(pin)
     return () => cancelAnimationFrame(id)
   }, [messages, streaming, revealed, typed])
+
+  /**
+   * Pins again when a picture finishes loading.
+   *
+   * The thread is measured the moment something is added to it, and a picture
+   * that has not arrived yet is a box of no height — so the buttons under a
+   * yes-or-no question, which are mostly picture, were scrolled to while they
+   * were still flat and ended up below the fold. Their aspect ratio is
+   * declared in the stylesheet, which handles the common case; this handles a
+   * browser that does not honour it, and the map pin, and anything else that
+   * grows late.
+   *
+   * Only when the rider is already at the foot. Someone who has scrolled up to
+   * look at their own licence again should not be dragged back down.
+   */
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const NEAR = 120
+    const note = () => {
+      atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR
+    }
+    const grew = () => {
+      if (atBottom.current) el.scrollTop = el.scrollHeight
+    }
+    el.addEventListener('scroll', note, { passive: true })
+    // Capture: a picture's load event does not bubble.
+    el.addEventListener('load', grew, true)
+    return () => {
+      el.removeEventListener('scroll', note)
+      el.removeEventListener('load', grew, true)
+    }
+  }, [])
 
   // Licence name against CNIC name — a comparison between two documents, which
   // neither upload could make on its own.
@@ -1572,7 +1608,7 @@ export function App() {
             )
           if (m.kind === 'choice')
             return (
-              <div key={i} class="msg user choice">
+              <div key={i} class="msg user picked">
                 {/* Width and height given, so the bubble has its size before
                     the picture loads — a flex column shrank it to a sliver
                     on a Samsung while the image was still on its way. */}

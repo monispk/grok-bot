@@ -139,6 +139,29 @@ export function setOrder(ids: string[]) {
  * not two seconds after an empty bubble was put in its place. On a 3G phone
  * those are not the same moment.
  */
+/**
+ * Every player on screen, queued or not.
+ *
+ * `players` holds only the bot's clips, because only those have a place in the
+ * queue. A rider's own recording has none — and pressing play on one used to
+ * leave whatever was already playing running underneath it, because the code
+ * that stops things only knew about the queue.
+ */
+const all = new Set<HTMLAudioElement>()
+
+/** Called by every voice note on screen, for the lifetime of the bubble. */
+export function watch(el: HTMLAudioElement): () => void {
+  all.add(el)
+  return () => {
+    all.delete(el)
+  }
+}
+
+/** Silences everything except the one clip that is about to be heard. */
+function hushOthers(except: HTMLAudioElement | null) {
+  for (const el of all) if (el !== except && !el.paused) el.pause()
+}
+
 const heard = new Set<string>()
 const waiting = new Map<string, Set<() => void>>()
 
@@ -180,7 +203,9 @@ export function register(id: string, el: HTMLAudioElement) {
  */
 export function takeOver(el: HTMLAudioElement) {
   clearTimers()
-  if (current && current !== el) current.pause()
+  // Everything, not just the queue's clip: two voice notes playing over each
+  // other is the one thing a rider cannot fix from the interface.
+  hushOthers(el)
   current = null
   for (const [id, player] of players) if (player === el) finished.add(id)
 
@@ -201,7 +226,7 @@ export function stopAll() {
   order = []
   players.clear()
   finished.clear()
-  if (current) current.pause()
+  hushOthers(null)
   current = null
   manual = null
   lastEnded = 0

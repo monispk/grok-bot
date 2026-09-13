@@ -557,6 +557,53 @@ await check('the selfie opens the front camera in the chat, and offers the phone
   await phone.close()
 })
 
+await check('choosing an office from a vague pin is taken, and not asked again', async () => {
+  // Reported: tapping an office said "Koi baat nahi" again and re-offered the
+  // same two buttons. A fix this wide cannot tell the offices apart, which is
+  // the path that produces those buttons.
+  const vague = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    permissions: ['geolocation'],
+    geolocation: { latitude: 33.71, longitude: 73.05, accuracy: 5000 },
+  })
+  const pg = await vague.newPage()
+  await pg.goto(`${APP}/?chrome=no`)
+  await pg.evaluate((at) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: at, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '3520201427267',
+      collected: {}, ineligible: false, phone: '923348234444', rail: 'neither', noWallet: true,
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
+  }, ORDER.indexOf('location'))
+  await pg.reload()
+
+  await pg.waitForSelector('.replies .reply')
+  await pg.click('.replies .reply')
+  await pg.waitForSelector('.replies .reply.office', { timeout: 20_000 })
+
+  const text = async () =>
+    (await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]')))
+      .map((m) => m.content || '').join('\n')
+  assert.ok((await text()).includes('Koi baat nahi'), 'a vague pin did not ask which office')
+
+  // Choose one. It must be taken, and must not come back.
+  await pg.click('.replies .reply.office:first-child')
+  const taken = await settle(async () =>
+    pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').branch === 'f8'),
+  )
+  assert.ok(taken, 'the office tap was not recorded')
+
+  await pg.waitForTimeout(2500)
+  const asked = (await text()).split('Koi baat nahi').length - 1
+  assert.equal(asked, 1, `asked which office ${asked} times`)
+  const stillThere = await pg.$('.replies .reply.office')
+  assert.equal(stillThere, null, 'the office buttons are still on screen after choosing')
+  const step = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
+  assert.ok(step > ORDER.indexOf('location'), 'the flow did not move past the location step')
+  await vague.close()
+})
+
 await check('a rider far from both offices is shown their pin and asked which office, in plain words', async () => {
   // Reported: a rider in Lahore tapped "Location bhejein", was told "koi baat
   // nahi" and shown both offices — and read that as the tap not counting.
@@ -1169,6 +1216,39 @@ await check('every answer is sent to the server as it is made', async () => {
   await page.unroute('**/api/application/resume')
 })
 
+await check('the picture buttons are fully in view, and stay full size once tapped', async () => {
+  await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Kya aap ke paas touch phone hai?' }])
+  await page.waitForSelector('.choices .choice.nahi img')
+  // Wait for the pictures themselves, since it is their height that was missing.
+  await settle(async () =>
+    page.evaluate(() => [...document.querySelectorAll('.choices img')].every((i) => i.complete)),
+  )
+  await page.waitForTimeout(400)
+
+  const room = await page.evaluate(() => {
+    const btn = document.querySelector('.choices .choice.nahi')
+    const foot = document.querySelector('footer')
+    const b = btn.getBoundingClientRect()
+    return { top: b.top, bottom: b.bottom, height: b.height, footTop: foot.getBoundingClientRect().top }
+  })
+  assert.ok(room.height > 120, `the buttons are only ${Math.round(room.height)}px tall`)
+  assert.ok(room.top >= 0, 'the buttons start above the top of the screen')
+  assert.ok(room.bottom <= room.footTop + 1, 'the buttons run under the composer')
+
+  await page.click('.choices .choice.nahi')
+  await settle(async () => page.evaluate(() => !!document.querySelector('.msg.picked img')))
+  await settle(async () => page.evaluate(() => document.querySelector('.msg.picked img').complete))
+  const shown = await page.evaluate(() => {
+    const el = document.querySelector('.msg.picked')
+    const img = el.querySelector('img')
+    return { bubble: el.getBoundingClientRect().height, pic: img.getBoundingClientRect().height }
+  })
+  // The bug: the bubble shared a class with the button and inherited flex: 1,
+  // which collapsed it to a few pixels inside the thread's flex column.
+  assert.ok(shown.pic > 80, `the chosen picture is ${Math.round(shown.pic)}px tall`)
+  assert.ok(shown.bubble > 100, `the bubble is ${Math.round(shown.bubble)}px tall`)
+})
+
 await check('a yes-or-no question can be answered by tapping a picture', async () => {
   await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Kya aap ke paas touch phone hai?' }])
   await page.waitForSelector('.choices .choice.nahi')
@@ -1182,7 +1262,7 @@ await check('a yes-or-no question can be answered by tapping a picture', async (
   assert.ok(moved, 'the tap was not taken as the answer')
   // The picture stays in the thread, on the rider's side, so it is plain what was chosen.
   const kept = await page.evaluate(() => {
-    const el = document.querySelector('.msg.user.choice')
+    const el = document.querySelector('.msg.user.picked')
     return el ? { img: el.querySelector('img')?.getAttribute('src'), text: el.textContent } : null
   })
   assert.ok(kept?.img?.includes('choice-phone-no'), 'the chosen picture is not in the thread')
@@ -1326,6 +1406,49 @@ await check('voice notes play themselves, one at a time, with a pause', async ()
     const gap = log[i + 1].at - log[i].at
     assert.ok(gap >= GAP_MS - 50, `only ${gap}ms between voice notes; asked for ${GAP_MS}`)
   }
+})
+
+await check('pressing play on one voice note silences every other', async () => {
+  // A rider tapping a second clip while the first is going has no way to stop
+  // the first: there is one play button per bubble and no master control.
+  await page.goto(APP)
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await settle(async () =>
+    page.evaluate(() => document.querySelectorAll('.voice audio').length >= 2),
+  )
+  // Let the welcome finish arriving, so nothing new lands mid-test.
+  await settle(async () =>
+    page.evaluate(() => {
+      const total = JSON.parse(localStorage.getItem('grok-bot:history') || '[]').length
+      return total > 0 && document.querySelectorAll('.scroll > *').length === total
+    }),
+  )
+  await page.evaluate(() => {
+    // The queue is out of the way; this is about the rider's own taps.
+    document.querySelectorAll('audio').forEach((a) => a.pause())
+  })
+
+  const playNth = async (n) => {
+    await page.evaluate((i) => {
+      const btns = [...document.querySelectorAll('.voice button')]
+      btns[i]?.click()
+    }, n)
+    await page.waitForTimeout(700)
+  }
+  await playNth(0)
+  const first = await page.evaluate(() =>
+    [...document.querySelectorAll('audio')].filter((a) => !a.paused).length,
+  )
+  assert.equal(first, 1, `${first} clips playing after one tap`)
+
+  await playNth(1)
+  const after = await page.evaluate(() => ({
+    playing: [...document.querySelectorAll('audio')].filter((a) => !a.paused).length,
+    which: [...document.querySelectorAll('audio')].findIndex((a) => !a.paused),
+  }))
+  assert.equal(after.playing, 1, `${after.playing} clips playing at once after the second tap`)
+  assert.notEqual(after.which, 0, 'the first clip is still the one playing')
 })
 
 await check('a returning rider is not read their own history', async () => {

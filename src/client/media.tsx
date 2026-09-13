@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
-import { markReady, register, takeOver } from './autoplay.ts'
+import { markReady, register, takeOver, watch } from './autoplay.ts'
 
 const mmss = (s: number, roundUp = false) => {
   if (!Number.isFinite(s) || s < 0) s = 0
@@ -49,6 +49,10 @@ export function VoiceNote({
   useEffect(() => {
     if (playId && ref.current) register(playId, ref.current)
   }, [playId, current.src])
+
+  // Known to the queue whether or not it is queued, so pressing play on any
+  // voice note can silence every other one.
+  useEffect(() => (ref.current ? watch(ref.current) : undefined), [])
 
   const toggle = () => {
     const a = ref.current
