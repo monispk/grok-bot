@@ -214,3 +214,20 @@ export async function openCompletion(
     }),
   })
 }
+
+/** The models this key can use, for choosing one from where the app runs. */
+export async function listModels(): Promise<{ ok: boolean; ids: string[]; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}/models`, {
+      dispatcher: agent,
+      signal: AbortSignal.timeout(20_000),
+      headers: { authorization: `Bearer ${KEY}` },
+    })
+    const body = (await res.json()) as { data?: { id: string }[]; error?: { message?: string } }
+    if (!res.ok || !body.data)
+      return { ok: false, ids: [], error: body.error?.message ?? `http ${res.status}` }
+    return { ok: true, ids: body.data.map((m) => m.id).sort() }
+  } catch (err) {
+    return { ok: false, ids: [], error: err instanceof Error ? err.message : 'failed' }
+  }
+}

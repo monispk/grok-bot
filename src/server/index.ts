@@ -12,6 +12,7 @@ import {
   startWarmer,
   type Effort,
   type Msg,
+  listModels,
 } from './provider.ts'
 import { accept, get as getUpload } from './uploads.ts'
 import type { DocKind } from './fields.ts'
@@ -450,6 +451,13 @@ app.post('/api/pay/status', guard, async (c) => {
   console.log(`pay: ${attempt.rail} inquiry ${attempt.ref} → ${attempt.state} — ${attempt.detail}`)
   return c.json(attempt)
 })
+
+/**
+ * Which models this Groq key can use. Temporary: Groq refuses connections from
+ * some networks, so the choice of a vision model has to be made from where the
+ * app actually runs.
+ */
+app.get('/api/models', guard, async (c) => c.json(await listModels()))
 
 app.post('/api/wallet', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
