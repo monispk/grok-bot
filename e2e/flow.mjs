@@ -557,6 +557,32 @@ await check('the selfie opens the front camera in the chat, and offers the phone
   await phone.close()
 })
 
+await check('a rider far from both offices is shown their pin and asked which office, in plain words', async () => {
+  // Reported: a rider in Lahore tapped "Location bhejein", was told "koi baat
+  // nahi" and shown both offices — and read that as the tap not counting.
+  const far = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['geolocation'], geolocation: { latitude: 31.5135, longitude: 74.3109, accuracy: 20 } })
+  const p6 = await far.newPage()
+  await p6.goto(`${APP}/?chrome=no`)
+  await p6.evaluate((s) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({ step: s, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '', collected: {}, ineligible: false }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
+  }, at('location'))
+  await p6.reload()
+  await p6.waitForSelector('.replies .reply')
+  await p6.click('.replies .reply')
+  const asked = await p6.waitForSelector('.replies .reply.office', { timeout: 15_000 })
+  assert.ok(asked, 'the offices were not offered')
+  const log = await p6.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
+  assert.ok(log.some((m) => m.role === 'user' && /^Location: 31\.5/.test(m.content || '')), 'the pin is not in the thread')
+  assert.ok(log.some((m) => (m.content || '').includes('kaafi door')), 'not told they are far from both offices')
+  assert.ok(!log.some((m) => (m.content || '').includes('Koi baat nahi')), 'said "never mind" as if the tap had not counted')
+  await p6.click('.replies .reply.office:last-child')
+  const chosen = await settle(async () => (await p6.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))).branch === 'saddar')
+  assert.ok(chosen, 'the office tap was not taken')
+  await far.close()
+})
+
 await check('the quiz is answered by tapping a reply button', async () => {
   await page.goto(APP)
   await page.evaluate((done) => {

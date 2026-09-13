@@ -480,24 +480,6 @@ header strong {
 }
 .filecard small { font-size: 12px; color: var(--muted); }
 
-.gpsbar {
-  padding: 0 12px 8px;
-  display: flex;
-}
-
-.gpsbar button {
-  flex: 1;
-  min-height: var(--tap);
-  border: 0;
-  border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.gpsbar button:disabled { opacity: .5; cursor: default; }
 
 .msg.media { position: relative; }
 
@@ -957,24 +939,6 @@ footer button.stop { background: var(--err); }
 .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
 
 /* Two offices, when the pin could not choose between them. */
-.gpsbar.offices {
-  flex-direction: column;
-  gap: 8px;
-  padding-bottom: calc(10px + var(--safe-b));
-}
-
-.gpsbar.offices button {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  min-height: 0;
-  padding: 12px 14px;
-  text-align: left;
-  line-height: 1.35;
-}
-
-.gpsbar.offices b { font-size: 15px; font-weight: 600; }
-.gpsbar.offices span { font-size: 12px; opacity: .85; }
 
 /* A numbered list inside a bubble: the registration requirements. Tight to the
    text around it, because a bubble is not a document. */
@@ -1368,3 +1332,5 @@ footer button.stop { background: var(--err); }
 .reply:active { background: var(--line); }
 .reply:disabled { opacity: .5; cursor: default; }
 .reply b { font-weight: 600; margin-right: 6px; }
+.reply.office { display: flex; flex-direction: column; gap: 2px; }
+.reply.office small { font-size: 12.5px; font-weight: 400; color: var(--muted); }

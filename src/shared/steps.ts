@@ -624,7 +624,18 @@ export const FAR_KM = 40
  * as well as presence, and a rider far from both is asked rather than told.
  */
 export function canPickFrom(at: { lat: number; lng: number; accuracy?: number }): boolean {
-  if (at.accuracy != null && at.accuracy > VAGUE_METRES) return false
+  return whyNotPick(at) === null
+}
+
+/**
+ * Why a pin cannot choose an office, because the two reasons deserve
+ * different words. A vague fix is "never mind, tell us"; a rider in Lahore is
+ * "we have your location, and you are far from both — which will you come
+ * to?". Told the first when the second was true, a rider took it to mean their
+ * tap had not counted.
+ */
+export function whyNotPick(at: { lat: number; lng: number; accuracy?: number }): 'vague' | 'far' | null {
+  if (at.accuracy != null && at.accuracy > VAGUE_METRES) return 'vague'
   const nearest = Math.min(distanceKm(at, OFFICES.f8), distanceKm(at, OFFICES.saddar))
-  return nearest <= FAR_KM
+  return nearest <= FAR_KM ? null : 'far'
 }

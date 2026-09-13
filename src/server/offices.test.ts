@@ -37,3 +37,13 @@ test('a pin is only trusted when it says something useful', () => {
   // Lahore. "Nearest" is not a useful word at this range.
   assert.ok(!canPickFrom({ lat: 31.5204, lng: 74.3587, accuracy: 30 }), 'another city')
 })
+
+test('a rider far from both offices is told so, not "never mind"', async () => {
+  const { whyNotPick } = await import('../shared/steps.ts')
+  // Lahore, a good fix: far.
+  assert.equal(whyNotPick({ lat: 31.5135, lng: 74.3109, accuracy: 20 }), 'far')
+  // Islamabad, but a fix five kilometres wide: vague.
+  assert.equal(whyNotPick({ lat: 33.71, lng: 73.05, accuracy: 5000 }), 'vague')
+  // Islamabad, a good fix: an office can be chosen.
+  assert.equal(whyNotPick({ lat: 33.71, lng: 73.05, accuracy: 20 }), null)
+})

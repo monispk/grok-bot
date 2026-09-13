@@ -20,7 +20,7 @@ import {
 } from './flow.ts'
 import {
   audioSources,
-  canPickFrom,
+  whyNotPick,
   distanceKm,
   nearestOffice,
   OFFICES,
@@ -1299,9 +1299,13 @@ export function App() {
         setWorking(false)
         const { latitude, longitude } = pos.coords
         const at = { lat: latitude, lng: longitude, accuracy: pos.coords.accuracy }
-        if (!canPickFrom(at)) {
-          // A fix arrived, but not one worth trusting — too vague to tell the
-          // offices apart, or a rider nowhere near either. Ask.
+        const why = whyNotPick(at)
+        if (why) {
+          // A fix arrived, but not one an office can be chosen from — too
+          // vague to tell them apart, or a rider nowhere near either. Ask,
+          // and show the pin in the thread first: without it a rider took
+          // the question to mean their tap had not counted.
+          say({ role: 'user', content: `Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}` })
           setFlow((f) => ({
             ...f,
             pickOffice: true,
@@ -1313,7 +1317,7 @@ export function App() {
               'gps.office': 'asked the rider — the pin was not usable',
             },
           }))
-          say(bot(SAY.pickOffice.text))
+          say(bot(why === 'far' ? SAY.farFromOffices.text : SAY.pickOffice.text))
           return
         }
         advanceFrom(
@@ -1569,6 +1573,23 @@ export function App() {
             </div>
           )
         )}
+        {current?.kind === 'gps' && !pickOffice && revealed >= messages.length && (
+          <div class="replies">
+            <button class="reply" onClick={onGps} disabled={busy}>
+              📍 Location bhejein
+            </button>
+          </div>
+        )}
+        {current?.kind === 'gps' && pickOffice && revealed >= messages.length && (
+          <div class="replies">
+            {(['f8', 'saddar'] as const).map((id) => (
+              <button key={id} class="reply office" onClick={() => { blip(); chooseOffice(id) }} disabled={busy}>
+                {OFFICES[id].short}
+                <small>{OFFICES[id].address.replace('foodpanda office, ', '')}</small>
+              </button>
+            ))}
+          </div>
+        )}
         {current?.kind === 'confirm' && CHOICES[current.id] && revealed >= messages.length && !flow.resume && (
           <Choices options={CHOICES[current.id]!} disabled={busy} onPick={(c) => void onPick(c)} />
         )}
@@ -1597,25 +1618,6 @@ export function App() {
 
         {error && <div class="err banner">{error}</div>}
       </div>
-
-      {current?.kind === 'gps' && !pickOffice && (
-        <div class="gpsbar">
-          <button onClick={onGps} disabled={busy}>
-            📍 Location bhejein
-          </button>
-        </div>
-      )}
-
-      {current?.kind === 'gps' && pickOffice && (
-        <div class="gpsbar offices">
-          {(['f8', 'saddar'] as const).map((id) => (
-            <button key={id} onClick={() => chooseOffice(id)} disabled={busy}>
-              <b>{OFFICES[id].short}</b>
-              <span>{OFFICES[id].address.replace('foodpanda office, ', '')}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {dashOpen && <Dashboard flow={flow} syncedAt={syncedAt} onClose={() => setDashOpen(false)} />}
 
