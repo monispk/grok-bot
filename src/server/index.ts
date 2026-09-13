@@ -22,6 +22,7 @@ import { extractName } from './extract.ts'
 import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
+import { visionReady } from './vision.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, sweep } from './db.ts'
@@ -29,7 +30,7 @@ import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace, ocrReady } from './rozee.ts'
 import { checkWallet, rizqReady } from './rizq.ts'
-import { anyRailReady, inquire, newRef, payEasypaisa, payJazzcash } from './pay.ts'
+import { anyRailReady, inquire, newRef, payEasypaisa, payJazzcash, probeJazzcash, type Variant } from './pay.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
@@ -65,6 +66,8 @@ app.get('/healthz', (c) =>
     ocr: ocrReady(),
     facial: facialReady(),
     rizq: rizqReady(),
+    // The licence reader of last resort, for cards the labels do not know.
+    vision: visionReady(),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
@@ -458,6 +461,25 @@ app.post('/api/pay/status', guard, async (c) => {
  * app actually runs.
  */
 app.get('/api/models', guard, async (c) => c.json(await listModels()))
+
+/**
+ * Sends one JazzCash request in a named payload shape, to find which shape this
+ * merchant account accepts. Every call is a real debit, so the amount and the
+ * number are both named explicitly and nothing is retried automatically.
+ *
+ * Temporary. Delete it once the working shape is known.
+ */
+app.post('/api/pay/probe', guard, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const variant = String(body['variant'] ?? 'v1.1') as Variant
+  const phone = typeof body['phone'] === 'string' ? body['phone'].replace(/\D/g, '') : ''
+  const amount = Number(body['amountPaisa'])
+  if (!phone) return c.json({ error: 'no number' }, 400)
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 500_00)
+    return c.json({ error: 'amountPaisa must be 1..50000' }, 400)
+  console.warn(`pay probe: ${variant} → ${phone} for ${amount} paisa`)
+  return c.json(await probeJazzcash(variant, phone, amount))
+})
 
 app.post('/api/wallet', guard, async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)

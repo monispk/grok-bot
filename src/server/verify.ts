@@ -3,6 +3,7 @@ import { inspect, type DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { ocrReady, readCnicFront } from './rozee.ts'
 import { read, SPARSE_WORDS } from './ocr.ts'
+import { readLicence, visionReady } from './vision.ts'
 
 export type Verification = {
   pass: boolean
@@ -77,7 +78,7 @@ export async function verifyDocument(opts: {
   }
 
   const reading = await read(bytes, mime)
-  if (!reading) return open()
+  const isPhoto = mime !== 'application/pdf'
 
   // Almost nothing was read: a tilted, blurred or dark photo. Guessing from a
   // partial read is worse than asking for another one.
@@ -85,8 +86,57 @@ export async function verifyDocument(opts: {
   // Photos only. A PDF's text layer either extracts or it does not, and a short
   // one is not a bad photograph — treating it as one told a rider their bill was
   // blurred when the real answer was that it had expired.
-  const isPhoto = mime !== 'application/pdf'
-  if (isPhoto && reading.words.length > 0 && reading.words.length < SPARSE_WORDS)
+  const sparse = !reading || (isPhoto && reading.words.length < SPARSE_WORDS)
+
+  const found = reading && !sparse ? inspect(kind, reading) : null
+  if (found?.pass)
+    return settle(found.fields, true, null, found.missing, expectedName, expectedCnic)
+
+  /**
+   * The labels did not add up. Before refusing a rider, look at the card.
+   *
+   * Only licences, and only photographs. A CNIC has one national format that
+   * Rozee reads properly; a licence has one per province, and the label
+   * matching above knows Punjab's. This is what stops a Sindh or KPK card
+   * being refused for the crime of being printed differently.
+   */
+  if (kind === 'license' && isPhoto && visionReady()) {
+    const seen = await readLicence(bytes, mime)
+    if (seen && seen.isLicence && seen.readable)
+      return settle(
+        {
+          name: seen.name,
+          number: seen.number,
+          cnic: seen.cnic,
+          expiry: seen.expiry,
+          expired: seen.expiry ? String(new Date(seen.expiry).getTime() < Date.now()) : null,
+          authority: seen.authority,
+          readBy: 'vision',
+        },
+        true,
+        null,
+        [],
+        expectedName,
+        expectedCnic,
+      )
+    // It looked and said this is not a licence. That is a firmer answer than
+    // the label matching could give, so it is the one the rider hears.
+    if (seen && !seen.isLicence)
+      return {
+        pass: false,
+        checked: true,
+        reason: SAY.notLicense.text,
+        missing: ['not a driving licence'],
+        fields: {},
+        nameVerdict: null,
+        nameScore: null,
+      }
+    // Unavailable, or it could not read the photograph either: fall through to
+    // whatever the labels made of it.
+  }
+
+  if (!reading) return open()
+  if (sparse && reading.words.length > 0)
     return {
       pass: false,
       checked: true,
@@ -97,12 +147,12 @@ export async function verifyDocument(opts: {
       nameScore: null,
     }
 
-  const found = inspect(kind, reading)
+  const verdict = found ?? inspect(kind, reading)
   return settle(
-    found.fields,
-    found.pass,
-    found.reason,
-    found.missing,
+    verdict.fields,
+    verdict.pass,
+    verdict.reason,
+    verdict.missing,
     expectedName,
     expectedCnic,
   )

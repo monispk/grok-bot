@@ -390,3 +390,91 @@ export async function inquireJazzcash(ref: string): Promise<Attempt> {
 
 export const inquire = (rail: 'easypaisa' | 'jazzcash', ref: string) =>
   rail === 'jazzcash' ? inquireJazzcash(ref) : inquireEasypaisa(ref)
+
+/**
+ * One JazzCash request, in a named shape, for finding out which shape a
+ * merchant account actually accepts.
+ *
+ * Their guide describes MWallet v1.1 on the orchestrator, and that shape is
+ * refused with "insufficient merchant information" while the same credentials
+ * pass Status Inquiry on the same host — so something about the payload or the
+ * endpoint is not what this account expects. A developer elsewhere has taken a
+ * payment with these credentials, so the difference is findable.
+ *
+ * Temporary. Delete it once the working shape is known.
+ */
+export type Variant = 'v1.1' | 'v1.1+legacy-fields' | 'v2' | 'legacy-gateway'
+
+export async function probeJazzcash(
+  variant: Variant,
+  phone: string,
+  amountPaisa: number,
+): Promise<{ variant: Variant; url: string; sent: string[]; answer: Record<string, unknown> | null; detail: string }> {
+  const ref = `${JC.prefix}${stamp()}`
+  const now = new Date()
+  const expires = new Date(now.getTime() + 24 * 60 * 60_000)
+
+  const common: Record<string, string> = {
+    pp_Amount: String(amountPaisa),
+    pp_BillReference: 'riderfee',
+    pp_Description: 'foodpanda rider registration fee',
+    pp_Language: 'EN',
+    pp_MerchantID: JC.merchantId,
+    pp_Password: JC.password,
+    pp_ReturnURL: JC.returnUrl,
+    pp_TxnCurrency: 'PKR',
+    pp_TxnDateTime: stamp(now),
+    pp_TxnExpiryDateTime: stamp(expires),
+    pp_TxnRefNo: ref,
+    pp_TxnType: 'MWALLET',
+  }
+
+  const ORCH = `${JC.base}/payment-orchestrator/api`
+  const shapes: Record<Variant, { url: string; fields: Record<string, string> }> = {
+    'v1.1': {
+      url: `${ORCH}/v1/rest/payments/m-wallet`,
+      fields: { ...common, pp_Version: '1.1', ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '' },
+    },
+    // The older payload shape, on the orchestrator: some accounts are
+    // provisioned expecting the bank and product fields to be present.
+    'v1.1+legacy-fields': {
+      url: `${ORCH}/v1/rest/payments/m-wallet`,
+      fields: {
+        ...common, pp_Version: '1.1', pp_SubMerchantID: '', pp_BankID: '', pp_ProductID: '',
+        pp_MobileNumber: localNumber(phone), ppmpf_1: localNumber(phone),
+        ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '',
+      },
+    },
+    v2: {
+      url: `${ORCH}/v2/rest/payments/m-wallet`,
+      fields: { ...common, pp_Version: '2.0', ppmpf_1: localNumber(phone), ppmpf_2: '', ppmpf_3: '', ppmpf_4: '', ppmpf_5: '' },
+    },
+    // The host the environment file named before the guides arrived. It could
+    // not be reached from a laptop, which proves nothing: that laptop is also
+    // refused by Groq.
+    'legacy-gateway': {
+      url: 'https://payments.jazzcash.com.pk/ApplicationAPI/API/Payment/DoMWalletTransaction',
+      fields: {
+        ...common, pp_Version: '1.1', pp_SubMerchantID: '', pp_BankID: '', pp_ProductID: '',
+        pp_MobileNumber: localNumber(phone), pp_CNIC: '', ppmpf_1: '',
+      },
+    },
+  }
+
+  const { url, fields } = shapes[variant]
+  fields['pp_SecureHash'] = secureHash(fields, JC.salt)
+  const { json, timedOut, detail } = await send(
+    url,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) },
+    JC.timeout,
+  )
+  traceRail(`jazzcash probe ${variant}`, json)
+  const SECRET = /password|securehash/i
+  return {
+    variant,
+    url,
+    sent: Object.keys(fields).filter((k) => !SECRET.test(k)).sort(),
+    answer: json,
+    detail: timedOut ? 'timed out' : detail,
+  }
+}
