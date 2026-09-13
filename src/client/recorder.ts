@@ -25,7 +25,7 @@ const BITRATE = 32_000
 /** A press shorter than this was a tap, and a tap gets the hint, not a clip. */
 const MIN_HOLD_MS = 600
 
-const caps = () => ({
+export const caps = () => ({
   mediaDevices: typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia,
   recorder: typeof MediaRecorder !== 'undefined',
 })

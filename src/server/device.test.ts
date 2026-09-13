@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   browserSupport,
+  chromeHandoff,
   chromeIntentUrl,
   classifyMicFailure,
   inAppBrowser,
@@ -63,4 +64,38 @@ test('the Chrome intent carries the page and falls back to the plain link', () =
   assert.ok(url.startsWith('intent://grok-bot-production-b3a4.up.railway.app/?x=1#Intent;'))
   assert.ok(url.includes('package=com.android.chrome'))
   assert.ok(url.includes(`S.browser_fallback_url=${encodeURIComponent(href)}`))
+})
+
+test('an unsupported Android browser is handed to Chrome, once, before the rider has answered', () => {
+  const href = 'https://grok-bot-production-b3a4.up.railway.app/'
+  const uc =
+    'Mozilla/5.0 (Linux; U; Android 11; en-US; TECNO KF6n Build/RP1A.200720.011) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/100.0.4896.58 UCBrowser/13.6.5.1319 Mobile Safari/537.36'
+  const fb =
+    'Mozilla/5.0 (Linux; Android 12; V2027) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.163 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.35.108;]'
+  const chrome =
+    'Mozilla/5.0 (Linux; Android 13; Infinix X6816C) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
+  const full = { mediaDevices: true, recorder: true }
+  const fresh = { href, answered: false, tried: false }
+
+  // UC is handed over even when it claims to have the API: its permission
+  // flow is the one that fails without a prompt.
+  const url = chromeHandoff({ ua: uc, caps: full, ...fresh })
+  assert.ok(url?.startsWith('intent://'), 'UC Browser was not handed to Chrome')
+  assert.ok(chromeHandoff({ ua: fb, caps: full, ...fresh }), 'Facebook was not handed to Chrome')
+  assert.equal(chromeHandoff({ ua: chrome, caps: full, ...fresh }), null, 'Chrome was handed to Chrome')
+
+  // Never mid-conversation: the answers live in this browser.
+  assert.equal(chromeHandoff({ ua: uc, caps: full, href, answered: true, tried: false }), null)
+  // Never twice in a session.
+  assert.equal(chromeHandoff({ ua: uc, caps: full, href, answered: false, tried: true }), null)
+  // Never on the way back from a phone without Chrome, whatever storage says.
+  assert.equal(chromeHandoff({ ua: uc, caps: full, href: `${href}?chrome=no`, answered: false, tried: false }), null)
+  // Not on an iPhone: there is no intent to send.
+  assert.equal(chromeHandoff({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', caps: full, ...fresh }), null)
+})
+
+test('the fallback brings a phone without Chrome back marked, so it does not go round again', () => {
+  const url = chromeIntentUrl('https://example.com/?x=1')
+  const back = decodeURIComponent(url.split('S.browser_fallback_url=')[1]!.split(';end')[0]!)
+  assert.equal(back, 'https://example.com/?x=1&chrome=no')
 })

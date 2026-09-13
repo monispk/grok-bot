@@ -393,6 +393,51 @@ await check('a blocked microphone gets the guide, said once', async () => {
   await blocked.close()
 })
 
+await check('an unsupported browser hands a fresh visit to Chrome by itself, once', async () => {
+  const FB =
+    'Mozilla/5.0 (Linux; Android 12; V2027) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.163 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.35.108;]'
+  const tried = (pg) => pg.evaluate(() => sessionStorage.getItem('grok-bot:chrome-tried') || '')
+
+  // Fresh: the page tries Chrome before drawing anything. Headless Chromium
+  // has no handler for intent:// and stays put, which is also what a phone
+  // without Chrome does — so the page must still work afterwards.
+  const fresh = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: FB })
+  const p1 = await fresh.newPage()
+  // 'commit', not 'load': the hand-off replaces the location while the page
+  // is still loading, so the original document's load event never fires.
+  await p1.goto(APP, { waitUntil: 'commit' })
+  await p1.waitForSelector('button.mic', { timeout: 10_000 })
+  assert.ok((await tried(p1)).startsWith('intent://'), 'a fresh visit did not try Chrome')
+  // A reload in the same tab does not try again.
+  await p1.reload()
+  await p1.waitForSelector('button.mic')
+  assert.ok((await tried(p1)).startsWith('intent://'))
+  // And coming back marked ?chrome=no never tries at all, storage or not.
+  const p1b = await fresh.newPage()
+  await p1b.goto(`${APP}/?chrome=no`)
+  await p1b.waitForSelector('button.mic')
+  assert.equal(await tried(p1b), '', 'the fallback page tried Chrome again')
+  await fresh.close()
+
+  // Mid-conversation: the answers live here, so the rider stays here.
+  const busy = await browser.newContext({ viewport: { width: 390, height: 844 }, userAgent: FB })
+  const p2 = await busy.newPage()
+  await p2.goto(`${APP}/?chrome=no`)
+  await p2.evaluate(() => {
+    localStorage.setItem('grok-bot:history', JSON.stringify([
+      { role: 'assistant', content: 'Naam?' },
+      { role: 'user', content: 'Monis' },
+    ]))
+  })
+  await p2.goto(APP)
+  await p2.waitForSelector('button.mic')
+  assert.equal(await tried(p2), '', 'a rider mid-conversation was handed to Chrome')
+  await busy.close()
+
+  // Chrome itself, which is what a WhatsApp link opens in: nothing happens.
+  assert.equal(await tried(page), '', 'Chrome was handed to Chrome')
+})
+
 await check('a browser that cannot record is sent to Chrome', async () => {
   const inApp = await browser.newContext({
     viewport: { width: 390, height: 844 },
@@ -400,7 +445,7 @@ await check('a browser that cannot record is sent to Chrome', async () => {
       'Mozilla/5.0 (Linux; Android 12; V2027) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/119.0.6045.163 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/447.0.0.35.108;]',
   })
   const p3 = await inApp.newPage()
-  await p3.goto(APP)
+  await p3.goto(`${APP}/?chrome=no`)
   await p3.evaluate(() => localStorage.clear())
   await p3.reload()
   await p3.waitForSelector('button.mic')

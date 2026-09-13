@@ -48,16 +48,51 @@ export function inAppBrowser(ua: string): boolean {
 export const isAndroid = (ua: string) => /Android/i.test(ua)
 export const isIOS = (ua: string) => /iPhone|iPad|iPod/i.test(ua)
 
+/** The mark Android brings a rider back with when Chrome was not there to open. */
+export const NO_CHROME = 'chrome'
+
 /**
  * A link that opens this page in Chrome on Android, from inside any other app
- * or browser. If Chrome is not installed the fallback is the plain URL.
+ * or browser. If Chrome is not installed, Android loads the fallback instead:
+ * the same page, marked so that it does not try again.
  */
 export function chromeIntentUrl(href: string): string {
   const u = new URL(href)
+  const back = new URL(href)
+  back.searchParams.set(NO_CHROME, 'no')
   return (
     `intent://${u.host}${u.pathname}${u.search}#Intent;scheme=https;` +
-    `package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(href)};end`
+    `package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(back.href)};end`
   )
+}
+
+/**
+ * Whether to hand this visit straight to Chrome, and where to.
+ *
+ * A rider who opens the link in UC Browser, Opera Mini or Facebook's own
+ * browser used to get a sheet with a button, on the first thing that failed.
+ * Now, on Android, the page opens itself in Chrome before they see anything —
+ * if the phone has Chrome. If it does not, Android brings them back here with
+ * the ?chrome=no mark, and the app carries on in the browser they have.
+ *
+ * Never for a rider who has already answered something: their conversation
+ * lives in this browser's storage, and Chrome would start them from nothing.
+ * The sheet's button is still there for them.
+ */
+export function chromeHandoff(v: {
+  ua: string
+  caps: { mediaDevices: boolean; recorder: boolean }
+  href: string
+  /** The rider has said something in this browser. */
+  answered: boolean
+  /** Already tried this session; the page has come back, or never left. */
+  tried: boolean
+}): string | null {
+  if (!isAndroid(v.ua) || v.tried || v.answered) return null
+  if (new URL(v.href).searchParams.get(NO_CHROME) === 'no') return null
+  const uc = /UCBrowser|UCWEB/i.test(v.ua)
+  if (!uc && browserSupport(v.ua, v.caps).ok) return null
+  return chromeIntentUrl(v.href)
 }
 
 export type MicFailure = 'blocked' | 'busy' | 'none' | 'other'
