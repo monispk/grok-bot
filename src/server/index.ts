@@ -14,7 +14,7 @@ import {
   type Msg,
   listModels,
 } from './provider.ts'
-import { accept, get as getUpload } from './uploads.ts'
+import { accept, find as findUpload, get as getUpload, keep } from './uploads.ts'
 import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
@@ -316,12 +316,15 @@ app.post('/api/upload', guard, async (c) => {
   // bytes are read when the row is sent, not held in it.
   const application = typeof body?.['applicationId'] === 'string' ? body['applicationId'] : ''
   if (application && kind) void queueDocument(application, id, kind, verification)
+  // And kept, so a recruiter can see what the rider sent after the half hour
+  // it lives in memory. After the response, never in front of the rider.
+  void keep(result.upload, application || null, kind)
 
   return c.json({ id, name, mime, size, verification, face })
 })
 
-app.get('/api/upload/:id', guard, (c) => {
-  const u = getUpload(c.req.param('id') ?? '')
+app.get('/api/upload/:id', guard, async (c) => {
+  const u = await findUpload(c.req.param('id') ?? '')
   if (!u) return c.json({ error: 'Not found' }, 404)
   c.header('content-type', u.mime)
   c.header('cache-control', 'private, max-age=600')

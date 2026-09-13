@@ -31,16 +31,25 @@ const esc = (v: unknown) =>
   )
 
 /** Pakistan time, because that is where everyone reading this is. */
+const PKT = { timeZone: 'Asia/Karachi', hour12: false } as const
+
 const when = (d: Date | string | null | undefined) => {
   if (!d) return '—'
   const t = new Date(d)
   return Number.isNaN(t.getTime())
     ? '—'
     : t.toLocaleString('en-GB', {
-        timeZone: 'Asia/Karachi',
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', hour12: false,
+        ...PKT, day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
       })
+}
+
+/** The same moment, short enough to sit on one line in a table cell. */
+const stamp = (d: Date | string) => {
+  const t = new Date(d)
+  const day = t.toLocaleDateString('en-GB', { ...PKT, day: '2-digit', month: 'short' })
+  const time = t.toLocaleTimeString('en-GB', { ...PKT, hour: '2-digit', minute: '2-digit' })
+  return `<span class="nowrap">${esc(day)}</span> <span class="nowrap dim-t">${esc(time)}</span>`
 }
 
 const ago = (d: Date | string) => {
@@ -73,63 +82,105 @@ export function syncOf(row: Row, waiting: Waiting[]) {
 
 const bar = (s: ReturnType<typeof syncOf>) => {
   const pc = (n: number) => (s.total ? Math.round((n / s.total) * 100) : 0)
-  return `<span class="bar" title="${s.delivered.length} delivered, ${s.pending.length} queued, ${s.never.length} not queued">
-    <i class="ok" style="width:${pc(s.delivered.length)}%"></i><i class="wait" style="width:${pc(s.pending.length)}%"></i><i class="none" style="width:${pc(s.never.length)}%"></i>
-  </span> <small>${s.delivered.length}/${s.total}</small>`
+  const title = `${s.delivered.length} delivered, ${s.pending.length} queued, ${s.never.length} not queued`
+  return `<span class="barwrap" title="${title}">
+    <span class="bar"><i class="ok" style="width:${pc(s.delivered.length)}%"></i><i class="wait" style="width:${pc(s.pending.length)}%"></i></span>
+    <small>${s.delivered.length}/${s.total}</small></span>`
 }
 
 const STYLE = `
-:root{--ground:#f6f7f7;--paper:#fff;--ink:#15191a;--dim:#5b6566;--faint:#8a9394;--rule:#dde2e2;
---accent:#0e6b6b;--accent-soft:#e3efee;--bad:#a6341c;--bad-soft:#f7e6e1;--good:#2d6b47;--good-soft:#e5efe8;
---warn:#8a5a00;--warn-soft:#f6ecd6;--code:#f2f5f5}
-@media(prefers-color-scheme:dark){:root{--ground:#101414;--paper:#171c1c;--ink:#e8ecec;--dim:#9aa5a5;
---faint:#6f7a7a;--rule:#2a3232;--accent:#5cc4bd;--accent-soft:#173030;--bad:#e58e77;--bad-soft:#2e1d19;
---good:#8ac6a2;--good-soft:#1a2822;--warn:#e0b25a;--warn-soft:#2d2416;--code:#111717}}
+:root{--ground:#f6f7f7;--paper:#fff;--ink:#15191a;--dim:#5b6566;--faint:#8a9394;--rule:#e2e7e7;
+--line:#eef2f2;--accent:#0e6b6b;--accent-soft:#e6f1f0;--bad:#a6341c;--bad-soft:#fae9e4;
+--good:#237a49;--good-soft:#e4f1e9;--warn:#8a5a00;--warn-soft:#f8efd9;--code:#f2f5f5}
+@media(prefers-color-scheme:dark){:root{--ground:#0e1212;--paper:#161b1b;--ink:#e8ecec;--dim:#9aa5a5;
+--faint:#6f7a7a;--rule:#2a3232;--line:#212828;--accent:#5cc4bd;--accent-soft:#16302e;--bad:#e58e77;
+--bad-soft:#2e1d19;--good:#8ac6a2;--good-soft:#17271f;--warn:#e0b25a;--warn-soft:#2a2316;--code:#111717}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px 20px 80px}
-.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
-h1{font-size:26px;margin:0;letter-spacing:-.01em}
-h2{font-size:17px;margin:0}
-a{color:var(--accent)}
-.top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--rule);padding-bottom:14px}
-.top .muted{color:var(--dim);font-size:13.5px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:10px;overflow:hidden}
-.card{background:var(--paper);padding:13px 15px}
-.card b{display:block;font-size:25px;font-variant-numeric:tabular-nums;line-height:1.15}
-.card span{font-size:12.5px;color:var(--dim)}
-.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:var(--paper)}
-table{width:100%;border-collapse:collapse;font-size:13.5px}
-th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:600;padding:10px 11px;border-bottom:1px solid var(--rule);white-space:nowrap}
-td{padding:9px 11px;border-bottom:1px solid var(--rule);vertical-align:top}
-tr:last-child td{border-bottom:0}
-tr:hover td{background:var(--accent-soft)}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
-.pill{display:inline-block;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:20px;white-space:nowrap}
+body{margin:0;background:var(--ground);color:var(--ink);
+font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+-webkit-font-smoothing:antialiased;padding:26px 22px 70px}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1{font-size:22px;margin:0;font-weight:650;letter-spacing:-.012em}
+h2{font-size:13px;margin:0 0 2px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--dim)}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.top .muted{color:var(--faint);font-size:12.5px}
+.nowrap{white-space:nowrap}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;letter-spacing:-.01em}
+.sub{font-size:11.5px;color:var(--faint);margin-top:1px;white-space:nowrap}
+.dim-t{color:var(--faint)}
+.of{color:var(--faint)}
+
+/* ---- summary ---- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:1px;
+background:var(--rule);border:1px solid var(--rule);border-radius:9px;overflow:hidden}
+.card{background:var(--paper);padding:11px 14px}
+.card b{display:block;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.card span{font-size:11.5px;color:var(--dim)}
+
+/* ---- table ---- */
+.tablewrap{overflow-x:auto;border:1px solid var(--rule);border-radius:9px;background:var(--paper)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint);
+font-weight:600;padding:9px 12px;border-bottom:1px solid var(--rule);white-space:nowrap;background:var(--paper)}
+td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--accent-soft)}
+.mid-cell{text-align:center}
+
+/* A verdict as a mark: written out, the wallet check alone was wider than its
+   column and wrapped every row to three lines. */
+.mark{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;
+font-size:12px;font-weight:700;cursor:help}
+.mark.good{background:var(--good-soft);color:var(--good)}
+.mark.bad{background:var(--bad-soft);color:var(--bad)}
+.mark.mid{background:var(--warn-soft);color:var(--warn)}
+.mark.none{background:var(--line);color:var(--faint);font-weight:400}
+
+.pill{display:inline-block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+padding:2px 7px;border-radius:20px;white-space:nowrap;font-weight:600}
 .ok{background:var(--good-soft);color:var(--good)}
 .no{background:var(--bad-soft);color:var(--bad)}
 .mid{background:var(--warn-soft);color:var(--warn)}
-.dim{background:var(--rule);color:var(--dim)}
-.bar{display:inline-flex;width:76px;height:7px;border-radius:4px;overflow:hidden;background:var(--rule);vertical-align:middle}
+.dim{background:var(--line);color:var(--dim)}
+
+.shots{display:inline-flex;gap:3px}
+.thumb{width:30px;height:30px;object-fit:cover;border-radius:4px;border:1px solid var(--rule);
+background:var(--ground);display:block}
+
+.bar{display:inline-flex;width:64px;height:6px;border-radius:3px;overflow:hidden;
+background:var(--line);vertical-align:middle;border:1px solid var(--rule)}
 .bar i{display:block;height:100%}
-.bar .ok{background:#2d9c5f}.bar .wait{background:#d9a53b}.bar .none{background:transparent}
-small{color:var(--dim);font-size:12px}
-.panel{background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
-.kv{display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--rule);font-size:13.5px}
+.bar .ok{background:#2d9c5f;border-radius:0}
+.bar .wait{background:#d9a53b;border-radius:0}
+.bar .none{background:transparent}
+.barwrap{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.barwrap small{color:var(--dim);font-size:11.5px;font-variant-numeric:tabular-nums}
+
+/* ---- detail ---- */
+.panel{background:var(--paper);border:1px solid var(--rule);border-radius:10px;
+padding:15px 17px;display:flex;flex-direction:column;gap:9px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:14px;align-items:start}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:baseline;
+padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
 .kv:last-child{border-bottom:0}
-.kv span{color:var(--dim)}
-.kv b{font-weight:600;text-align:right;word-break:break-word}
-.docs{display:flex;gap:12px;flex-wrap:wrap}
-.docs figure{margin:0;width:150px}
-.docs img{width:100%;border-radius:8px;border:1px solid var(--rule);background:var(--ground)}
-.docs figcaption{font-size:12px;color:var(--dim);margin-top:4px}
-.chat{background:var(--ground);border:1px solid var(--rule);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:5px;max-height:440px;overflow:auto}
-.msg{max-width:78%;padding:6px 10px;border-radius:9px;font-size:13px;line-height:1.45}
+.kv span{color:var(--dim);white-space:nowrap}
+.kv b{font-weight:600;text-align:right;overflow-wrap:anywhere}
+.docs{display:flex;gap:14px;flex-wrap:wrap}
+.docs figure{margin:0;width:190px}
+.docs img{width:100%;border-radius:7px;border:1px solid var(--rule);background:var(--ground);display:block}
+.docs figcaption{font-size:11.5px;color:var(--dim);margin-top:5px;text-transform:capitalize}
+.chat{background:var(--ground);border:1px solid var(--rule);border-radius:9px;padding:11px;
+display:flex;flex-direction:column;gap:4px;max-height:420px;overflow:auto;margin-top:9px}
+.msg{max-width:76%;padding:5px 9px;border-radius:8px;font-size:12.5px;line-height:1.45}
 .msg.bot{background:var(--paper);border:1px solid var(--rule);align-self:flex-start}
 .msg.me{background:var(--good-soft);align-self:flex-end}
-.fieldlist{display:flex;flex-wrap:wrap;gap:5px}
-.fieldlist code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;padding:2px 6px;border-radius:5px;background:var(--code)}
-details summary{cursor:pointer;color:var(--accent);font-weight:500}
+.fieldlist{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.fieldlist code{font-family:ui-monospace,Menlo,monospace;font-size:11px;padding:2px 6px;
+border-radius:4px;background:var(--code);color:var(--dim)}
+details summary{cursor:pointer;color:var(--accent);font-size:13px}
 `
 
 export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): string {
@@ -144,27 +195,47 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
       const pay = (f['payment'] ?? null) as { state?: string; amountPaisa?: number } | null
       const quiz = (f['quiz'] ?? null) as { declined?: boolean; answers?: unknown[] } | null
       const s = syncOf(r, waiting)
-      const verdict = (v?: string) =>
-        !v ? '<span class="pill dim">—</span>'
-          : /^match/.test(v) ? `<span class="pill ok">${esc(v.slice(0, 22))}</span>`
-          : /mismatch|no match|fail/i.test(v) ? `<span class="pill no">${esc(v.slice(0, 22))}</span>`
-          : `<span class="pill mid">${esc(v.slice(0, 22))}</span>`
-      return `<tr>
-        <td class="mono">${esc(when(r.created_at))}<br><small>${esc(ago(r.updated_at))}</small></td>
-        <td><a href="/admin?id=${esc(r.id)}">${esc(r.full_name || '—')}</a><br><small class="mono">${esc(r.phone || '—')}</small></td>
-        <td class="mono">${esc(f['cnic'] || '—')}</td>
-        <td>${r.step} of 9 ${r.completed ? '<span class="pill ok">done</span>' : ''}</td>
-        <td>${verdict(c['checks.faceMatch'])}</td>
-        <td>${verdict(c['checks.licenceVsCnic'])}</td>
-        <td>${verdict(c['checks.wallet'])}</td>
-        <td>${['license', 'cnic_front', 'selfie'].filter((k) => c[`${k}.uploadId`]).length}/3</td>
-        <td>${
+
+      /**
+       * A verdict as a mark, with the words on hover.
+       *
+       * Written out, "match — MONIS UR RAHMAN (jazzcash)" was wider than the
+       * column and every row wrapped to three lines. The mark is what a
+       * recruiter scans for; the detail is one click or one hover away.
+       */
+      const mark = (v?: string) => {
+        if (!v) return '<span class="mark none" title="not run">–</span>'
+        const good = /^match|^pass|^✓/i.test(v)
+        const bad = /mismatch|no match|fail|not a /i.test(v)
+        const cls = good ? 'good' : bad ? 'bad' : 'mid'
+        const glyph = good ? '✓' : bad ? '✗' : '?'
+        return `<span class="mark ${cls}" title="${esc(v)}">${glyph}</span>`
+      }
+
+      const shots = ['license', 'cnic_front', 'selfie']
+        .filter((k) => c[`${k}.uploadId`])
+        .map(
+          (k) =>
+            `<img class="thumb" src="/api/upload/${esc(c[`${k}.uploadId`])}" alt="${esc(k)}" title="${esc(k.replace('_', ' '))}" loading="lazy" onerror="this.remove()">`,
+        )
+        .join('')
+
+      return `<tr onclick="location.href='/admin?id=${esc(r.id)}'">
+        <td class="nowrap">${stamp(r.created_at)}<div class="sub">${esc(ago(r.updated_at))}</div></td>
+        <td class="nowrap"><a href="/admin?id=${esc(r.id)}">${esc(r.full_name || '—')}</a><div class="sub mono">${esc(r.phone || '—')}</div></td>
+        <td class="nowrap mono">${esc(f['cnic'] || '—')}</td>
+        <td class="nowrap">${r.step}<span class="of">/9</span>${r.completed ? ' <span class="pill ok">done</span>' : ''}</td>
+        <td class="mid-cell">${mark(c['checks.faceMatch'])}</td>
+        <td class="mid-cell">${mark(c['checks.licenceVsCnic'])}</td>
+        <td class="mid-cell">${mark(c['checks.wallet'])}</td>
+        <td class="nowrap"><span class="shots">${shots || '<span class="sub">none</span>'}</span></td>
+        <td class="nowrap">${
           pay
-            ? `<span class="pill ${pay.state === 'paid' ? 'ok' : pay.state === 'failed' ? 'no' : 'mid'}">${esc(pay.state)}</span> <small>Rs ${((pay.amountPaisa ?? 0) / 100).toLocaleString('en-US')}</small>`
-            : '<span class="pill dim">—</span>'
+            ? `<span class="pill ${pay.state === 'paid' ? 'ok' : pay.state === 'failed' ? 'no' : 'mid'}">${esc(pay.state)}</span><div class="sub">Rs ${((pay.amountPaisa ?? 0) / 100).toLocaleString('en-US')}</div>`
+            : '<span class="sub">—</span>'
         }</td>
-        <td>${quiz?.declined ? '<span class="pill dim">declined</span>' : quiz ? `${(quiz.answers ?? []).length}/10` : '—'}</td>
-        <td>${bar(s)}<br><small>${s.lastAt ? esc(when(s.lastAt)) : pushOn ? 'not sent' : 'no endpoint'}</small></td>
+        <td class="nowrap">${quiz?.declined ? '<span class="pill dim">declined</span>' : quiz ? `${(quiz.answers ?? []).length}<span class="of">/10</span>` : '<span class="sub">—</span>'}</td>
+        <td class="nowrap">${bar(s)}<div class="sub">${s.lastAt ? esc(when(s.lastAt)) : pushOn ? 'not sent' : 'no endpoint'}</div></td>
       </tr>`
     })
     .join('')
@@ -207,8 +278,9 @@ export function detailPage(
   const docs = ['license', 'cnic_front', 'selfie']
     .filter((k) => c[`${k}.uploadId`])
     .map(
-      (k) => `<figure><img src="/api/upload/${esc(c[`${k}.uploadId`])}" alt="${esc(k)}"
-        onerror="this.replaceWith(Object.assign(document.createElement('small'),{textContent:'no longer held'}))">
+      (k) => `<figure><a href="/api/upload/${esc(c[`${k}.uploadId`])}" target="_blank" rel="noopener">
+        <img src="/api/upload/${esc(c[`${k}.uploadId`])}" alt="${esc(k)}" loading="lazy"
+        onerror="this.closest('figure').innerHTML='<small>no longer held</small>'"></a>
         <figcaption>${esc(k.replace('_', ' '))}</figcaption></figure>`,
     )
     .join('')
@@ -284,8 +356,8 @@ export function detailPage(
 </div>
 
 <div class="panel"><h2>Documents</h2>
-  ${docs || '<small>None uploaded.</small>'}
-  <small>Documents are held for thirty minutes and never written to disk, so older ones will not load.</small>
+  <div class="docs">${docs || '<small>None uploaded.</small>'}</div>
+  <small>Identity papers, so they are kept for a day and then deleted. Click one to see it full size.</small>
 </div>
 
 <div class="panel"><h2>Training quiz</h2>

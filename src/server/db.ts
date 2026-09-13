@@ -142,5 +142,8 @@ export async function init() {
 /** Drops what nobody will ask for again. Called on the same sweep as the rest. */
 export async function sweep() {
   await query(`DELETE FROM speech  WHERE used_at    < now() - interval '30 days'`)
-  await query(`DELETE FROM uploads WHERE created_at < now() - interval '24 hours'`)
+  // Documents are identity papers. Kept only long enough for a recruiter to
+  // look at an application the morning after it arrived.
+  const hours = Number(process.env.DOCUMENT_KEEP_HOURS ?? 24)
+  await query(`DELETE FROM uploads WHERE created_at < now() - ($1 || ' hours')::interval`, [hours])
 }

@@ -6,7 +6,9 @@
  * exists, nothing outlives the process. When the verification APIs land, this is
  * where the bytes get forwarded to them.
  */
+import { createHash } from 'node:crypto'
 import { SAY } from '../shared/messages.ts'
+import { query } from './db.ts'
 
 export type Upload = {
   id: string
@@ -73,6 +75,53 @@ export function accept(name: string, bytes: Uint8Array): Accepted | Rejected {
 }
 
 export const get = (id: string): Upload | undefined => store.get(id)
+
+/**
+ * Keeps a document past the half hour it lives in memory, so a recruiter can
+ * see what a rider actually sent.
+ *
+ * These are CNICs, licences and photographs of faces — the exact set identity
+ * theft is built from — so the window is short and deliberate: KEEP_HOURS, a
+ * day by default, swept from the same timer as everything else. Long enough
+ * for a recruiter to look at an application the morning after it arrived,
+ * short enough that a leak is a day of applications rather than a year of
+ * them.
+ *
+ * Written after the response, never in front of the rider.
+ */
+export async function keep(
+  upload: Upload,
+  application: string | null,
+  kind: string | null,
+): Promise<void> {
+  const sha = createHash('sha256').update(upload.bytes).digest('hex')
+  await query(
+    `INSERT INTO uploads (id, application, kind, mime, bytes, sha256)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO NOTHING`,
+    [upload.id, application || null, kind ?? 'unknown', upload.mime, Buffer.from(upload.bytes), sha],
+  )
+}
+
+/** The document, from memory if it is still there and from the database if not. */
+export async function find(id: string): Promise<Upload | undefined> {
+  const hot = store.get(id)
+  if (hot) return hot
+  const rows = await query<{ kind: string; mime: string; bytes: Buffer; created_at: Date }>(
+    `SELECT kind, mime, bytes, created_at FROM uploads WHERE id = $1`,
+    [id],
+  )
+  const row = rows?.[0]
+  if (!row) return undefined
+  return {
+    id,
+    name: `${row.kind}.${row.mime.split('/')[1] ?? 'bin'}`,
+    mime: row.mime,
+    size: row.bytes.length,
+    bytes: new Uint8Array(row.bytes),
+    at: new Date(row.created_at).getTime(),
+  }
+}
 
 function sweep() {
   const cutoff = Date.now() - TTL
