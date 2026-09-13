@@ -218,9 +218,7 @@ export function App() {
   const [typed, setTyped] = useState(0)
   const [flow, setFlow] = useState(() => {
     const loaded = store.loadState()
-    return loaded.applicationId
-      ? loaded
-      : { ...loaded, applicationId: crypto.randomUUID(), startedAt: Date.now() }
+    return loaded.applicationId ? loaded : { ...loaded, applicationId: crypto.randomUUID() }
   })
   const { step, firstName, fullName, cnic, collected, ineligible, missing, phone, quiz, pickOffice } =
     flow

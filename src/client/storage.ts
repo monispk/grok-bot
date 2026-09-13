@@ -83,8 +83,6 @@ export type FlowState = {
    * branch twice in one conversation.
    */
   sentBranch?: boolean
-  /** When this application was begun, on this device. */
-  startedAt?: number
   /** The fee has already been offered a second attempt. Only ever one. */
   payRetried?: boolean
   /**

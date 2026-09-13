@@ -50,14 +50,6 @@ function Section({ title, children }: { title: string; children: preact.Componen
 const stateOf = (v: string | undefined): State =>
   !v || v === 'not checked' ? 'pending' : v.startsWith('match') ? 'pass' : 'fail'
 
-/** A time a person can read, or a dash when there is not one. */
-const when = (at?: number) =>
-  at
-    ? new Date(at).toLocaleString([], {
-        day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit',
-      })
-    : '—'
-
 const RAIL_NAME: Record<string, string> = {
   easypaisa: 'Easypaisa',
   jazzcash: 'JazzCash',
@@ -90,7 +82,6 @@ export function Dashboard({
       <div class="dash-body">
         <Section title="Application">
           <Row label="Application id" value={flow.applicationId ?? '—'} />
-          <Row label="Started" value={when(flow.startedAt)} />
           <Row
             label="On the server"
             value={syncedAt ? `yes, ${new Date(syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'not yet'}
