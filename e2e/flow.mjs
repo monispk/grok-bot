@@ -583,6 +583,30 @@ await check('a rider far from both offices is shown their pin and asked which of
   await far.close()
 })
 
+await check('the fee waits for the wallet app, and is not called missing while the rider is still approving it', async () => {
+  // The mock rail answers "in progress" to the initiate and settles six
+  // seconds later, as a rider approving the request in their app would.
+  await page.goto(APP)
+  await page.evaluate((done) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: done, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '3520201427267', collected: {},
+      ineligible: false, phone: '923348234444', rail: 'easypaisa',
+      payment: { rail: 'easypaisa', state: 'initiated', amountPaisa: 0, ref: '', detail: '' },
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Ab registration fee aap ke wallet se li ja rahi hai.' }]))
+  }, STEP_SPECS.length)
+  await page.reload()
+  const pending = await settle(async () => (await stored()).some((m) => (m.content || '').includes('confirm ho rahi hai')), 15_000)
+  assert.ok(pending, 'the rider was not told the payment is being confirmed')
+  // Nothing final in the first few seconds.
+  await page.waitForTimeout(3000)
+  assert.ok(!(await stored()).some((m) => (m.content || '').includes('jama nahi hui')), 'called missing while still approving')
+  const paid = await settle(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))).payment?.state === 'paid', 30_000)
+  assert.ok(paid, 'the payment never settled')
+  assert.ok(!(await stored()).some((m) => (m.content || '').includes('jama nahi hui')), 'a paid fee was called missing')
+})
+
 await check('the quiz is answered by tapping a reply button', async () => {
   await page.goto(APP)
   await page.evaluate((done) => {

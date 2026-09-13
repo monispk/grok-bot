@@ -28,7 +28,7 @@ import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace, ocrReady } from './rozee.ts'
 import { checkWallet, rizqReady } from './rizq.ts'
-import { anyRailReady, newRef, payEasypaisa, payJazzcash } from './pay.ts'
+import { anyRailReady, inquire, newRef, payEasypaisa, payJazzcash } from './pay.ts'
 import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
 import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
@@ -433,6 +433,21 @@ app.post('/api/pay', guard, async (c) => {
   const attempt =
     rail === 'jazzcash' ? await payJazzcash(phone, cnic, ref) : await payEasypaisa(phone, ref)
   console.log(`pay: ${attempt.rail} ${attempt.state} ${attempt.ref} — ${attempt.detail}`)
+  return c.json(attempt)
+})
+
+/**
+ * What became of a payment. The rider approves the debit in their wallet app,
+ * which takes as long as it takes; the page asks here every few seconds until
+ * the rail says paid or failed, or a minute has gone by.
+ */
+app.post('/api/pay/status', guard, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { rail?: unknown; ref?: unknown }
+  const rail = body.rail === 'jazzcash' ? 'jazzcash' : 'easypaisa'
+  const ref = typeof body.ref === 'string' ? body.ref.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) : ''
+  if (!ref) return c.json({ state: 'failed', detail: 'no reference' })
+  const attempt = await inquire(rail, ref)
+  console.log(`pay: ${attempt.rail} inquiry ${attempt.ref} → ${attempt.state} — ${attempt.detail}`)
   return c.json(attempt)
 })
 

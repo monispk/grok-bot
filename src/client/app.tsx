@@ -62,6 +62,10 @@ const CAMERA_ACCEPT = 'image/*'
 
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
+/** How long the rider gets to approve the debit in their wallet app, and how often the rail is asked. */
+const PAY_WAIT_MS = 70_000
+const PAY_POLL_MS = 5_000
+
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 /** The red microphone that blinks beside the clock while recording, as WhatsApp's does. */
@@ -607,8 +611,9 @@ export function App() {
     paying.current = true
 
     void (async () => {
-      let result: store.FlowState['payment'] = {
-        rail: flow.rail ?? 'easypaisa',
+      const rail = flow.rail === 'jazzcash' ? 'jazzcash' : 'easypaisa'
+      let result: NonNullable<store.FlowState['payment']> = {
+        rail,
         state: 'failed',
         amountPaisa: 0,
         ref: '',
@@ -626,13 +631,41 @@ export function App() {
         /* left as failed; the counter is always open */
       }
 
+      // The rider approves the debit in their wallet app, which takes as long
+      // as it takes to find the request and tap it. So the rail is asked every
+      // few seconds, for up to a minute, before anything final is said. Told
+      // "not received" at once, a rider was still opening the app.
+      if (result.state === 'pending' && result.ref) {
+        setFlow((f) => ({ ...f, payment: result }))
+        say(bot(SAY.feePending.text))
+        const until = Date.now() + PAY_WAIT_MS
+        while (Date.now() < until) {
+          await new Promise((r) => setTimeout(r, PAY_POLL_MS))
+          try {
+            const res = await fetch('/api/pay/status', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ rail: result.rail, ref: result.ref }),
+            })
+            const got = (await res.json()) as Partial<NonNullable<store.FlowState['payment']>>
+            if (got?.state === 'paid' || got?.state === 'failed') {
+              result = { ...result, ...got }
+              break
+            }
+            if (got?.detail) result = { ...result, detail: got.detail }
+          } catch {
+            /* ask again next time round */
+          }
+        }
+        if (result.state === 'pending')
+          result = { ...result, detail: `unconfirmed after ${PAY_WAIT_MS / 1000}s — ${result.detail}` }
+      }
+
       setFlow((f) => ({ ...f, payment: result }))
-      const note =
-        result.state === 'paid'
-          ? []
-          : result.state === 'pending'
-            ? [bot(SAY.feePending.text)]
-            : [bot(SAY.feeFailed.text)]
+      // Still pending after the wait is "not received" as far as the rider is
+      // concerned — the counter is open — but it stays pending on the record,
+      // because the money may yet move.
+      const note = result.state === 'paid' ? [] : [bot(SAY.feeFailed.text)]
       conclude(result.state === 'paid' ? 'verified_paid' : 'verified_unpaid', flow, note)
     })()
   }, [step, flow, conclude])

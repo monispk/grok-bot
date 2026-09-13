@@ -32,6 +32,7 @@ const EP = {
   username: process.env.EASYPAISA_USERNAME ?? '',
   password: process.env.EASYPAISA_PASSWORD ?? '',
   storeId: process.env.EASYPAISA_STORE_ID ?? '',
+  accountNum: process.env.EASYPAISA_ACCOUNT_NUM ?? '',
   initiateTimeout: Number(process.env.EASYPAISA_INITIATE_TIMEOUT ?? 30) * 1000,
   inquireTimeout: Number(process.env.EASYPAISA_INQUIRE_TIMEOUT ?? 20) * 1000,
 }
@@ -225,3 +226,61 @@ export const newRef = (rail: 'easypaisa' | 'jazzcash') =>
   rail === 'jazzcash'
     ? `${JC.prefix}${stamp()}`
     : `RZ${stamp()}${Math.floor(Math.random() * 900 + 100)}`
+
+/**
+ * Asks Easypaisa what became of an order. Safe to ask as often as needed: it
+ * moves no money. The debit is approved by the rider in their Easypaisa app,
+ * which can take a minute, so "unpaid" here means "not yet" until the caller
+ * decides it has waited long enough.
+ */
+export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
+  const base: Attempt = { rail: 'easypaisa', state: 'pending', amountPaisa: CHARGE_PAISA, ref: orderId, detail: '' }
+  if (!easypaisaReady()) return { ...base, state: 'failed', detail: 'not enabled' }
+  const { json, timedOut, detail } = await send(
+    `${EP.base}/easypay-service/rest/v4/inquire-transaction`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        credentials: Buffer.from(`${EP.username}:${EP.password}`).toString('base64'),
+      },
+      body: JSON.stringify({ orderId, storeId: EP.storeId, accountNum: EP.accountNum }),
+    },
+    EP.inquireTimeout,
+  )
+  if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
+  const code = String(json['responseCode'] ?? '')
+  const status = String(json['transactionStatus'] ?? json['status'] ?? '').toUpperCase().replace(/\s+/g, '')
+  const message = String(json['responseDesc'] ?? '')
+  if (status === 'PAID' || status === 'SUCCESS') return { ...base, state: 'paid', detail: message || status }
+  if (/FAILED|EXPIRED|REVERSED|CANCEL/.test(status)) return { ...base, state: 'failed', detail: message || status }
+  // UNPAID, PENDING, IN PROGRESS, or an inquiry that answered without a
+  // status: not yet, as far as anyone knows.
+  return { ...base, detail: message || status || `code ${code}` }
+}
+
+/** Asks JazzCash what became of a transaction. Signed like everything else. */
+export async function inquireJazzcash(ref: string): Promise<Attempt> {
+  const base: Attempt = { rail: 'jazzcash', state: 'pending', amountPaisa: CHARGE_PAISA, ref, detail: '' }
+  if (!jazzcashReady()) return { ...base, state: 'failed', detail: 'not enabled' }
+  const fields: Record<string, string> = {
+    pp_TxnRefNo: ref,
+    pp_MerchantID: JC.merchantId,
+    pp_Password: JC.password,
+  }
+  fields['pp_SecureHash'] = secureHash(fields, JC.salt)
+  const { json, timedOut, detail } = await send(
+    `${JC.base}/ApplicationAPI/API/PaymentInquiry/Inquire`,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(fields) },
+    JC.timeout,
+  )
+  if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
+  const code = String(json['pp_ResponseCode'] ?? '')
+  const message = String(json['pp_ResponseMessage'] ?? '')
+  if (code === '000') return { ...base, state: 'paid', detail: message || 'paid' }
+  if (code === '121' || code === '124' || code === '' ) return { ...base, detail: message || 'in progress' }
+  return { ...base, state: 'failed', detail: message || `code ${code}` }
+}
+
+export const inquire = (rail: 'easypaisa' | 'jazzcash', ref: string) =>
+  rail === 'jazzcash' ? inquireJazzcash(ref) : inquireEasypaisa(ref)
