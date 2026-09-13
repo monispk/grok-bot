@@ -1,5 +1,5 @@
 export type Role = 'user' | 'assistant'
-export type Kind = 'text' | 'image' | 'audio' | 'document' | 'video'
+export type Kind = 'text' | 'image' | 'audio' | 'document' | 'video' | 'choice'
 export type Message = {
   role: Role
   content: string
@@ -75,6 +75,12 @@ export type FlowState = {
   collected: Record<string, string>
   /** Screened out — no smartphone. Kept, so they can resume if that changes. */
   ineligible?: boolean
+  /**
+   * An earlier application on this number, found when the number was given.
+   * The rider is being asked whether to carry on with it; nothing moves until
+   * they answer.
+   */
+  resume?: { id: string; firstName: string; step: number }
 }
 
 const STATE_KEY = 'grok-bot:flow'
@@ -146,11 +152,14 @@ export function load(): Message[] {
   }
 }
 
-export function save(messages: Message[]) {
-  try {
-    // blob: URLs die with the page, and a half-finished upload should not come
-    // back as pending. Persist the bubble, drop what cannot survive a reload.
-    const clean = messages
+/**
+ * The thread as it can be kept: what survives a reload here is also what is
+ * worth sending to the server, so both use this.
+ */
+export function keepable(messages: Message[]): Message[] {
+  // blob: URLs die with the page, and a half-finished upload should not come
+  // back as pending. Persist the bubble, drop what cannot survive a reload.
+  return messages
       .slice(-MAX)
       // A clip nothing could be heard in leaves no transcript, so it would come
       // back as an empty bubble. It was answered at the time; drop it.
@@ -166,7 +175,11 @@ export function save(messages: Message[]) {
             ? { ...m, src: m.src?.startsWith('blob:') ? undefined : m.src, pending: false, tmp: undefined }
             : m,
       )
-    localStorage.setItem(KEY, JSON.stringify(clean))
+}
+
+export function save(messages: Message[]) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(keepable(messages)))
   } catch {
     /* private mode or quota — history is a convenience, not a requirement */
   }

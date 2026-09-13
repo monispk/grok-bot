@@ -345,14 +345,42 @@ await check('sliding up locks the recording, and the bar sends it', async () => 
   await page.mouse.move(x, y - 130, { steps: 10 })
   await page.mouse.up()
   await page.waitForSelector('footer.locked', { timeout: 3000 })
+  // The lock was seen to shut, and the bar is WhatsApp's: bin, clock, stop, send.
+  assert.ok(await page.$('.lockpill.locked'), 'the padlock did not shut on screen')
   // Hands off, still recording.
   await page.waitForTimeout(1200)
   assert.ok(await page.$('footer.locked .bin'), 'no bin while locked')
-  await page.click('footer.locked button.send')
+  assert.ok(await page.$('footer.locked .stoprec'), 'no stop while locked')
+  // Stop: the recording ends and can be heard back before it goes anywhere.
+  await page.click('footer.locked .stoprec')
+  await page.waitForSelector('footer.reviewing .review .voice', { timeout: 3000 })
+  const sentEarly = await page.evaluate(() => document.querySelectorAll('.msg.user .voice').length)
+  assert.equal(sentEarly, 0, 'stop sent the recording instead of holding it')
+  await page.click('footer.reviewing button.send')
   const sent = await settle(async () =>
     page.evaluate(() => document.querySelectorAll('.msg.user .voice').length === 1),
   )
-  assert.ok(sent, 'the locked recording was not sent from the bar')
+  assert.ok(sent, 'the held recording was not sent from the bar')
+})
+
+await check('a held recording can be thrown away instead', async () => {
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('button.mic')
+  const { x, y } = await micAt()
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.waitForSelector('footer.recording')
+  await page.mouse.move(x, y - 130, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForSelector('footer.locked')
+  await page.waitForTimeout(900)
+  await page.click('footer.locked .stoprec')
+  await page.waitForSelector('footer.reviewing')
+  await page.click('footer.reviewing .bin')
+  await page.waitForSelector('footer.idle')
+  await page.waitForTimeout(400)
+  const sent = await page.evaluate(() => document.querySelectorAll('.msg.user .voice').length)
+  assert.equal(sent, 0, 'a binned recording was sent')
 })
 
 await check('a blocked microphone gets the guide, said once', async () => {
@@ -841,6 +869,121 @@ await check('a voice note that fails to arrive does not let the next pair jump t
   assert.ok(answer && question, `could not see the arrivals:\n${trail}`)
   const gap = question - answer
   assert.ok(gap >= GROUP_MS - 100, `the question came ${gap}ms after the answer; asked for ${GROUP_MS}\n${trail}`)
+})
+
+/** An application someone left at the bike question, as the server would hand it back. */
+const OLD_ID = '11111111-2222-4333-8444-555555555555'
+const earlier = () => ({
+  flow: {
+    applicationId: OLD_ID, step: at('bike'), firstName: 'Monis', fullName: 'Monis Ur Rahmaan',
+    cnic: '', collected: {}, phone: '923348234444', rail: 'easypaisa', noWallet: false,
+  },
+  history: [
+    { role: 'assistant', content: 'Aap ka mobile number kya hai?' },
+    { role: 'user', content: '03348234444' },
+    { role: 'assistant', content: 'Aap ke paas Easypaisa hai ya JazzCash?' },
+    { role: 'user', content: 'easypaisa' },
+    { role: 'assistant', content: 'Kya aap ke paas apna baray screen wala touch phone hai?' },
+    { role: 'user', content: 'haan, pehle wali baat' },
+    { role: 'assistant', content: 'Theek hai.' },
+  ],
+})
+const serverWith = async (pg, found) => {
+  await pg.route('**/api/application/lookup', (route) =>
+    route.fulfill({ json: found ? { found: true, id: OLD_ID, firstName: 'Monis', step: at('bike'), updatedAt: Date.now() } : { found: false } }))
+  await pg.route('**/api/application/resume', (route) => route.fulfill({ json: earlier() }))
+}
+const freshTo = async (pg, name, phone) => {
+  await pg.goto(APP)
+  await pg.evaluate(() => localStorage.clear())
+  await pg.reload()
+  await pg.waitForSelector('footer textarea')
+  await pg.fill('footer textarea', name)
+  await pg.click('footer button.send')
+  await settle(async () => pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').step === 1))
+  await pg.fill('footer textarea', phone)
+  await pg.click('footer button.send')
+}
+
+await check('a returning rider is found by number and name, and put back where they were', async () => {
+  await serverWith(page, true)
+  await freshTo(page, 'Monis Rahman', '03348234444')
+  const offered = await settle(async () => (await stored()).some((m) => (m.content || '').includes('pehle bhi application')))
+  assert.ok(offered, 'no offer to carry on')
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))
+  assert.equal(ORDER[before.step], 'phone', 'the flow moved on before the rider answered')
+
+  await page.fill('footer textarea', 'haan')
+  await page.click('footer button.send')
+  const back = await settle(async () => {
+    const f = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))
+    return f.applicationId === OLD_ID && ORDER[f.step] === 'bike'
+  })
+  assert.ok(back, 'the earlier application was not restored')
+  const log = await stored()
+  assert.ok(log.some((m) => m.content === 'haan, pehle wali baat'), 'the old thread is not on screen')
+  assert.ok(log.some((m) => (m.content || '').includes('Wahin se chalte hain')), 'nothing said about carrying on')
+  const asked = await settle(async () => (await stored()).some((m) => (m.content || '').includes('apni bike hai')))
+  assert.ok(asked, 'the bike question was not asked again')
+  await page.unroute('**/api/application/lookup')
+  await page.unroute('**/api/application/resume')
+})
+
+await check('a rider who says no to carrying on starts fresh', async () => {
+  await serverWith(page, true)
+  await freshTo(page, 'Monis Rahman', '03348234444')
+  await settle(async () => (await stored()).some((m) => (m.content || '').includes('pehle bhi application')))
+  const mine = (await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))).applicationId
+  await page.fill('footer textarea', 'nahi')
+  await page.click('footer button.send')
+  const moved = await settle(async () => {
+    const f = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))
+    return ORDER[f.step] === 'wallet' && f.applicationId === mine && !f.resume
+  })
+  assert.ok(moved, 'did not carry on with a fresh application')
+  await page.unroute('**/api/application/lookup')
+  await page.unroute('**/api/application/resume')
+})
+
+await check('every answer is sent to the server as it is made', async () => {
+  const sent = []
+  await page.route('**/api/application/*', (route) => {
+    if (route.request().method() === 'PUT') sent.push(JSON.parse(route.request().postData() || '{}'))
+    route.fulfill({ json: { ok: true } })
+  })
+  await serverWith(page, false)
+  await freshTo(page, 'Saad Rehman', '03131234567')
+  const landed = await settle(async () => sent.some((b) => b.flow?.phone === '923131234567'))
+  assert.ok(landed, `the number never reached the server; ${sent.length} pushes seen`)
+  const last = sent[sent.length - 1]
+  assert.equal(last.flow.fullName, 'Saad Rehman')
+  assert.ok(last.history.some((m) => m.role === 'user' && m.content === '03131234567'), 'the thread was not sent')
+  assert.ok(!last.history.some((m) => m.src?.startsWith('blob:')), 'a blob URL was sent to the server')
+  await page.unroute('**/api/application/*')
+  await page.unroute('**/api/application/lookup')
+  await page.unroute('**/api/application/resume')
+})
+
+await check('a yes-or-no question can be answered by tapping a picture', async () => {
+  await primeAt(at('smartphone'), [{ role: 'assistant', content: 'Kya aap ke paas touch phone hai?' }])
+  await page.waitForSelector('.choices .choice.nahi')
+  const two = await page.evaluate(() => document.querySelectorAll('.choices .choice').length)
+  assert.equal(two, 2, 'two pictures, one for each answer')
+  await page.click('.choices .choice.nahi')
+  const moved = await settle(async () => {
+    const f = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))
+    return ORDER[f.step] === 'bike' && (f.missing || []).includes('smartphone')
+  })
+  assert.ok(moved, 'the tap was not taken as the answer')
+  // The picture stays in the thread, on the rider's side, so it is plain what was chosen.
+  const kept = await page.evaluate(() => {
+    const el = document.querySelector('.msg.user.choice')
+    return el ? { img: el.querySelector('img')?.getAttribute('src'), text: el.textContent } : null
+  })
+  assert.ok(kept?.img?.includes('choice-phone-no'), 'the chosen picture is not in the thread')
+  assert.ok(kept?.text?.includes('Nahi'), 'the choice has no words with it')
+  // And the bike question brings its own pair.
+  await page.waitForSelector('.choices .choice.haan img[src*="bike"]', { timeout: 15_000 })
 })
 
 await check('"Sent" at a document step sends nothing and moves nowhere', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
 import type { useRecorder } from './recorder.ts'
 
 /**
@@ -8,6 +8,14 @@ import type { useRecorder } from './recorder.ts'
  */
 export const CANCEL_PX = 110
 export const LOCK_PX = 70
+
+const buzz = (ms: number) => {
+  try {
+    navigator.vibrate?.(ms)
+  } catch {
+    /* not on this phone */
+  }
+}
 
 /**
  * The hold-to-talk gesture, as pointer events on the microphone button.
@@ -22,6 +30,19 @@ export function useMicGesture(rec: ReturnType<typeof useRecorder>) {
   const origin = useRef<{ x: number; y: number; id: number } | null>(null)
   const [dx, setDx] = useState(0)
   const [dy, setDy] = useState(0)
+  /** True for a moment after the slide up took, so the lock can be seen to shut. */
+  const [justLocked, setJustLocked] = useState(false)
+  /**
+   * When the lock took. The send button appears where the microphone was,
+   * under a finger that is still down — and the finger lifting is a click.
+   * A send within half a second of locking is that, not a decision.
+   */
+  const lockedAt = useRef(0)
+  useEffect(() => {
+    if (!justLocked) return
+    const t = setTimeout(() => setJustLocked(false), 900)
+    return () => clearTimeout(t)
+  }, [justLocked])
 
   const reset = () => {
     origin.current = null
@@ -42,6 +63,8 @@ export function useMicGesture(rec: ReturnType<typeof useRecorder>) {
       origin.current = { x: e.clientX, y: e.clientY, id: e.pointerId }
       setDx(0)
       setDy(0)
+      // The short buzz WhatsApp gives when the hold takes.
+      if (rec.state === 'idle') buzz(20)
       void rec.press()
     },
     [rec],
@@ -61,6 +84,10 @@ export function useMicGesture(rec: ReturnType<typeof useRecorder>) {
       }
       if (y < -LOCK_PX) {
         rec.lock()
+        // Felt as well as seen. WhatsApp buzzes here, and riders expect it.
+        buzz(40)
+        lockedAt.current = Date.now()
+        setJustLocked(true)
         reset()
         return
       }
@@ -83,6 +110,11 @@ export function useMicGesture(rec: ReturnType<typeof useRecorder>) {
   return {
     dx,
     dy,
+    /** How far up the finger has come towards the lock, 0 to 1. */
+    rise: Math.min(1, -dy / LOCK_PX),
+    justLocked,
+    /** Whether a tap on send right now is the lifting finger, not a choice. */
+    settling: () => Date.now() - lockedAt.current < 500,
     handlers: {
       onPointerDown,
       onPointerMove,

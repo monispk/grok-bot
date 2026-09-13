@@ -76,3 +76,15 @@ test('empty input is a mismatch, not a crash', () => {
   assert.equal(v('', 'Muhammad Bilal'), 'mismatch')
   assert.equal(v('   ', ''), 'mismatch')
 })
+
+test('a returning rider is the same person under a slightly different spelling', async () => {
+  const { sameName } = await import('../shared/steps.ts')
+  assert.equal(sameName('Monis Ur Rahmaan', 'monis ur rahman'), true)
+  assert.equal(sameName('Monis Ur Rahmaan', 'Monis'), true)
+  assert.equal(sameName('Ali Raza', 'ali raza'), true)
+  assert.equal(sameName('Muhammad Usman', 'Mohammad Usman'), true)
+  // A brother on the same phone is not.
+  assert.equal(sameName('Ali Raza', 'Bilal Raza'), false)
+  assert.equal(sameName('Usman Khan', 'Usman Ali'), false)
+  assert.equal(sameName('', 'Ali'), false)
+})

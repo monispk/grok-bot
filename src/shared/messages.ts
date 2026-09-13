@@ -114,6 +114,17 @@ export const SAY = {
     '/say-no-wallet',
   ),
   /**
+   * The number just given has an unfinished application on it, by someone of
+   * the same name. Asked, not assumed: a phone is often shared, and the rider
+   * may want to start again.
+   */
+  resumeOffer: say(
+    'Is number se pehle bhi application shuru ki gayi thi. Kya aap wahin se jaari rakhna chahte hain? Haan ya nahi likhein.',
+    '/say-resume-offer',
+  ),
+  resumed: say('Theek hai. Wahin se chalte hain jahan aap ne chhora tha.', '/say-resumed'),
+  startedFresh: say('Theek hai, nayi application shuru karte hain.', '/say-started-fresh'),
+  /**
    * A phone number typed at the name question.
    *
    * The model was asked whether it was a name and said yes, so a rider was

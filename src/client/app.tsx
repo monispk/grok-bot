@@ -48,6 +48,8 @@ import { useRecorder, type MicProblem, type Recording } from './recorder.ts'
 import { CANCEL_PX, useMicGesture } from './mic.tsx'
 import { MicSheet } from './micsheet.tsx'
 import { shrinkImage } from './image.ts'
+import { lookup, pushSoon, resume } from './sync.ts'
+import { CHOICES, Choices, type Choice } from './choices.tsx'
 import { BEAT_MS, GROUP_MS, MAX_TICKS, VOICE_PATIENCE_MS, WORD_MS } from './pace.ts'
 import { isReady, setOrder, stopAll, whenReady } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
@@ -61,6 +63,14 @@ const CAMERA_ACCEPT = 'image/*'
 const bot = (content: string): Message => ({ role: 'assistant', content })
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+/** The red microphone that blinks beside the clock while recording, as WhatsApp's does. */
+const RedMic = () => (
+  <svg class="redmic" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <path d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 15z" fill="currentColor" />
+    <path d="M18.5 11.2a6.5 6.5 0 0 1-13 0M12 17.8V21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+  </svg>
+)
 
 let seq = 0
 /**
@@ -219,6 +229,8 @@ export function App() {
   const saidOnce = useRef(new Set<string>())
   /** Testing only: everything collected so far, on one screen. */
   const [dashOpen, setDashOpen] = useState(false)
+  /** When the server last confirmed it holds this application. */
+  const [syncedAt, setSyncedAt] = useState(0)
   const [gate, setGate] = useState({ required: false, authed: true })
   const [password, setPassword] = useState('')
 
@@ -341,6 +353,18 @@ export function App() {
    * on reload, and nothing said so.
    */
   useEffect(() => store.saveState(flow), [flow])
+
+  /**
+   * And to the server, a moment after. From the first thing the rider says:
+   * a welcome nobody answered is not an application. The phone is where the
+   * only copy used to live, and the phone is what gets cleared, shared and
+   * swapped for another browser halfway through.
+   */
+  useEffect(() => {
+    if (gate.required && !gate.authed) return
+    if (!messages.some((m) => m.role === 'user')) return
+    pushSoon(flow, messages, setSyncedAt)
+  }, [flow, messages, gate])
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -725,11 +749,54 @@ export function App() {
   )
 
   /**
+   * Puts the rider back into an earlier application: its thread, its answers,
+   * its id — then says so and asks the question they had reached. The old
+   * thread is shown at once and not read aloud; only what is new is staged.
+   */
+  const restore = useCallback(
+    async (id: string) => {
+      setWorking(true)
+      const got = phone && fullName ? await resume(id, phone, fullName) : null
+      setWorking(false)
+      if (!got) {
+        // Gone, or not theirs after all. Carry on with this one.
+        say(bot(SAY.startedFresh.text))
+        advanceFrom(step, [], { resume: undefined })
+        return
+      }
+      stopAll()
+      // Fresh ids, so nothing collides with what this visit already numbered.
+      const history = got.history.map((m) => ({ ...m, id: undefined }))
+      const next = STEPS[got.flow.step]
+      restored.current = history.length
+      setRevealed(history.length)
+      setMessages(append(history, [bot(SAY.resumed.text), ...(next ? askMessages(next) : [])]))
+      setFlow({ ...got.flow, applicationId: id, resume: undefined })
+    },
+    [phone, fullName, say, advanceFrom, step],
+  )
+
+  /**
    * Everything that happens once the rider's words are in the thread, however
    * they arrived. Typed and spoken answers are the same from here on.
    */
   const processText = useCallback(
     async (text: string, withUser: Message[]) => {
+      // The rider is being asked whether to carry on an earlier application.
+      // Yes puts them back where they were, on this device; no leaves the
+      // earlier one where it is (it may be a brother's) and carries on here.
+      if (flow.resume) {
+        const yn = readYesNo(text)
+        if (yn === 'yes') return void (await restore(flow.resume.id))
+        if (yn === 'no') {
+          say(bot(SAY.startedFresh.text))
+          advanceFrom(step, [], { resume: undefined })
+          return
+        }
+        say(bot(SAY.repeat.text), bot(SAY.resumeOffer.text))
+        return
+      }
+
       // Collection is done. The quiz comes first if it is still running; only
       // once it is finished or declined does the bot go back to answering.
       if (!current) {
@@ -833,12 +900,22 @@ export function App() {
           }
           return
         }
-        if (asksSomething(text)) {
-          await runFaq(withUser)
-          advanceFrom(step, [], { phone })
-        } else {
-          advanceFrom(step, [], { phone })
+        if (asksSomething(text)) await runFaq(withUser)
+
+        // Someone of this name has an unfinished application on this number.
+        // Offered, not assumed — a phone is often shared — and nothing moves
+        // until they answer.
+        const earlier = fullName ? await lookup(phone, fullName, flow.applicationId ?? '') : null
+        if (earlier) {
+          setFlow((f) => ({
+            ...f,
+            phone,
+            resume: { id: earlier.id, firstName: earlier.firstName, step: earlier.step },
+          }))
+          say(bot(SAY.resumeOffer.text))
+          return
         }
+        advanceFrom(step, [], { phone })
         return
       }
 
@@ -886,8 +963,24 @@ export function App() {
         say(bot(SAY.repeat.text), ...askMessages(current))
       }
     },
-    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz],
+    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz, flow.resume, flow.applicationId, fullName, restore],
   )
+
+  /** A picture tapped instead of a word: the same answer, and the picture stays in the thread. */
+  const onPick = useCallback(
+    async (c: Choice) => {
+      if (busy) return
+      setError(null)
+      const withUser: Message[] = [
+        ...messages,
+        { role: 'user', content: c.label, kind: 'choice', src: c.src },
+      ]
+      setMessages(withUser)
+      await processText(c.answer, withUser)
+    },
+    [busy, messages, processText],
+  )
+
 
   const onSend = useCallback(
     async (override?: string) => {
@@ -1261,6 +1354,10 @@ export function App() {
   }, [])
 
   const reset = useCallback(() => {
+    // Clear means start over. The server's copy is closed, not deleted, so
+    // the same number is not offered this application back next time.
+    if (flow.applicationId)
+      void fetch(`/api/application/${flow.applicationId}/close`, { method: 'POST', keepalive: true }).catch(() => {})
     abort.current?.abort()
     abort.current = null
     setStreaming(null)
@@ -1365,6 +1462,14 @@ export function App() {
                 <Stamp m={m} />
               </div>
             )
+          if (m.kind === 'choice')
+            return (
+              <div key={i} class="msg user media choice">
+                {m.src && <img class="pick" src={m.src} alt="" draggable={false} />}
+                <span class="picklabel">{m.content}</span>
+                <Stamp m={m} />
+              </div>
+            )
           if (m.kind === 'video')
             return (
               <div key={i} class="msg bot media shot">
@@ -1426,6 +1531,9 @@ export function App() {
           )
         })}
 
+        {current?.kind === 'confirm' && CHOICES[current.id] && revealed >= messages.length && !flow.resume && (
+          <Choices options={CHOICES[current.id]!} disabled={busy} onPick={(c) => void onPick(c)} />
+        )}
         {revealed < messages.length && typed > 0 && messages[revealed] && (
           <div class="msg bot">
             <span
@@ -1472,7 +1580,7 @@ export function App() {
         </div>
       )}
 
-      {dashOpen && <Dashboard flow={flow} onClose={() => setDashOpen(false)} />}
+      {dashOpen && <Dashboard flow={flow} syncedAt={syncedAt} onClose={() => setDashOpen(false)} />}
 
       {micSheet && (
         <MicSheet
@@ -1551,7 +1659,28 @@ export function App() {
           }}
         />
 
-        {recorder.state === 'locked' ? (
+        {recorder.state === 'reviewing' && recorder.draft ? (
+          <>
+          {/* Stopped and held: hear it back, then send or bin it. */}
+          <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
+            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+              <path
+                d="M4 7h16M10 4h4M9 7v12m3-12v12m3-12v12M6 7l1 13h10l1-13"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <div class="review">
+            <VoiceNote
+              sources={[{ src: URL.createObjectURL(recorder.draft.blob), type: recorder.draft.mime }]}
+            />
+          </div>
+          </>
+        ) : recorder.state === 'locked' ? (
           <>
           <button class="bin" onClick={recorder.cancel} aria-label="Mansookh karein">
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
@@ -1566,14 +1695,20 @@ export function App() {
             </svg>
           </button>
           <span class="reclive">
-            <span class="recdot" />
+            <RedMic />
             {mmss(recorder.seconds)}
           </span>
+          {/* Stop: the recording ends and waits to be heard back. */}
+          <button class="stoprec" onClick={recorder.stop} aria-label="Rok kar sunein">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" />
+            </svg>
+          </button>
           </>
         ) : recorder.state === 'recording' || recorder.state === 'asking' ? (
           <div class="rectray">
             <span class="reclive">
-              <span class="recdot" />
+              <RedMic />
               {mmss(recorder.seconds)}
             </span>
             <span
@@ -1670,30 +1805,50 @@ export function App() {
               <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
             </svg>
           </button>
-        ) : recorder.state === 'locked' ? (
-          <button class="fab send" onClick={recorder.send} aria-label="Bhejein">
-            <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-              <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
-            </svg>
-          </button>
+        ) : recorder.state === 'locked' || recorder.state === 'reviewing' ? (
+          <span class="micwrap">
+            {/* Shut, and gone a moment later: the sign that the slide took. */}
+            {mic.justLocked && (
+              <span class="lockpill locked" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <rect x="5" y="10" width="14" height="11" rx="2" fill="currentColor" />
+                  <path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" />
+                </svg>
+              </span>
+            )}
+            <button
+              class="fab send pop"
+              onClick={() => {
+                if (!mic.settling()) recorder.send()
+              }}
+              aria-label="Bhejein"
+            >
+              <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+                <path d="M2.2 21.3 23 12 2.2 2.7 2.2 10l14.4 2-14.4 2z" fill="currentColor" />
+              </svg>
+            </button>
+          </span>
         ) : (
           <span class="micwrap">
+            {/* The lock. As the finger rises the chevron fades and the button
+                climbs towards it; at the threshold the padlock shuts. */}
             <span
               class={`lockpill ${recorder.state === 'recording' ? 'up' : ''}`}
-              style={{ transform: `translate(-50%, ${mic.dy * 0.4}px)` }}
+              style={{ transform: `translate(-50%, ${-mic.rise * 10}px)` }}
               aria-hidden="true"
             >
               <svg viewBox="0 0 24 24" width="18" height="18">
                 <rect x="5" y="10" width="14" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8" />
                 <path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="1.8" />
               </svg>
-              <svg viewBox="0 0 24 24" width="16" height="16">
+              <svg class="chev" viewBox="0 0 24 24" width="16" height="16" style={{ opacity: 1 - mic.rise }}>
                 <path d="M6 14l6-6 6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
               </svg>
             </span>
             {/* Held, not tapped. The gesture handlers are the whole feature. */}
             <button
               class={`fab mic ${recorder.state}`}
+              style={recorder.state === 'recording' ? { transform: `translateY(${-mic.rise * 34}px) scale(1.9)` } : undefined}
               aria-label="Bolne ke liye dabaye rakhein"
               disabled={busy}
               {...mic.handlers}

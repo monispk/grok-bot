@@ -16,6 +16,8 @@ import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
 import { extractName } from './extract.ts'
+import { STEP_SPECS } from '../shared/steps.ts'
+import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
@@ -313,6 +315,66 @@ app.get('/api/speak/:id', async (c) => {
     'content-type': found.mime,
     'cache-control': 'public, max-age=86400',
   })
+})
+
+// ------------------------------------------------------------ applications --
+// Every change a rider makes is written here as it is made, and a rider who
+// comes back — on the same phone or another — is put back where they were.
+
+const HISTORY_CAP = 256 * 1024
+const digits = (v: unknown) => (typeof v === 'string' ? v.replace(/\D/g, '') : '')
+
+app.put('/api/application/:id', guard, async (c) => {
+  const id = c.req.param('id')
+  if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
+  const raw = await c.req.text()
+  if (raw.length > HISTORY_CAP) return c.json({ error: 'Too big' }, 413)
+  let body: { flow?: Record<string, unknown>; history?: unknown[] } = {}
+  try {
+    body = JSON.parse(raw)
+  } catch {
+    return c.json({ error: 'Bad body' }, 400)
+  }
+  const flow = body.flow && typeof body.flow === 'object' ? body.flow : null
+  const history = Array.isArray(body.history) ? body.history : null
+  if (!flow || !history) return c.json({ error: 'Bad body' }, 400)
+  const step = typeof flow['step'] === 'number' ? flow['step'] : 0
+  const ok = await saveApplication(id, {
+    flow,
+    history,
+    phone: digits(flow['phone']) || undefined,
+    fullName: typeof flow['fullName'] === 'string' ? flow['fullName'] : undefined,
+    step,
+    done: step >= STEP_SPECS.length,
+  })
+  return c.json({ ok })
+})
+
+app.post('/api/application/:id/close', guard, async (c) => {
+  const id = c.req.param('id')
+  if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
+  return c.json({ ok: await closeApplication(id) })
+})
+
+app.post('/api/application/lookup', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const phone = digits(body['phone'])
+  const name = typeof body['name'] === 'string' ? body['name'] : ''
+  if (!phone || !name.trim()) return c.json({ found: false })
+  const found = await findOpen(phone, name, String(body['exclude'] ?? ''))
+  return c.json(found ? { found: true, ...found } : { found: false })
+})
+
+app.post('/api/application/resume', guard, async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const id = body['id']
+  const phone = digits(body['phone'])
+  const name = typeof body['name'] === 'string' ? body['name'] : ''
+  if (!isUuid(id) || !phone || !name.trim()) return c.json({ error: 'Not found' }, 404)
+  const snap = await loadApplication(id, phone, name)
+  return snap ? c.json(snap) : c.json({ error: 'Not found' }, 404)
 })
 
 app.post('/api/transcribe', guard, async (c) => {

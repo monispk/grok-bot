@@ -173,6 +173,25 @@ function similarity(a: string, b: string): number {
   return 1 - prev[b.length]! / Math.max(a.length, b.length)
 }
 
+/**
+ * Whether two names are the same person's, as riders type them: "Monis Ur
+ * Rahmaan" and "monis rahman" are. Letters only, case folded, then close
+ * enough on edit distance — one dropped vowel or doubled letter is not a
+ * different person, but "Ali Raza" and "Bilal Raza" are.
+ */
+export function sameName(a: string, b: string): boolean {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z\u0600-\u06ff]/g, '')
+  const x = norm(a)
+  const y = norm(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  // The first name alone matches too, when the rest is missing: a rider who
+  // gave "Monis Ur Rahmaan" and comes back as "Monis".
+  const first = (t: string) => t.toLowerCase().trim().split(/\s+/)[0] ?? ''
+  if (first(a).length >= 4 && first(a) === first(b) && (x.startsWith(y) || y.startsWith(x))) return true
+  return similarity(x, y) >= 0.8
+}
+
 export function echoesQuestion(reply: string, question: string): boolean {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
   const r = norm(reply)

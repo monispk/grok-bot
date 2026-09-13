@@ -101,16 +101,17 @@ const markAsked = () => {
   }
 }
 
-export type RecorderState = 'idle' | 'asking' | 'recording' | 'locked'
+export type RecorderState = 'idle' | 'asking' | 'recording' | 'locked' | 'reviewing'
 export type MicProblem = 'unsupported' | 'ask' | MicFailure
 
 /**
  * Hold to talk, the way WhatsApp does it.
  *
  * Press starts, release sends. A slide to the left cancels; a slide upwards
- * locks, and a locked recording carries on hands-free until the rider taps send
- * or the bin. A press too short to have been deliberate is a tap, and a tap
- * shows the hint rather than sending half a syllable.
+ * locks, and a locked recording carries on hands-free until the rider taps
+ * send, the bin, or stop — which ends the recording and holds it, so they can
+ * hear it back before deciding. A press too short to have been deliberate is a
+ * tap, and a tap shows the hint rather than sending half a syllable.
  *
  * The gesture itself lives in mic.tsx. This is the microphone: permission,
  * stream, encoder, timer — and every way those can fail, named, so the sheet
@@ -129,11 +130,15 @@ export function useRecorder({
 }) {
   const [state, setState] = useState<RecorderState>('idle')
   const [seconds, setSeconds] = useState(0)
+  /** A stopped recording the rider is listening back to, not yet sent. */
+  const [draft, setDraft] = useState<Recording | null>(null)
 
   const rec = useRef<MediaRecorder | null>(null)
   const stream = useRef<MediaStream | null>(null)
   const chunks = useRef<Blob[]>([])
   const cancelled = useRef(false)
+  /** Stop and hold, rather than stop and send. */
+  const holding = useRef(false)
   const startedAt = useRef(0)
   /** Whether the finger is still down. Read after every await. */
   const held = useRef(false)
@@ -219,9 +224,16 @@ export function useRecorder({
       const type = r.mimeType || mime || 'audio/webm'
       const blob = new Blob(chunks.current, { type })
       const elapsed = (Date.now() - startedAt.current) / 1000
-      const send = !cancelled.current && blob.size > 0
+      const keep = !cancelled.current && blob.size > 0
+      const hold = holding.current
+      holding.current = false
       release()
-      if (send) onDone({ blob, mime: type, seconds: elapsed })
+      if (!keep) return
+      const clip = { blob, mime: type, seconds: elapsed }
+      if (hold) {
+        setDraft(clip)
+        go('reviewing')
+      } else onDone(clip)
     }
     startedAt.current = Date.now()
     r.start()
@@ -251,8 +263,33 @@ export function useRecorder({
   const lock = useCallback(() => {
     if (stateRef.current === 'recording') go('locked')
   }, [])
-  const cancel = useCallback(() => finish(false), [finish])
-  const send = useCallback(() => finish(true), [finish])
+
+  /** Ends a locked recording and keeps it, to be heard back before sending. */
+  const stop = useCallback(() => {
+    if (stateRef.current !== 'locked') return
+    holding.current = true
+    finish(true)
+  }, [finish])
+
+  const cancel = useCallback(() => {
+    if (stateRef.current === 'reviewing') {
+      setDraft(null)
+      go('idle')
+      return
+    }
+    finish(false)
+  }, [finish])
+
+  const send = useCallback(() => {
+    if (stateRef.current === 'reviewing') {
+      const clip = draft
+      setDraft(null)
+      go('idle')
+      if (clip) onDone(clip)
+      return
+    }
+    finish(true)
+  }, [draft, finish, onDone])
 
   /**
    * Ask for the microphone from a tap on the sheet's own button, then let it go
@@ -290,5 +327,5 @@ export function useRecorder({
     return () => document.removeEventListener('visibilitychange', away)
   }, [finish])
 
-  return { state, seconds, press, letGo, lock, cancel, send, allow }
+  return { state, seconds, draft, press, letGo, lock, stop, cancel, send, allow }
 }

@@ -50,7 +50,15 @@ function Section({ title, children }: { title: string; children: preact.Componen
 const stateOf = (v: string | undefined): State =>
   !v || v === 'not checked' ? 'pending' : v.startsWith('match') ? 'pass' : 'fail'
 
-export function Dashboard({ flow, onClose }: { flow: FlowState; onClose: () => void }) {
+export function Dashboard({
+  flow,
+  syncedAt,
+  onClose,
+}: {
+  flow: FlowState
+  syncedAt?: number
+  onClose: () => void
+}) {
   const [big, setBig] = useState<string | null>(null)
   const d = flow.collected
   const gates = [
@@ -68,6 +76,10 @@ export function Dashboard({ flow, onClose }: { flow: FlowState; onClose: () => v
       <div class="dash-body">
         <Section title="Application">
           <Row label="Application id" value={flow.applicationId ?? '—'} />
+          <Row
+            label="On the server"
+            value={syncedAt ? `yes, ${new Date(syncedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'not yet'}
+          />
           <Row label="Step" value={`${Math.min(flow.step, STEPS.length)} of ${STEPS.length}`} />
           <Row label="Full name" value={flow.fullName || '—'} />
           <Row label="Phone" value={flow.phone || '—'} />

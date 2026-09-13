@@ -81,6 +81,19 @@ export async function init() {
     );
     CREATE INDEX IF NOT EXISTS outbox_due ON outbox (next_attempt);
 
+    CREATE TABLE IF NOT EXISTS applications (
+      id          uuid PRIMARY KEY,
+      phone       text,
+      full_name   text,
+      step        int NOT NULL DEFAULT 0,
+      completed   boolean NOT NULL DEFAULT false,
+      flow        jsonb NOT NULL,
+      history     jsonb NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT now(),
+      updated_at  timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS applications_phone ON applications (phone, updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS uploads (
       id          text PRIMARY KEY,
       application uuid,

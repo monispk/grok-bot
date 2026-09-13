@@ -1004,8 +1004,8 @@ footer button.stop { background: var(--err); }
 
 /* Grows under the finger, the way WhatsApp's does, so the rider can feel that
    the hold has taken without looking at the button. */
-.fab.mic.asking,
-.fab.mic.recording { transform: scale(1.32); }
+.fab.mic.asking { transform: scale(1.9); }
+.fab.mic.recording { transform: scale(1.9); }
 
 /* The lock, above the button. Slide up into it and the recording carries on
    hands-free. */
@@ -1032,6 +1032,64 @@ footer button.stop { background: var(--err); }
 
 .lockpill.up { opacity: 1; }
 .lockpill svg { display: block; }
+/* The chevron bobs, inviting the slide. */
+.lockpill.up .chev { animation: bob 1.1s ease-in-out infinite; }
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+/* The red microphone blinks beside the clock. */
+.redmic { color: #f15c6d; animation: pulse 1.1s ease-in-out infinite; }
+
+/* Stop, in the locked bar: red, like WhatsApp's. */
+.stoprec {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #f15c6d;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+/* The held recording, playable, where the composer was. */
+.review {
+  flex: 1;
+  min-width: 0;
+  background: var(--input);
+  border-radius: 24px;
+  padding: 2px 6px;
+}
+.review .voice { padding: 6px 4px; }
+
+/* The slide took: the padlock shuts, swells, and fades. */
+.lockpill.locked {
+  opacity: 1;
+  height: 40px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+  animation: lockshut .9s ease forwards;
+}
+
+@keyframes lockshut {
+  0%   { transform: translate(-50%, 0) scale(.9); opacity: 1; }
+  25%  { transform: translate(-50%, -6px) scale(1.25); opacity: 1; }
+  70%  { transform: translate(-50%, -6px) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -14px) scale(.9); opacity: 0; }
+}
+
+/* And the send button takes the microphone's place. */
+.fab.send.pop { animation: popin .22s ease; }
+@keyframes popin {
+  from { transform: scale(.55); }
+  to   { transform: scale(1); }
+}
 
 /* While the finger is down: the red dot and the clock, then "slide to cancel",
    which follows the finger leftwards and fades as it goes. */
@@ -1151,4 +1209,46 @@ footer button.stop { background: var(--err); }
 
 @media (prefers-reduced-motion: reduce) {
   .fab.mic, .lockpill { transition: none; }
+  .lockpill.locked, .fab.send.pop, .lockpill.up .chev, .redmic { animation: none; }
+  .lockpill.locked { opacity: 0; }
 }
+
+/* ---------- picture answers ---------- */
+
+/* Two pictures to tap under a yes-or-no question. Side by side, small enough
+   that the question above them stays in view on a 360px phone. */
+.choices {
+  display: flex;
+  gap: 10px;
+  margin: 2px 0 6px;
+  max-width: 340px;
+}
+
+.choice {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 6px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--in);
+  color: var(--fg);
+  box-shadow: 0 1px .5px rgba(11, 20, 26, .13);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .08s ease;
+}
+
+.choice:active { transform: scale(.95); }
+.choice:disabled { opacity: .5; cursor: default; }
+.choice img { display: block; width: 100%; height: auto; }
+.choice span { font-size: 12.5px; line-height: 1.25; padding: 0 6px; text-align: center; }
+
+/* The answer, in the thread: the picture that was tapped, small, with its words. */
+.msg.choice { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px; }
+.msg.choice .pick { display: block; width: 120px; height: auto; border-radius: 8px; }
+.msg.choice .picklabel { font-size: 13.5px; padding: 0 4px; }
