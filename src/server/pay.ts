@@ -272,10 +272,22 @@ export async function payJazzcash(phone: string, _cnic: string, ref: string): Pr
 }
 
 /** A reference the rail will accept and a person can read back to us. */
+/**
+ * A reference the rail will accept and a person can read back to us.
+ *
+ * JazzCash specifies its own shape: three letters of the merchant's domain,
+ * then the date and time, at most twenty alphanumeric characters.
+ *
+ * Easypaisa's is twelve digits — month, day, time, and two random — where it
+ * used to be "RZ" and nineteen characters. Their spec sets no limit and the
+ * long ones were accepted and retrievable, so this is not a known fix; it is
+ * the last variable on our side of a debit their own app refuses with a
+ * generic ESB99999, and their prompt displays a ten-digit order id of its own.
+ */
 export const newRef = (rail: 'easypaisa' | 'jazzcash') =>
   rail === 'jazzcash'
     ? `${JC.prefix}${stamp()}`
-    : `RZ${stamp()}${Math.floor(Math.random() * 900 + 100)}`
+    : `${stamp().slice(4)}${Math.floor(Math.random() * 90 + 10)}`
 
 /**
  * Asks Easypaisa what became of an order. Safe to ask as often as needed: it
