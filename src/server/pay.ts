@@ -278,17 +278,15 @@ export async function payJazzcash(phone: string, _cnic: string, ref: string): Pr
  * JazzCash specifies its own shape: three letters of the merchant's domain,
  * then the date and time, at most twenty alphanumeric characters.
  *
- * Easypaisa's is "RZ" and twelve digits — month, day, time, two random. It
- * was nineteen characters, shortened while ruling out the order id as a cause
- * of a debit their app refuses with a generic ESB99999. It was not the cause,
- * and both lengths were accepted, so what is kept is the shorter one — with
- * the prefix, because a bare number is not recognisable as ours in a merchant
- * portal a store may share with other integrations.
+ * Easypaisa's was shortened once to twelve digits, to rule the order id out
+ * as a cause of a debit their app refuses with a generic ESB99999. It was not
+ * the cause — both lengths were accepted and both debits refused — so the
+ * original is back rather than a change that bought nothing.
  */
 export const newRef = (rail: 'easypaisa' | 'jazzcash') =>
   rail === 'jazzcash'
     ? `${JC.prefix}${stamp()}`
-    : `RZ${stamp().slice(4)}${Math.floor(Math.random() * 90 + 10)}`
+    : `RZ${stamp()}${Math.floor(Math.random() * 900 + 100)}`
 
 /**
  * Asks Easypaisa what became of an order. Safe to ask as often as needed: it
