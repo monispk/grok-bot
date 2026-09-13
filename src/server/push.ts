@@ -74,10 +74,17 @@ type Row = { id: string; pushed: Record<string, unknown> }
  * saved, and returns as soon as the row is written — the sending is the
  * worker's problem.
  */
-export async function queueFields(id: string, flow: Record<string, unknown>): Promise<number> {
+export async function queueFields(
+  id: string,
+  flow: Record<string, unknown>,
+  known?: Record<string, unknown>,
+): Promise<number> {
   if (!pushReady()) return 0
-  const rows = await query<Row>(`SELECT id, pushed FROM applications WHERE id = $1`, [id])
-  const sent = rows?.[0]?.pushed ?? {}
+  let sent = known
+  if (!sent) {
+    const rows = await query<Row>(`SELECT id, pushed FROM applications WHERE id = $1`, [id])
+    sent = rows?.[0]?.pushed ?? {}
+  }
   const changed = delta(forBackend(flow), sent)
   const names = Object.keys(changed)
   if (!names.length) return 0
@@ -239,9 +246,19 @@ export async function drain(limit = 20): Promise<{ sent: number; failed: number 
   } finally {
     draining = false
   }
-  if (sent || failed) console.log(`push: ${sent} delivered, ${failed} deferred`)
+  if (sent || failed) {
+    console.log(`push: ${sent} delivered, ${failed} deferred`)
+    await pending()
+  }
   return { sent, failed }
 }
+
+/**
+ * The last known depth of the queue, kept here so the health check can report
+ * it without a database round trip — Railway polls that endpoint continuously.
+ */
+let depth = { rows: 0, stuck: 0 }
+export const queueDepth = () => depth
 
 /** What is still owed, for the health check and for anyone asking. */
 export async function pending(): Promise<{ rows: number; stuck: number }> {
@@ -251,14 +268,50 @@ export async function pending(): Promise<{ rows: number; stuck: number }> {
        FROM outbox`,
     [MAX_ATTEMPTS],
   )
-  return { rows: Number(rows?.[0]?.total ?? 0), stuck: Number(rows?.[0]?.stuck ?? 0) }
+  depth = { rows: Number(rows?.[0]?.total ?? 0), stuck: Number(rows?.[0]?.stuck ?? 0) }
+  return depth
 }
 
-export function startPushing(everyMs = 5000) {
+/**
+ * Queues everything the backend has never seen.
+ *
+ * Nothing is queued while there is nowhere to send it, so the day the endpoint
+ * is configured the outbox is empty — and an application finished the week
+ * before would otherwise sit in Postgres forever, because only a *change*
+ * queues anything and a finished application never changes again.
+ *
+ * So the difference between what each application says and what the backend
+ * has acknowledged is queued directly. Run at boot and on a slow timer: rows
+ * already delivered produce an empty delta and cost nothing, so it is safe to
+ * run as often as it likes.
+ */
+export async function backfill(days = 60, limit = 500): Promise<number> {
+  if (!pushReady()) return 0
+  const rows = await query<{ id: string; flow: Record<string, unknown>; pushed: Record<string, unknown> }>(
+    `SELECT id, flow, pushed FROM applications
+      WHERE updated_at > now() - ($1 || ' days')::interval
+      ORDER BY updated_at DESC
+      LIMIT $2`,
+    [days, limit],
+  )
+  let queued = 0
+  for (const row of rows ?? []) queued += await queueFields(row.id, row.flow, row.pushed ?? {})
+  if (queued) console.log(`push: backfilled ${queued} field(s) the backend had never seen`)
+  return queued
+}
+
+export function startPushing(everyMs = 5000, sweepMs = 10 * 60_000) {
   if (!pushReady()) {
+    // Nothing is queued either, so setting the endpoint later needs the
+    // backfill above — which is why a restart is part of turning this on.
     console.log('push: no ROZEENA_ENDPOINT, applications stay in postgres only')
     return
   }
   console.log(`push: sending to ${ENDPOINT}`)
   setInterval(() => void drain(), everyMs).unref()
+  // Once shortly after boot, then slowly: the first catches everything
+  // collected before the endpoint existed, the rest catches anything a crash
+  // left unqueued.
+  setTimeout(() => void backfill(), 10_000).unref()
+  setInterval(() => void backfill(), sweepMs).unref()
 }

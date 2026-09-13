@@ -23,7 +23,17 @@ import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { visionReady } from './vision.ts'
-import { forBackend, pending, pushReady, queueDocument, queueFields, startPushing } from './push.ts'
+import {
+  backfill,
+  drain,
+  forBackend,
+  pending,
+  pushReady,
+  queueDepth,
+  queueDocument,
+  queueFields,
+  startPushing,
+} from './push.ts'
 import { transcribe } from './transcribe.ts'
 import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, query, sweep } from './db.ts'
@@ -70,6 +80,9 @@ app.get('/healthz', (c) =>
     // The licence reader of last resort, for cards the labels do not know.
     vision: visionReady(),
     push: pushReady(),
+    // The queue's depth as the worker last saw it: 0 means everything the
+    // backend is owed has been delivered.
+    ...(pushReady() ? { outbox: queueDepth().rows, stuck: queueDepth().stuck } : {}),
     // Present only when a test override is active, so it cannot ship unseen.
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
@@ -476,6 +489,17 @@ app.get('/api/models', guard, async (c) => c.json(await listModels()))
  * What the backend has, and what it still owes. Field by field, because that
  * is the question worth asking of a queue that drains in the background.
  */
+/**
+ * Sends whatever is waiting, now, rather than at the next tick. For turning the
+ * push on without waiting, and for seeing what a failing backend says.
+ */
+app.post('/api/push/drain', guard, async (c) => {
+  if (!pushReady()) return c.json({ error: 'no ROZEENA_ENDPOINT' }, 409)
+  const filled = await backfill()
+  const result = await drain(100)
+  return c.json({ backfilled: filled, ...result, ...(await pending()) })
+})
+
 app.get('/api/application/:id/push', guard, async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
