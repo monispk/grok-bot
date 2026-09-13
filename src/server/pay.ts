@@ -108,6 +108,22 @@ export function hashMatches(body: Record<string, string>, salt: string): boolean
   return given !== '' && given === secureHash(body, salt)
 }
 
+/**
+ * Logs what a rail actually said, minus anything that identifies the merchant.
+ *
+ * A rail's prose is written for a shopper — "contact the merchant" — and the
+ * code beside it is what an integrator needs. Both were being thrown away, so
+ * the orchestrator's first real answer took a second request to read.
+ */
+function traceRail(rail: string, json: Record<string, unknown> | null) {
+  if (!json) return
+  const SECRET = /password|securehash|credential|salt|merchantid/i
+  const kept = Object.entries(json)
+    .filter(([k, v]) => !SECRET.test(k) && v !== '' && v != null)
+    .map(([k, v]) => `${k}=${String(v).slice(0, 80)}`)
+  console.log(`${rail}: ${kept.join(' ')}`)
+}
+
 async function send(
   url: string,
   init: RequestInit,
@@ -264,11 +280,12 @@ export async function payJazzcash(phone: string, _cnic: string, ref: string): Pr
   if (timedOut) return { ...base, state: 'pending', detail: 'initiate timed out — confirm by inquiry' }
   if (!json) return { ...base, detail }
 
+  traceRail('jazzcash initiate', json)
   const code = String(json['pp_ResponseCode'] ?? '')
   const message = String(json['pp_ResponseMessage'] ?? '')
   if (code === '000' || code === '121') return { ...base, state: 'paid', detail: message || 'paid' }
   if (code === '124' || code === '157') return { ...base, state: 'pending', detail: message || 'in progress' }
-  return { ...base, detail: message || `code ${code}` }
+  return { ...base, detail: `${code}: ${message}` }
 }
 
 /** A reference the rail will accept and a person can read back to us. */
@@ -310,6 +327,7 @@ export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
     EP.inquireTimeout,
   )
   if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
+  traceRail('easypaisa inquiry', json)
   const code = String(json['responseCode'] ?? '')
   const status = String(json['transactionStatus'] ?? json['status'] ?? '').toUpperCase().replace(/\s+/g, '')
   // responseDesc says whether the *inquiry* worked ("SUCCESS"), which is not
@@ -356,6 +374,7 @@ export async function inquireJazzcash(ref: string): Promise<Attempt> {
     JC.timeout,
   )
   if (timedOut || !json) return { ...base, detail: detail || 'no answer yet' }
+  traceRail('jazzcash inquiry', json)
 
   const asked = String(json['pp_ResponseCode'] ?? '')
   if (asked && asked !== '000')
