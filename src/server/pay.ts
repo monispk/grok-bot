@@ -308,7 +308,14 @@ export async function inquireEasypaisa(orderId: string): Promise<Attempt> {
   const why = [json['errorCode'], json['errorReason']].filter(Boolean).map(String).join(': ')
   const message = why || String(json['responseDesc'] ?? '')
   if (status === 'PAID' || status === 'SUCCESS') return { ...base, state: 'paid', detail: `PAID${why ? ` (${why})` : ''}` }
-  if (/FAILED|EXPIRED|REVERSED|CANCEL/.test(status)) return { ...base, state: 'failed', detail: `${status}: ${message}` }
+  // The status only prefixes the reason when the reason does not already
+  // carry it: "FAILED: FAILED: ..." said it twice.
+  if (/FAILED|EXPIRED|REVERSED|CANCEL/.test(status))
+    return {
+      ...base,
+      state: 'failed',
+      detail: message.startsWith(status) ? message : `${status}: ${message}`,
+    }
   // UNPAID, PENDING, IN PROGRESS, or an inquiry that answered without a
   // status: not yet, as far as anyone knows.
   return { ...base, detail: message || status || `code ${code}` }
