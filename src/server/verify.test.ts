@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { inspect } from './fields.ts'
+import { blockedOn, branchLines } from '../shared/steps.ts'
 
 /**
  * The reading of a real Punjab licence, as the local OCR produced it twice out
@@ -36,7 +37,40 @@ test('an expiry in the past is recorded as expired', () => {
   const r = inspect('license', { lines: old, words: [] })
   assert.equal(r.fields.expiry, '2021-05-12')
   assert.equal(r.fields.expired, 'true')
-  // Recorded, not refused: what happens to an expired licence is a policy
-  // decision, and this only reports the date on the card.
+  // Recorded, not refused: a re-upload cannot renew a card. What it costs the
+  // rider is the verified outcome, not the upload — see the two tests below.
   assert.ok(r.pass)
+})
+
+/**
+ * What an expired licence costs the rider.
+ *
+ * Not the upload: another photograph of the same card cannot renew it, so
+ * refusing it would only loop. What it costs is the fee — an application with
+ * a licence that has run out is not a verified one, so nothing is charged and
+ * the rider is sent to the office once the card is renewed.
+ */
+test('an expired licence is named among the things the rider is waiting for', () => {
+  assert.equal(blockedOn([], true), 'naya license')
+  assert.equal(blockedOn(['bike'], true), 'apni bike aur naya license')
+  assert.equal(blockedOn(['bike', 'smartphone'], true), 'apni bike, touch phone aur naya license')
+  // Unchanged for everybody else.
+  assert.equal(blockedOn([], false), null)
+  assert.equal(blockedOn(['bike', 'smartphone']), 'apni bike aur touch phone')
+})
+
+test('an expired licence is asked for by name at the office, alongside the CNIC', () => {
+  const lines = branchLines('F8 Markaz', {
+    owesFee: true,
+    licenceExpired: true,
+    waitingFor: blockedOn([], true),
+  })
+  assert.match(lines[0]!, /naya license/)
+  assert.match(lines.join('\n'), /CNIC aur naya license saath laayein/)
+  // The fee is still owed; it is taken at the counter, not in the chat.
+  assert.match(lines.join('\n'), /counter par jama karayein/)
+
+  const ordinary = branchLines('F8 Markaz', { owesFee: true })
+  assert.match(ordinary.join('\n'), /Apna asli CNIC saath laayein/)
+  assert.doesNotMatch(ordinary.join('\n'), /license/)
 })

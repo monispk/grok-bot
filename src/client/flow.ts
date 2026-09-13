@@ -14,6 +14,7 @@ import {
   UNCLEAR as QUIZ_UNCLEAR,
   type Question,
 } from '../shared/quiz.ts'
+import { SAY } from '../shared/messages.ts'
 import type { FlowState, Message } from './storage.ts'
 
 export type { StepKind, DocKind } from '../shared/steps.ts'
@@ -105,7 +106,7 @@ export const submitted = (outcome: Outcome, firstName: string): Message[] => [
  */
 export const branch = (
   office: { address: string; short: string; lat: number; lng: number; map: string },
-  opts: { owesFee: boolean; waitingFor?: string | null },
+  opts: { owesFee: boolean; waitingFor?: string | null; licenceExpired?: boolean },
 ): Message[] => [
   ...branchLines(office.address, opts).map(spoken),
   {
@@ -116,6 +117,15 @@ export const branch = (
     place: { lat: office.lat, lng: office.lng, address: office.address },
   },
 ]
+
+/**
+ * Told the moment the licence is read, not saved for the ending.
+ *
+ * Spoken rather than written: a rider who cannot read has just been told the
+ * one thing that decides whether their journey is wasted, and the whole
+ * reason these recordings exist is that the refusals used to be text.
+ */
+export const expiredLicence = (): Message[] => [spoken(SAY.licenseExpired.text)]
 
 /** A quiz question, numbered so the rider knows how far in they are. */
 export const quizAsk = (q: Question, n: number, of: number): Message[] => [

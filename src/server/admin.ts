@@ -226,7 +226,13 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
         <td class="nowrap mono">${esc(f['cnic'] || '—')}</td>
         <td class="nowrap">${r.step}<span class="of">/9</span>${r.completed ? ' <span class="pill ok">done</span>' : ''}</td>
         <td class="mid-cell">${mark(c['checks.faceMatch'])}</td>
-        <td class="mid-cell">${mark(c['checks.licenceVsCnic'])}</td>
+        <td class="mid-cell">${
+          // An expired card fails the column outright, whatever the name said:
+          // it is the one licence fact that decides whether the rider pays.
+          c['license.expired'] === 'true'
+            ? `<span class="mark bad" title="licence expired ${esc(c['license.expiry'] ?? '')}">✗</span>`
+            : mark(c['checks.licenceVsCnic'])
+        }</td>
         <td class="mid-cell">${mark(c['checks.wallet'])}</td>
         <td class="nowrap"><span class="shots">${shots || '<span class="sub">none</span>'}</span></td>
         <td class="nowrap">${
@@ -253,7 +259,7 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
   <div class="card"><b>${pushOn ? 'on' : 'off'}</b><span>backend push</span></div>
 </div>
 <div class="tablewrap"><table>
-<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face</th><th>Licence vs CNIC</th>
+<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face</th><th>Licence</th>
 <th>Wallet</th><th>Docs</th><th>Fee</th><th>Quiz</th><th>Synced</th></tr></thead>
 <tbody>${body || '<tr><td colspan="11"><small>No applications yet.</small></td></tr>'}</tbody>
 </table></div>

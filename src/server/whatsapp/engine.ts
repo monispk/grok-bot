@@ -5,6 +5,7 @@ import {
   branchLines,
   OFFICES,
   submittedLines,
+  blockedOn,
   readYesNo,
   STEP_SPECS,
   dropRepeat,
@@ -138,26 +139,32 @@ async function sayRetry(to: string, session: Session, i: number) {
   if (link) await sendAudio(to, link)
 }
 
-async function advance(to: string, session: Session, confirm: string) {
+async function advance(to: string, session: Session, confirm: string, extra: string[] = []) {
   session.step += 1
   if (STEP_SPECS[session.step]) {
-    await say(to, session, confirm)
+    await say(to, session, confirm, ...extra)
     await askStep(to, session, session.step)
     return
   }
   if (session.ineligible) {
-    await say(to, session, confirm)
+    await say(to, session, confirm, ...extra)
     return
   }
   // The fee and the verification results decide which of the four is sent.
   // WhatsApp gets both halves at once: it has no quiz to sit between them.
   const outcome = session.ineligible ? 'not_eligible' : 'not_verified'
+  const licenceExpired = session.collected['license.expired'] === 'true'
   await say(
     to,
     session,
     confirm,
+    ...extra,
     ...submittedLines(outcome, session.firstName),
-    ...branchLines(OFFICES.f8.address, { owesFee: true }),
+    ...branchLines(OFFICES.f8.address, {
+      owesFee: true,
+      licenceExpired,
+      waitingFor: blockedOn([], licenceExpired),
+    }),
   )
 }
 
@@ -337,7 +344,16 @@ export async function handleIncoming(raw: Incoming): Promise<void> {
     const seen = result.fields.cnic
     if (typeof seen === 'string' && seen && !session.cnic) session.cnic = seen
 
-    await advance(to, session, 'Shukriya, tasveer mil gayi.')
+    // Read, kept, and not current. Said here rather than saved for the ending:
+    // a rider told at the last message has already spent the day on it.
+    const expired = step.doc === 'license' && result.fields.expired === 'true'
+
+    await advance(
+      to,
+      session,
+      'Shukriya, tasveer mil gayi.',
+      expired ? [SAY.licenseExpired.text] : [],
+    )
     await sessions.save(session)
     return
   }

@@ -11,6 +11,7 @@ import {
   alreadyAnswered,
   askMessages,
   branch,
+  expiredLicence,
   submitted,
   quizAsk,
   quizSay,
@@ -96,8 +97,13 @@ function outcomeFor(f: store.FlowState): Outcome {
 
   const face = f.collected['checks.faceMatch'] ?? ''
   const name = f.collected['checks.licenceVsCnic'] ?? ''
+  // An expired licence is a definite answer, not a doubt: the card in hand is
+  // not one a rider can deliver on. It does not turn them away — the office
+  // takes it from here — but it does mean nothing is charged for a licence
+  // that has run out.
+  const expired = f.collected['license.expired'] === 'true'
   const verified =
-    face.startsWith('match') && (name === 'match' || name === 'review' || name === '')
+    !expired && face.startsWith('match') && (name === 'match' || name === 'review' || name === '')
 
   if (!verified) return 'not_verified'
   // Payment is not wired into the flow yet, so the fee is still owed.
@@ -570,7 +576,8 @@ export function App() {
         ...branch(office, {
           // Only a rider the rail has actually taken money from owes nothing.
           owesFee: f.payment?.state !== 'paid',
-          waitingFor: blockedOn(f.missing ?? []),
+          waitingFor: blockedOn(f.missing ?? [], f.collected['license.expired'] === 'true'),
+          licenceExpired: f.collected['license.expired'] === 'true',
         }),
       ]),
     )
@@ -1385,7 +1392,13 @@ export function App() {
           gathered['checks.faceMatch'] = `match (${data.face.score?.toFixed(1) ?? '?'})`
         if (data.face?.outcome === 'unavailable') gathered['checks.faceMatch'] = 'not checked'
 
-        advanceFrom(step, [thanksDoc()], {
+        // The licence read, and its date has passed. The document is kept and
+        // the step moves on — a second photograph of the same card cannot make
+        // it current — but the rider hears why the office, not the wallet, is
+        // the next thing that happens to them.
+        const expired = gathered['license.expired'] === 'true'
+
+        advanceFrom(step, [thanksDoc(), ...(expired ? expiredLicence() : [])], {
           ...(seen && !cnic ? { cnic: seen } : {}),
           collected: { ...collected, ...gathered },
         })

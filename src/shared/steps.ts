@@ -547,14 +547,22 @@ export function submittedLines(outcome: Outcome, firstName: string): string[] {
   ]
 }
 
-/** What the rider is still waiting on, in the words they used to say it. */
-export function blockedOn(missing: string[]): string | null {
-  const bike = missing.includes('bike')
-  const phone = missing.includes('smartphone')
-  if (bike && phone) return 'apni bike aur touch phone'
-  if (bike) return 'apni bike'
-  if (phone) return 'touch phone'
-  return null
+/**
+ * What the rider is still waiting on, in the words they used to say it.
+ *
+ * An expired licence belongs on this list rather than among the refusals: it
+ * is not a bad photograph and another upload cannot fix it. The rider has to
+ * go and renew the card, and until they have, there is nothing the office can
+ * do for them either — the same shape as waiting on a bike.
+ */
+export function blockedOn(missing: string[], licenceExpired = false): string | null {
+  const parts: string[] = []
+  if (missing.includes('bike')) parts.push('apni bike')
+  if (missing.includes('smartphone')) parts.push('touch phone')
+  if (licenceExpired) parts.push('naya license')
+  if (parts.length === 0) return null
+  if (parts.length === 1) return parts[0]!
+  return `${parts.slice(0, -1).join(', ')} aur ${parts[parts.length - 1]}`
 }
 
 /**
@@ -567,7 +575,7 @@ export function blockedOn(missing: string[]): string | null {
  */
 export function branchLines(
   office: string,
-  opts: { owesFee: boolean; waitingFor?: string | null },
+  opts: { owesFee: boolean; waitingFor?: string | null; licenceExpired?: boolean },
 ): string[] {
   const lines: string[] = []
   lines.push(
@@ -576,7 +584,13 @@ export function branchLines(
       : 'Ab is office aayein:',
   )
   lines.push(office)
-  lines.push('Apna asli CNIC saath laayein — office par dikhana hoga.')
+  lines.push(
+    // The renewed licence is named alongside the CNIC, because it is the thing
+    // the visit exists for and a rider who leaves it at home comes back twice.
+    opts.licenceExpired
+      ? 'Apna asli CNIC aur naya license saath laayein — office par dikhana hoga.'
+      : 'Apna asli CNIC saath laayein — office par dikhana hoga.',
+  )
   if (opts.owesFee)
     lines.push('Registration fee pachees sau rupay office ke counter par jama karayein.')
   lines.push(HOURS)

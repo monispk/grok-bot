@@ -43,6 +43,17 @@ export const SAY = {
     'Ye driving license ki tasveer nahi lag rahi. Baraye meherbani license ka front, achi roshni mein, dobara bhejein.',
     '/say-not-license',
   ),
+  /**
+   * An expired licence. Not a refusal: another photograph of the same card
+   * cannot make it current, so the document is kept and the application goes
+   * on — it simply stops being a verified one, and the rider is told now,
+   * while there is still time to renew before making the journey.
+   */
+  licenseExpired: say(
+    'Aap ke driving license ki tareekh guzar chuki hai — ye ab valid nahi hai. Aap ki application jama ho jaye gi, lekin pehle license renew karwa lein, aur naya license saath le kar foodpanda office aayein.',
+    '/say-license-expired',
+    false,
+  ),
   billNoDate: say(
     'Is bill par due date nahi mil saki. Baraye meherbani poora bill, achi roshni mein, dobara bhejein.',
     '/say-bill-no-date',
