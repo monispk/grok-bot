@@ -520,8 +520,70 @@ await check("the camera button opens the phone's camera app, back or front", asy
     return chooser.element().getAttribute('capture')
   }
   assert.equal(await open(at('license_front'), 'License bhejein.'), 'environment')
-  assert.equal(await open(at('selfie'), 'Selfie bhejein.'), 'user')
   await phone.close()
+})
+
+await check('the selfie opens the front camera in the chat, and offers the phone camera if refused', async () => {
+  // A file input's capture="user" is only a hint; Samsung's camera app opened
+  // the back lens on it. getUserMedia's facingMode is not a hint.
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, permissions: ['camera'] })
+  const p5 = await phone.newPage()
+  const prime = async () => {
+    await p5.goto(`${APP}/?chrome=no`)
+    await p5.evaluate((s) => {
+      localStorage.clear()
+      localStorage.setItem('grok-bot:flow', JSON.stringify({ step: s, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '', collected: {}, ineligible: false }))
+      localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Selfie bhejein.' }]))
+    }, at('selfie'))
+    await p5.reload()
+    await p5.waitForSelector('.scroll .msg:has-text("Selfie bhejein.")')
+    await p5.waitForSelector('button.camera:not([disabled])')
+  }
+  await prime()
+  await p5.tap('button.camera')
+  await p5.waitForSelector('.camsheet video', { timeout: 5000 })
+  const facing = await p5.evaluate(() => document.querySelector('.camsheet video')?.classList.contains('mirror'))
+  assert.ok(facing, 'the in-chat camera is not the front one')
+  await p5.tap('.camsheet-cancel')
+
+  // Refused: the sheet offers the phone's camera, from a tap of its own.
+  await p5.evaluate(() => {
+    navigator.mediaDevices.getUserMedia = () => Promise.reject(Object.assign(new Error('no'), { name: 'NotAllowedError' }))
+  })
+  await p5.tap('button.camera')
+  await p5.waitForSelector('.sheet .sheet-main', { timeout: 8000 })
+  const [chooser] = await Promise.all([p5.waitForEvent('filechooser', { timeout: 5000 }), p5.tap('.sheet .sheet-main')])
+  assert.equal(chooser.element() && (await chooser.element().getAttribute('capture')), 'user')
+  await phone.close()
+})
+
+await check('the quiz is answered by tapping a reply button', async () => {
+  await page.goto(APP)
+  await page.evaluate((done) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: done, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '', collected: {}, ineligible: false,
+      quiz: { offered: true, declined: false, done: false, asked: [], at: 0, answers: [] },
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Quiz dena chahenge?' }]))
+  }, STEP_SPECS.length)
+  await page.reload()
+  await page.waitForSelector('.replies .reply')
+  await page.click('.replies .reply:first-child')
+  // The first question, with its options as buttons and not in the bubble.
+  await page.waitForSelector('.replies .reply b', { timeout: 15_000 })
+  const three = await page.evaluate(() => document.querySelectorAll('.replies .reply').length)
+  assert.ok(three >= 2, `only ${three} option buttons`)
+  const bubble = await page.evaluate(() => [...document.querySelectorAll('.msg.bot')].map((e) => e.textContent).find((t) => t.includes('Sawaal 1')))
+  assert.ok(bubble && !/\bA\)/.test(bubble), 'the options are still listed in the bubble')
+  await page.click('.replies .reply:first-child')
+  const answered = await settle(async () => {
+    const f = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))
+    return f.quiz?.answers?.length === 1 && f.quiz.answers[0].chose === 'a'
+  })
+  assert.ok(answered, 'the tap was not recorded as the answer')
+  const shown = (await stored()).some((m) => m.role === 'user' && /^A\) /.test(m.content || ''))
+  assert.ok(shown, 'the chosen option is not in the thread')
 })
 
 await check('a spoken answer is transcribed, answered, and the step asked again', async () => {

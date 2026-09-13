@@ -7,7 +7,6 @@ import {
   useState,
 } from 'preact/hooks'
 import { Dashboard } from './dashboard.tsx'
-import { DebugPanel } from './debug.tsx'
 import {
   alreadyAnswered,
   askMessages,
@@ -49,7 +48,8 @@ import { CANCEL_PX, useMicGesture } from './mic.tsx'
 import { MicSheet } from './micsheet.tsx'
 import { shrinkImage } from './image.ts'
 import { lookup, pushSoon, resume } from './sync.ts'
-import { CHOICES, Choices, type Choice } from './choices.tsx'
+import { blip, CHOICES, Choices, type Choice } from './choices.tsx'
+import { Camera } from './camera.tsx'
 import { BEAT_MS, GROUP_MS, MAX_TICKS, VOICE_PATIENCE_MS, WORD_MS } from './pace.ts'
 import { isReady, setOrder, stopAll, whenReady } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
@@ -231,6 +231,8 @@ export function App() {
   const [dashOpen, setDashOpen] = useState(false)
   /** When the server last confirmed it holds this application. */
   const [syncedAt, setSyncedAt] = useState(0)
+  /** The in-chat front camera, for the selfie: open, refused, or neither. */
+  const [selfieCam, setSelfieCam] = useState<'open' | 'refused' | null>(null)
   const [gate, setGate] = useState({ required: false, authed: true })
   const [password, setPassword] = useState('')
 
@@ -239,7 +241,7 @@ export function App() {
   const scroller = useRef<HTMLDivElement | null>(null)
   const picker = useRef<HTMLInputElement | null>(null)
   const camera = useRef<HTMLInputElement | null>(null)
-  const selfieCam = useRef<HTMLInputElement | null>(null)
+  const selfieInput = useRef<HTMLInputElement | null>(null)
   /** The phone's own recorder app, for when the browser will not give up the mic. */
   const recApp = useRef<HTMLInputElement | null>(null)
 
@@ -966,6 +968,19 @@ export function App() {
     [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz, flow.resume, flow.applicationId, fullName, restore],
   )
 
+  /** A reply button: the words go in the thread, the answer goes down the usual path. */
+  const onReply = useCallback(
+    async (shown: string, answer: string) => {
+      if (busy) return
+      blip()
+      const withUser: Message[] = [...messages, { role: 'user', content: shown }]
+      setMessages(withUser)
+      await processText(answer, withUser)
+    },
+    [busy, messages, processText],
+  )
+
+
   /** A picture tapped instead of a word: the same answer, and the picture stays in the thread. */
   const onPick = useCallback(
     async (c: Choice) => {
@@ -1531,6 +1546,29 @@ export function App() {
           )
         })}
 
+        {revealed >= messages.length && !busy && flow.resume && (
+          <div class="replies">
+            <button class="reply" onClick={() => void onReply('Haan, wahin se', 'haan')}>Haan, wahin se jaari rakhein</button>
+            <button class="reply" onClick={() => void onReply('Nahi, nayi application', 'nahi')}>Nahi, nayi shuru karein</button>
+          </div>
+        )}
+        {!current && quiz && quiz.offered && !quiz.done && revealed >= messages.length && !busy && (
+          quiz.asked.length === 0 ? (
+            <div class="replies">
+              <button class="reply" onClick={() => void onReply('Haan', 'haan')}>Haan, quiz dein</button>
+              <button class="reply" onClick={() => void onReply('Nahi', 'nahi')}>Nahi</button>
+            </div>
+          ) : (
+            <div class="replies">
+              {(QUESTIONS.find((x) => x.id === quiz.asked[quiz.at])?.options ?? []).map((o) => (
+                <button key={o.key} class="reply" onClick={() => void onReply(`${o.key.toUpperCase()}) ${o.text}`, o.key)}>
+                  <b>{o.key.toUpperCase()}</b>
+                  {o.text}
+                </button>
+              ))}
+            </div>
+          )
+        )}
         {current?.kind === 'confirm' && CHOICES[current.id] && revealed >= messages.length && !flow.resume && (
           <Choices options={CHOICES[current.id]!} disabled={busy} onPick={(c) => void onPick(c)} />
         )}
@@ -1556,7 +1594,6 @@ export function App() {
           </div>
         )}
 
-        {!current && <DebugPanel data={collected} />}
 
         {error && <div class="err banner">{error}</div>}
       </div>
@@ -1582,6 +1619,40 @@ export function App() {
 
       {dashOpen && <Dashboard flow={flow} syncedAt={syncedAt} onClose={() => setDashOpen(false)} />}
 
+      {selfieCam === 'open' && (
+        <Camera
+          facing="user"
+          label="Selfie khenchein"
+          onCancel={() => setSelfieCam(null)}
+          onShot={({ blob }) => {
+            setSelfieCam(null)
+            void onFile(new File([blob], 'selfie.jpg', { type: 'image/jpeg' }))
+          }}
+          onUnavailable={() => setSelfieCam('refused')}
+        />
+      )}
+      {selfieCam === 'refused' && (
+        <div class="sheetback" onClick={() => setSelfieCam(null)}>
+          <div class="sheet" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <span class="sheet-grip" />
+            <h2>Camera nahi khul raha</h2>
+            <p>Phone ke camera se selfie lein. Camera khulay to usay apni taraf (front) ghuma lein.</p>
+            {/* A real tap, so the browser honours the click on the input. */}
+            <button
+              class="sheet-main"
+              onClick={() => {
+                setSelfieCam(null)
+                selfieInput.current?.click()
+              }}
+            >
+              Phone ke camera se selfie lein
+            </button>
+            <button class="sheet-alt" onClick={() => setSelfieCam(null)}>
+              Band karein
+            </button>
+          </div>
+        </div>
+      )}
       {micSheet && (
         <MicSheet
           kind={micSheet}
@@ -1632,7 +1703,7 @@ export function App() {
           }}
         />
         <input
-          ref={selfieCam}
+          ref={selfieInput}
           class="hidden"
           type="file"
           accept={CAMERA_ACCEPT}
@@ -1772,7 +1843,7 @@ export function App() {
             // ignores one that arrives after an await, which is how the old
             // fallback to this same input never opened anything.
             disabled={busy || !wantsUpload}
-            onClick={() => (current?.facing === 'user' ? selfieCam : camera).current?.click()}
+            onClick={() => (current?.facing === 'user' ? setSelfieCam('open') : camera.current?.click())}
           >
             <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
               <path

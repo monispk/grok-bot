@@ -1213,6 +1213,98 @@ footer button.stop { background: var(--err); }
   .lockpill.locked { opacity: 0; }
 }
 
+/* ---------- the camera, opened in the chat ---------- */
+
+/* Sits over the thread rather than replacing it, so the rider can still see
+   the instruction they are following.
+
+   Named apart from `.camera`, which is the composer's button: sharing the name
+   gave that button `position: absolute; inset: 0` and threw it into the top
+   left corner, on top of the header. */
+.camsheet {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+}
+
+.camsheet-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.camsheet video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A selfie preview behaves like a mirror, which is what people expect of
+   their own face. The captured file is not flipped. */
+.camsheet video.mirror { transform: scaleX(-1); }
+
+.camsheet-wait {
+  position: absolute;
+  color: rgba(255, 255, 255, .75);
+  font-size: 14px;
+}
+
+.camsheet-bar {
+  flex: none;
+  display: grid;
+  grid-template-columns: 64px 1fr 64px;
+  align-items: center;
+  justify-items: center;
+  padding: 18px 12px calc(18px + var(--safe-b));
+  background: #000;
+}
+
+.camsheet-cancel {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .14);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.shutter {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, .9);
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.shutter span {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .12s ease;
+}
+
+.shutter:active span { transform: scale(.88); }
+.shutter:disabled { opacity: .4; cursor: default; }
+.shutter:disabled span { background: rgba(255, 255, 255, .5); }
+
+.camsheet-spacer { width: 44px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .shutter span { transition: none; }
+}
+
 /* ---------- picture answers ---------- */
 
 /* Two pictures to tap under a yes-or-no question. Side by side, small enough
@@ -1252,3 +1344,27 @@ footer button.stop { background: var(--err); }
 .msg.choice { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding: 4px; }
 .msg.choice .pick { display: block; width: 120px; height: auto; border-radius: 8px; }
 .msg.choice .picklabel { font-size: 13.5px; padding: 0 4px; }
+
+/* ---------- reply buttons ---------- */
+
+/* WhatsApp's reply buttons under a question: white, full width, the words in
+   the accent colour, centred. One per option, so the answer is one tap. */
+.replies { display: flex; flex-direction: column; gap: 4px; max-width: 340px; margin: 0 0 6px; }
+.reply {
+  border: 0;
+  border-radius: 8px;
+  background: var(--in);
+  color: var(--accent);
+  box-shadow: 0 1px .5px rgba(11, 20, 26, .13);
+  min-height: var(--tap);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.reply:active { background: var(--line); }
+.reply:disabled { opacity: .5; cursor: default; }
+.reply b { font-weight: 600; margin-right: 6px; }

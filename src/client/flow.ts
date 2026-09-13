@@ -83,10 +83,9 @@ export const finished = (outcome: Outcome, firstName: string, branch?: string): 
 
 /** A quiz question, numbered so the rider knows how far in they are. */
 export const quizAsk = (q: Question, n: number, of: number): Message[] => [
-  bot(
-    `Sawaal ${n} / ${of}\n\n${q.stem}\n\n` +
-      q.options.map((o) => `**${o.key})** ${o.text}`).join('\n'),
-  ),
+  // The stem alone. The options are buttons under it, one tap each — listed
+  // in the bubble as well they were read twice and answered by letter.
+  bot(`Sawaal ${n} / ${of}\n\n${q.stem}`),
   voice(`/quiz/${q.id}`),
 ]
 

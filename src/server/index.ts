@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { Hono, type Context } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
 import { authRequired, grant, guard, isAuthed } from './auth.ts'
@@ -525,19 +525,29 @@ const cacheFor = (path: string, c: Context) => {
  * Held in memory with its hash: the static handler streams, and a streamed
  * body cannot be tagged.
  */
-const PAGE = (() => {
+const PAGE_PATH = './dist/client/index.html'
+let page$: { mtime: number; body: Buffer; tag: string } | null = null
+const loadPage = () => {
+  // Re-read when the file changes, so a rebuild reaches a running server —
+  // in development, where the app is rebuilt under it; in production the
+  // check is one stat per request.
   try {
-    return readFileSync('./dist/client/index.html')
+    const mtime = statSync(PAGE_PATH).mtimeMs
+    if (page$?.mtime !== mtime) {
+      const body = readFileSync(PAGE_PATH)
+      page$ = { mtime, body, tag: `"${createHash('sha1').update(body).digest('hex').slice(0, 20)}"` }
+    }
+    return page$
   } catch {
-    return null // no build yet; the static handler below will 404 as before
+    return null // no build yet
   }
-})()
-const PAGE_TAG = PAGE ? `"${createHash('sha1').update(PAGE).digest('hex').slice(0, 20)}"` : ''
+}
 const page = (c: Context) => {
-  if (!PAGE) return c.text('Not built', 503)
-  const headers = { etag: PAGE_TAG, 'cache-control': 'no-cache' }
-  if (c.req.header('if-none-match') === PAGE_TAG) return c.body(null, 304, headers)
-  return c.body(PAGE as unknown as ArrayBuffer, 200, { ...headers, 'content-type': 'text/html; charset=utf-8' })
+  const p = loadPage()
+  if (!p) return c.text('Not built', 503)
+  const headers = { etag: p.tag, 'cache-control': 'no-cache' }
+  if (c.req.header('if-none-match') === p.tag) return c.body(null, 304, headers)
+  return c.body(p.body as unknown as ArrayBuffer, 200, { ...headers, 'content-type': 'text/html; charset=utf-8' })
 }
 app.get('/', page)
 app.get('/index.html', page)
