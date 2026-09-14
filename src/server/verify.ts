@@ -2,8 +2,9 @@ import { SAY } from '../shared/messages.ts'
 import { inspect, type DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { ocrReady, readCnicFront } from './rozee.ts'
-import { read, SPARSE_WORDS } from './ocr.ts'
+import { read, SPARSE_WORDS, SURE } from './ocr.ts'
 import { readLicence, visionReady } from './vision.ts'
+import { lastResortReady, readLicenceLastResort } from './vision-openai.ts'
 
 export type Verification = {
   pass: boolean
@@ -39,8 +40,10 @@ export async function verifyDocument(opts: {
   mime: string
   expectedName?: string
   expectedCnic?: string
+  /** Which try this is at the same step. A second one is not refused twice. */
+  attempt?: number
 }): Promise<Verification> {
-  const { kind, bytes, mime, expectedName = '', expectedCnic = '' } = opts
+  const { kind, bytes, mime, expectedName = '', expectedCnic = '', attempt = 1 } = opts
   if (!kind) return open()
 
   /**
@@ -91,43 +94,99 @@ export async function verifyDocument(opts: {
   const found = reading && !sparse ? inspect(kind, reading) : null
 
   /**
-   * A licence that read, but not completely.
+   * A licence that read, but not well enough.
    *
-   * The expiry is the field that decides whether a licence is any use, and the
-   * local reader loses it about a third of the time — the same card, uploaded
-   * three times, gave the date twice. It passed anyway, because nothing
-   * required it, so an application could reach a branch with no idea whether
-   * the licence had run out.
+   * Two values decide what a licence is worth: the number, which identifies
+   * it, and the expiry, which says whether it is any use. The local reader
+   * loses the expiry about a third of the time — the same card, uploaded three
+   * times, gave the date twice — and when it does read one, it does not always
+   * read it right. A guessed digit in a date has told a rider with a card good
+   * until 2031 that theirs expired in 2021.
    *
-   * So when the labels found a licence but not its dates, the picture is
-   * looked at for the missing parts only. What the local reader found is kept:
-   * it read those from the actual pixels, and a model asked to fill a gap
-   * should not get to overwrite what was not a gap.
+   * So a card missing either value, or unsure of either, goes to the vision
+   * model. It is the better reader and it is looking at the same pixels, so
+   * what it says replaces a guess and fills a gap. What the local reader was
+   * sure of is kept: it read that off the image, and a model asked to check a
+   * doubtful field should not get to rewrite a confident one.
    */
-  if (found?.pass && kind === 'license' && isPhoto && visionReady() && !found.fields.expiry) {
-    const seen = await readLicence(bytes, mime)
-    if (seen?.isLicence && (seen.expiry || seen.number || seen.name)) {
-      const filled: Record<string, string | null> = { ...found.fields }
+  if (found?.pass && kind === 'license' && isPhoto) {
+    const f = found.fields
+    const shaky = (value: string | null | undefined, score: string | null | undefined) =>
+      !value || (score != null && Number(score) < SURE)
+
+    const filled: Record<string, string | null> = { ...f }
+    const doubtful = () => shaky(filled.number, filled.numberScore) || shaky(filled.expiry, filled.expiryScore)
+
+    /** Takes whatever a reader saw, for the values still in doubt. */
+    const absorb = (seen: Awaited<ReturnType<typeof readLicence>>, who: string) => {
+      if (!seen?.isLicence || !(seen.expiry || seen.number || seen.name)) return false
       let used = false
-      for (const [key, value] of [
-        ['expiry', seen.expiry],
-        ['number', seen.number],
-        ['name', seen.name],
-        ['cnic', seen.cnic],
+      for (const [key, value, score] of [
+        ['expiry', seen.expiry, filled.expiryScore],
+        ['number', seen.number, filled.numberScore],
+        ['name', seen.name, null],
+        ['cnic', seen.cnic, null],
       ] as const) {
-        if (!filled[key] && value) {
-          filled[key] = value
-          used = true
-        }
+        if (!value) continue
+        if (filled[key] && !shaky(filled[key], score)) continue
+        filled[key] = value
+        // Read off the image by a model that looked at it. There is no score
+        // to put on that, and its absence means "no longer in doubt".
+        if (key === 'expiry') delete filled.expiryScore
+        if (key === 'number') delete filled.numberScore
+        used = true
       }
-      if (filled.expiry && !filled.expired)
-        filled.expired = String(new Date(filled.expiry).getTime() < Date.now())
       if (used) {
-        filled.readBy = 'local OCR + vision'
-        console.log(`vision: filled ${Object.keys(filled).filter((k) => !found.fields[k]).join(', ')} on a licence`)
-        return settle(filled, true, null, found.missing, expectedName, expectedCnic)
+        filled.readBy = filled.readBy ? `${filled.readBy} + ${who}` : `local OCR + ${who}`
+        console.log(`${who}: corrected or filled a licence the reader was unsure of`)
+      }
+      return used
+    }
+
+    /*
+     * Three readers, cheapest first, each one asked only about what is still
+     * in doubt. Qwen handles the provincial formats the label matching was
+     * never taught; the last resort costs perhaps twenty times as much and is
+     * reached only for the cards it cannot manage either — a glared laminate,
+     * a torn card, a photograph taken at an angle in the dark.
+     */
+    if (doubtful() && visionReady()) absorb(await readLicence(bytes, mime), 'vision')
+    if (doubtful() && lastResortReady())
+      absorb(await readLicenceLastResort(bytes, mime), 'openai vision')
+
+    // Recomputed from whatever the expiry finally is, sure or not.
+    filled.expired = filled.expiry
+      ? String(new Date(filled.expiry).getTime() < Date.now())
+      : null
+
+    /*
+     * Still a guess. One more photograph, with the three things that actually
+     * fix it — light, glare, and holding the camera square — and if that does
+     * not work either, the card goes to the office in the rider's hand rather
+     * than the rider going home.
+     */
+    const unsure = shaky(filled.number, filled.numberScore) || shaky(filled.expiry, filled.expiryScore)
+    if (unsure && attempt < 2)
+      return {
+        pass: false,
+        checked: true,
+        reason: SAY.licenseUnclear.text,
+        missing: ['licence not read clearly'],
+        fields: {},
+        nameVerdict: null,
+        nameScore: null,
+      }
+    if (unsure) {
+      // Accepted, and honest about it. An expiry we are not sure of is not an
+      // expiry: claiming one either way from a guessed date is the mistake
+      // this whole path exists to avoid.
+      filled.unreadable = 'true'
+      if (shaky(filled.expiry, filled.expiryScore)) {
+        filled.expiry = null
+        filled.expired = null
       }
     }
+    return settle(filled, true, null, found.missing, expectedName, expectedCnic)
   }
 
   if (found?.pass)

@@ -557,77 +557,92 @@ await check('the selfie opens the front camera in the chat, and offers the phone
   await phone.close()
 })
 
-await check('choosing an office from a vague pin is taken, and not asked again', async () => {
-  // Reported: tapping an office said "Koi baat nahi" again and re-offered the
-  // same two buttons. A fix this wide cannot tell the offices apart, which is
-  // the path that produces those buttons.
-  const vague = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    permissions: ['geolocation'],
-    geolocation: { latitude: 33.71, longitude: 73.05, accuracy: 5000 },
-  })
-  const pg = await vague.newPage()
+const atCity = async (extra = {}) => {
+  const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const pg = await ctx2.newPage()
   await pg.goto(`${APP}/?chrome=no`)
-  await pg.evaluate((at) => {
-    localStorage.clear()
-    localStorage.setItem('grok-bot:flow', JSON.stringify({
-      step: at, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '3520201427267',
-      collected: {}, ineligible: false, phone: '923348234444', rail: 'neither', noWallet: true,
-    }))
-    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
-  }, ORDER.indexOf('location'))
+  await pg.evaluate(
+    ([at, more]) => {
+      localStorage.clear()
+      localStorage.setItem('grok-bot:flow', JSON.stringify({
+        step: at, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '3520201427267',
+        collected: {}, ineligible: false, phone: '923348234444', rail: 'neither', noWallet: true, ...more,
+      }))
+      localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Aap kis sheher mein rehte hain?' }]))
+    },
+    [at('city'), extra],
+  )
   await pg.reload()
+  await pg.waitForSelector('footer textarea')
+  return pg
+}
 
-  await pg.waitForSelector('.replies .reply')
-  await pg.click('.replies .reply')
-  await pg.waitForSelector('.replies .reply.office', { timeout: 20_000 })
+const sayCity = async (pg, words) => {
+  await pg.fill('footer textarea', words)
+  await pg.click('footer button.send')
+}
 
+await check('a rider in an office city is offered that city, and the tap is taken', async () => {
+  /*
+   * This replaced a "send your location" button. On the handsets riders use it
+   * failed more often than it worked — no fix indoors, no permission prompt in
+   * an in-app browser, a network-derived position in the wrong city — and every
+   * failure landed on the last step, after three documents had been sent.
+   */
+  const pg = await atCity()
+  await sayCity(pg, 'Islamabad')
+  await pg.waitForSelector('.replies .reply.office', { timeout: 25_000 })
+
+  const said = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
+  assert.ok(said.some((m) => /Achha, Islamabad/.test(m.content || '')), 'the city was not acknowledged')
+  assert.equal(await pg.$('.replies .reply.office ~ .reply'), null, 'a way out was offered inside an office city')
+
+  await pg.click('.replies .reply.office:first-child')
+  const taken = await settle(async () =>
+    pg.evaluate(() => {
+      const f = JSON.parse(localStorage.getItem('grok-bot:flow') || '{}')
+      return f.branch === 'f8' && f.city === 'Islamabad'
+    }),
+  )
+  assert.ok(taken, 'the office tap was not recorded')
+  assert.equal(await pg.$('.replies .reply.office'), null, 'the buttons stayed after choosing')
+  await pg.context().close()
+})
+
+await check('shorthand and Urdu both resolve to one spelling', async () => {
+  const pg = await atCity()
+  await sayCity(pg, 'pindi')
+  await pg.waitForSelector('.replies .reply.office', { timeout: 25_000 })
+  const city = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).city)
+  assert.equal(city, 'Rawalpindi', `"pindi" resolved to ${city}`)
+  await pg.context().close()
+})
+
+await check('a rider we have no office for is told so, and can say none of these', async () => {
+  const pg = await atCity()
+  await sayCity(pg, 'Sukkur')
+  await pg.waitForSelector('.replies .reply.office', { timeout: 25_000 })
   const text = async () =>
     (await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]')))
       .map((m) => m.content || '').join('\n')
-  assert.ok((await text()).includes('Koi baat nahi'), 'a vague pin did not ask which office')
+  assert.ok((await text()).includes('koi office nahi'), 'not told we have no office there')
 
-  // Choose one. It must be taken, and must not come back.
-  await pg.click('.replies .reply.office:first-child')
-  const taken = await settle(async () =>
-    pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').branch === 'f8'),
+  const buttons = await pg.$$('.replies .reply')
+  const last = buttons[buttons.length - 1]
+  assert.equal((await last.innerText()).trim(), 'In mein se koi nahi', 'no way out at the bottom')
+
+  await last.click()
+  const ended = await settle(async () =>
+    pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow') || '{}').noOffice === true),
   )
-  assert.ok(taken, 'the office tap was not recorded')
-
-  await pg.waitForTimeout(2500)
-  const asked = (await text()).split('Koi baat nahi').length - 1
-  assert.equal(asked, 1, `asked which office ${asked} times`)
-  const stillThere = await pg.$('.replies .reply.office')
-  assert.equal(stillThere, null, 'the office buttons are still on screen after choosing')
-  const step = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
-  assert.ok(step > ORDER.indexOf('location'), 'the flow did not move past the location step')
-  await vague.close()
-})
-
-await check('a rider far from both offices is shown their pin and asked which office, in plain words', async () => {
-  // Reported: a rider in Lahore tapped "Location bhejein", was told "koi baat
-  // nahi" and shown both offices — and read that as the tap not counting.
-  const far = await browser.newContext({ viewport: { width: 390, height: 844 }, permissions: ['geolocation'], geolocation: { latitude: 31.5135, longitude: 74.3109, accuracy: 20 } })
-  const p6 = await far.newPage()
-  await p6.goto(`${APP}/?chrome=no`)
-  await p6.evaluate((s) => {
-    localStorage.clear()
-    localStorage.setItem('grok-bot:flow', JSON.stringify({ step: s, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '', collected: {}, ineligible: false }))
-    localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
-  }, at('location'))
-  await p6.reload()
-  await p6.waitForSelector('.replies .reply')
-  await p6.click('.replies .reply')
-  const asked = await p6.waitForSelector('.replies .reply.office', { timeout: 15_000 })
-  assert.ok(asked, 'the offices were not offered')
-  const log = await p6.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
-  assert.ok(log.some((m) => m.role === 'user' && /^Location: 31\.5/.test(m.content || '')), 'the pin is not in the thread')
-  assert.ok(log.some((m) => (m.content || '').includes('kaafi door')), 'not told they are far from both offices')
-  assert.ok(!log.some((m) => (m.content || '').includes('Koi baat nahi')), 'said "never mind" as if the tap had not counted')
-  await p6.click('.replies .reply.office:last-child')
-  const chosen = await settle(async () => (await p6.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')))).branch === 'saddar')
-  assert.ok(chosen, 'the office tap was not taken')
-  await far.close()
+  assert.ok(ended, 'choosing none of them did not end the conversation')
+  await pg.waitForTimeout(2000)
+  const closing = await text()
+  assert.ok(closing.includes('raabta karein ge'), 'no apology and no promise to be in touch')
+  assert.ok(!closing.includes('is office aayein'), 'invited to an office anyway')
+  const log = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]'))
+  assert.ok(!log.some((m) => m.kind === 'video'), 'still shown the training video')
+  await pg.context().close()
 })
 
 await check('the fee waits for the wallet app, and is not called missing while the rider is still approving it', async () => {
@@ -659,11 +674,7 @@ await check('the fee waits for the wallet app, and is not called missing while t
  * the way it does in life, rather than by priming a state nothing produces.
  */
 const throughTheLastStep = async (extra) => {
-  const near = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    permissions: ['geolocation'],
-    geolocation: { latitude: 33.7125, longitude: 73.0373, accuracy: 20 },
-  })
+  const near = await browser.newContext({ viewport: { width: 390, height: 844 } })
   const pg = await near.newPage()
   await pg.goto(`${APP}/?chrome=no`)
   await pg.evaluate(
@@ -674,13 +685,16 @@ const throughTheLastStep = async (extra) => {
         collected: { 'checks.faceMatch': 'match (99.0)', 'checks.licenceVsCnic': 'match' },
         ineligible: false, phone: '923348234444', rail: 'easypaisa', ...more,
       }))
-      localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Location bhejein.' }]))
+      localStorage.setItem('grok-bot:history', JSON.stringify([{ role: 'assistant', content: 'Aap kis sheher mein rehte hain?' }]))
     },
-    [ORDER.indexOf('location'), extra],
+    [ORDER.indexOf('city'), extra],
   )
   await pg.reload()
-  await pg.waitForSelector('.replies .reply')
-  await pg.click('.replies .reply')
+  await pg.waitForSelector('footer textarea')
+  await pg.fill('footer textarea', 'Islamabad')
+  await pg.click('footer button.send')
+  await pg.waitForSelector('.replies .reply.office', { timeout: 25_000 })
+  await pg.click('.replies .reply.office:first-child')
   return pg
 }
 const textOf = async (pg) =>
@@ -696,49 +710,56 @@ const waitFor = async (pg, needle, ms = 40_000) => {
   return false
 }
 
-await check('the ending is submitted, then video, then the quiz — directions last', async () => {
-  // Verified with a wallet: the fee is taken, the mock rail settles it.
+await check('the ending congratulates, invites to the office, then offers the video and the quiz', async () => {
+  /*
+   * The order is the requirement. A rider who has just spent ten minutes and
+   * two and a half thousand rupees is congratulated and told where to go
+   * first — with the pin — and only then asked to watch a video and answer
+   * questions. It used to run the other way round, and a rider who stopped
+   * reading had the one thing they needed sitting below the fold.
+   */
   const pg = await throughTheLastStep({})
-  assert.ok(await waitFor(pg, 'application jama ho gayi'), `never submitted: ${(await textOf(pg)).slice(-300)}`)
+  assert.ok(await waitFor(pg, 'register ho gayi'), `never registered: ${(await textOf(pg)).slice(-300)}`)
 
   const log = await logOf(pg)
   const order = log.map((m) => (m.kind === 'video' ? 'VIDEO' : m.kind === 'location' ? 'PIN' : m.content || ''))
   const idx = (n) => order.findIndex((t) => t.includes(n))
-  assert.ok(order.indexOf('VIDEO') > idx('application jama ho gayi'), 'the video came before the submission line')
-  // The office is not named yet: that waits until the quiz is settled.
-  assert.equal(idx('is office aayein'), -1, 'directions arrived before the quiz was offered')
-  assert.equal(order.indexOf('PIN'), -1, 'the pin arrived before the quiz was offered')
+  assert.ok(idx('Mubarak ho') >= 0, 'the rider was never congratulated')
+  assert.ok(idx('is office aayein') > idx('Mubarak ho'), 'the office came before the congratulation')
+  assert.ok(order.indexOf('PIN') > idx('is office aayein'), 'the pin came before the address')
+  assert.ok(order.indexOf('VIDEO') > order.indexOf('PIN'), 'the video came before the invitation')
+  assert.ok(idx('chand chhote sawal') > order.indexOf('VIDEO'), 'the questions were offered before the video')
+  const invite = await textOf(pg)
+  assert.ok(invite.includes('dopahar 12 baje'), 'the office hours are not in the invitation')
+  assert.ok(!invite.includes('counter par jama karayein'), 'a rider who paid was asked to pay again')
 
   await pg.waitForSelector('.replies .reply')
   await pg.click('.replies .reply:last-child')
-  assert.ok(await waitFor(pg, 'is office aayein'), 'declining the quiz never produced the directions')
+  assert.ok(await waitFor(pg, 'Office zaroor aayein'), 'declining the quiz never produced the farewell')
   const end = await logOf(pg)
-  assert.ok(end.some((m) => m.kind === 'location' && (m.src || '').includes('office-f8')), 'no map pin')
-  const text = await textOf(pg)
-  assert.ok(text.includes('asli CNIC saath laayein'), 'not told to bring their CNIC')
-  assert.ok(!text.includes('counter par jama karayein'), 'a rider who paid was asked to pay again')
+  const pins = end.filter((m) => m.kind === 'location' && (m.src || '').includes('office-f8'))
+  assert.equal(pins.length, 2, `the pin should be sent with the invitation and again at the end, got ${pins.length}`)
+  assert.ok((await textOf(pg)).includes('asli CNIC'), 'not told to bring their CNIC')
   await pg.context().close()
 })
 
-await check('a rider with no wallet is told to pay at the counter, once', async () => {
+await check('a rider with no wallet is told to pay at the counter, in the invitation', async () => {
   const pg = await throughTheLastStep({ rail: 'neither', noWallet: true })
-  assert.ok(await waitFor(pg, 'application jama ho gayi'), 'never submitted')
-  await pg.waitForSelector('.replies .reply')
-  await pg.click('.replies .reply:last-child')
-  assert.ok(await waitFor(pg, 'is office aayein'), 'never directed to an office')
-  const text = await textOf(pg)
-  assert.ok(text.includes('counter par jama karayein'), 'never told to pay at the office')
+  assert.ok(await waitFor(pg, 'register ho gayi'), 'never registered')
+  // The fee is named in the invitation, where the rider is being told what to
+  // bring — not held back until after ten questions.
+  assert.ok(await waitFor(pg, 'counter par jama karayein'), 'never told to pay at the office')
   const log = await logOf(pg)
-  assert.equal(log.filter((m) => (m.content || '').includes('is office aayein')).length, 1, 'directed twice')
-  assert.equal(log.filter((m) => m.kind === 'location').length, 1, 'two pins')
+  assert.equal(
+    log.filter((m) => (m.content || '').includes('counter par jama karayein')).length,
+    1,
+    'asked for the fee twice',
+  )
   await pg.context().close()
 })
 
 await check('a rider waiting on a bike is told to come once they have it', async () => {
   const pg = await throughTheLastStep({ missing: ['bike'], rail: 'neither', noWallet: true })
-  assert.ok(await waitFor(pg, 'application jama ho gayi'), 'never submitted')
-  await pg.waitForSelector('.replies .reply')
-  await pg.click('.replies .reply:last-child')
   assert.ok(await waitFor(pg, 'aa jaye, to is office aayein'), `never directed: ${(await textOf(pg)).slice(-300)}`)
   const text = await textOf(pg)
   assert.ok(text.includes('apni bike'), 'did not say what they are waiting for')

@@ -18,11 +18,13 @@ import { accept, find as findUpload, get as getUpload, hold, keep } from './uplo
 import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
+import { readCity } from './city.ts'
 import { extractName } from './extract.ts'
 import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
 import { visionReady } from './vision.ts'
+import { lastResortReady } from './vision-openai.ts'
 import { detailPage, listPage, loginPage, type Row as AdminRow, type Waiting } from './admin.ts'
 import { QUESTIONS } from '../shared/quiz.ts'
 import {
@@ -82,6 +84,8 @@ app.get('/healthz', (c) =>
     rizq: rizqReady(),
     // The licence reader of last resort, for cards the labels do not know.
     vision: visionReady(),
+    // The reader of last resort, for cards the other two cannot manage.
+    visionLastResort: lastResortReady(),
     push: pushReady(),
     // The queue's depth as the worker last saw it: 0 means everything the
     // backend is owed has been delivered.
@@ -292,12 +296,18 @@ app.post('/api/upload', async (c) => {
   const expectedCnic =
     typeof body?.['expectedCnic'] === 'string' ? body['expectedCnic'].replace(/\D/g, '') : ''
 
+  // Which try this is. A licence the reader could not be sure of is sent back
+  // once for a better photograph; a second doubtful one is accepted and flagged
+  // rather than leaving a rider photographing the same card all afternoon.
+  const attempt = Math.max(1, Number(body?.['attempt'] ?? 1) || 1)
+
   const verification = await verifyDocument({
     kind,
     bytes,
     mime,
     expectedName,
     expectedCnic,
+    attempt,
   })
 
   /**
@@ -462,6 +472,19 @@ app.post('/api/transcribe', async (c) => {
   }
 
   return c.json({ ...result, id: held?.id })
+})
+
+/**
+ * Which city a rider means, in one spelling.
+ *
+ * Open like the rest of the chat's routes: it is asked mid-conversation by the
+ * rider's own page, and there is nothing in the answer worth guarding.
+ */
+app.post('/api/city', async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
+  const text = typeof body.text === 'string' ? body.text : ''
+  return c.json(await readCity(text))
 })
 
 app.post('/api/extract-name', async (c) => {

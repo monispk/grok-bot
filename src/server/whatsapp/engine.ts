@@ -165,7 +165,7 @@ async function advance(to: string, session: Session, confirm: string, extra: str
     ...branchLines(OFFICES.f8.address, {
       owesFee: true,
       licenceExpired,
-      waitingFor: blockedOn(missing, licenceExpired),
+      waitingFor: blockedOn(missing, { licenceExpired }),
     }),
   )
 }

@@ -174,6 +174,27 @@ function hushOthers(except: HTMLAudioElement | null) {
   }
 }
 
+/**
+ * Everything stops, and stays stopped.
+ *
+ * Called when the rider holds the microphone. A voice note playing into an
+ * open microphone is recorded along with them — Rozeena's own words end up
+ * inside the rider's answer and Whisper transcribes both. Worse on the cheap
+ * handsets riders actually use, where the speaker and the microphone are
+ * centimetres apart and there is no echo cancellation worth the name.
+ *
+ * Whatever was playing is marked heard, so the queue does not start it again
+ * the moment the recording ends. A rider who wants it again presses play; a
+ * clip resuming by itself over their next answer would be the same bug twice.
+ */
+export function hushForRecording() {
+  clearTimers()
+  hushOthers(null)
+  current = null
+  manual = null
+  lastEnded = Date.now()
+}
+
 const heard = new Set<string>()
 const waiting = new Map<string, Set<() => void>>()
 

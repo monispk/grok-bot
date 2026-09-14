@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { inspect } from './fields.ts'
-import { blockedOn, branchLines } from '../shared/steps.ts'
+import { blockedOn, farewellLines, inviteLines } from '../shared/steps.ts'
 
 /**
  * The reading of a real Punjab licence, as the local OCR produced it twice out
@@ -51,26 +51,38 @@ test('an expiry in the past is recorded as expired', () => {
  * the rider is sent to the office once the card is renewed.
  */
 test('an expired licence is named among the things the rider is waiting for', () => {
-  assert.equal(blockedOn([], true), 'naya license')
-  assert.equal(blockedOn(['bike'], true), 'apni bike aur naya license')
-  assert.equal(blockedOn(['bike', 'smartphone'], true), 'apni bike, touch phone aur naya license')
+  assert.equal(blockedOn([], { licenceExpired: true }), 'naya license')
+  assert.equal(blockedOn(['bike'], { licenceExpired: true }), 'apni bike aur naya license')
+  assert.equal(blockedOn(['bike', 'smartphone'], { licenceExpired: true }), 'apni bike, touch phone aur naya license')
   // Unchanged for everybody else.
-  assert.equal(blockedOn([], false), null)
+  assert.equal(blockedOn([], { licenceExpired: false }), null)
   assert.equal(blockedOn(['bike', 'smartphone']), 'apni bike aur touch phone')
 })
 
 test('an expired licence is asked for by name at the office, alongside the CNIC', () => {
-  const lines = branchLines('F8 Markaz', {
+  const lines = inviteLines('F8 Markaz', {
     owesFee: true,
     licenceExpired: true,
-    waitingFor: blockedOn([], true),
+    waitingFor: blockedOn([], { licenceExpired: true }),
   })
   assert.match(lines[0]!, /naya license/)
-  assert.match(lines.join('\n'), /CNIC aur naya license saath laayein/)
+  assert.match(lines.join('\n'), /CNIC aur apna naya license saath laayein/)
   // The fee is still owed; it is taken at the counter, not in the chat.
   assert.match(lines.join('\n'), /counter par jama karayein/)
 
-  const ordinary = branchLines('F8 Markaz', { owesFee: true })
+  const ordinary = inviteLines('F8 Markaz', { owesFee: true })
   assert.match(ordinary.join('\n'), /Apna asli CNIC saath laayein/)
   assert.doesNotMatch(ordinary.join('\n'), /license/)
+})
+
+/**
+ * A card the reader could not be sure of after two photographs. Nothing is
+ * claimed about it — not that it expired, not that it did not — and the rider
+ * is asked to carry the card itself, which settles the question in a second.
+ */
+test('a licence that could not be read is asked for at the office', () => {
+  const lines = inviteLines('F8 Markaz', { owesFee: false, licenceUnread: true })
+  assert.match(lines.join('\n'), /CNIC aur apna asli driving license saath laayein/)
+  assert.doesNotMatch(lines.join('\n'), /counter par jama karayein/)
+  assert.match(farewellLines({ owesFee: false, licenceUnread: true }).join('\n'), /asli driving license/)
 })

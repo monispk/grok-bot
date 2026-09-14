@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { hushForRecording } from './autoplay.ts'
 import { browserSupport, classifyMicFailure, type MicFailure, type Support } from './device.ts'
 
 export type Recording = { blob: Blob; mime: string; seconds: number }
@@ -235,6 +236,9 @@ export function useRecorder({
         go('reviewing')
       } else onDone(clip)
     }
+    // Silence first, then record. A voice note still playing goes into the
+    // microphone with the rider, and Whisper hears both of them.
+    hushForRecording()
     startedAt.current = Date.now()
     r.start()
     setSeconds(0)

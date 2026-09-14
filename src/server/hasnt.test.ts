@@ -63,6 +63,6 @@ test('what the rider is asked to bring names the document they lack', () => {
   )
   // A licence they do not have and an expiry read from one they never sent
   // cannot both be true. The missing card wins; it is the one they know about.
-  assert.equal(blockedOn(['license_front'], true), 'apna driving license')
-  assert.equal(blockedOn([], true), 'naya license')
+  assert.equal(blockedOn(['license_front'], { licenceExpired: true }), 'apna driving license')
+  assert.equal(blockedOn([], { licenceExpired: true }), 'naya license')
 })

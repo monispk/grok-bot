@@ -126,19 +126,30 @@ export const STEP_SPECS: StepSpec[] = [
     waHint: 'Apni selfie khenchein aur isi chat mein bhej dein.',
   },
   {
-    id: 'location',
-    audio: '/ask-location',
-    kind: 'gps',
-    ask: 'Neeche button daba kar apni location bhej dein, taake hum aap ko sab se qareeb foodpanda office bata sakein.',
-    need: 'Iske liye aap ki location chahiye.',
-    webHint: 'Neeche "Location bhejein" ka button dabayein.',
-    waHint: 'WhatsApp mein attach ka nishan daba kar Location bhejein.',
+    /*
+     * Where the rider lives, typed.
+     *
+     * This was a "send your location" button. On the handsets riders actually
+     * use it was the least reliable thing in the flow: a GPS chip that never
+     * fixes indoors, an in-app browser that never asks for the permission, a
+     * position derived from the phone network that put a rider in the wrong
+     * city. Every one of those failures landed on the last step, after three
+     * documents had already been sent.
+     *
+     * A rider knows which city they live in. Asking them is shorter, works on
+     * every phone, and gives an answer that can be counted afterwards.
+     */
+    id: 'city',
+    audio: '/ask-city',
+    kind: 'text',
+    ask: 'Aakhri sawal. Aap kis sheher mein rehte hain?',
+    need: 'Baraye meherbani apne sheher ka naam likhein.',
+    webHint: '',
+    waHint: '',
   },
 ]
 
 export const WA_ASK: Record<string, string> = {
-  location:
-    'Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Attach (📎) daba kar "Location" chunein.',
   selfie: 'Ab apni aik selfie khenchein aur bhejein. Apna chehra saaf dikhayein.',
 }
 
@@ -537,6 +548,28 @@ export const NAME_SPOKEN = [
   'آپ کا پورا نام کیا ہے جو ID Card پر لکھا ہے?',
 ].join('\n')
 
+/** The wallet's name as a person writes it, not as the code spells it. */
+export const railName = (rail: string): string =>
+  rail === 'jazzcash' ? 'JazzCash' : rail === 'easypaisa' ? 'Easypaisa' : rail
+
+/**
+ * The moment the money lands.
+ *
+ * Said in full — the amount, which wallet, and the number to quote — because
+ * this is the one point in the conversation where a rider has parted with
+ * money and has nothing yet to show for it. "Fee mil gayi" alone leaves them
+ * with no reference if anything is ever disputed at the office.
+ *
+ * Rupees the way they are said aloud: "pachees sau", not "2,500", which the
+ * voice reads as a string of digits.
+ */
+export function feeReceivedLine(rail: string, ref: string): string {
+  const wallet = railName(rail)
+  const where = wallet ? ` aap ke ${wallet} account se` : ''
+  const number = ref ? ` Confirmation number: ${ref}.` : ''
+  return `Fee mil gayi hai! Pachees sau rupay${where} wasool ho gaye hain.${number}`
+}
+
 /** How the application ended, which decides what the rider is told. */
 export type Outcome =
   | 'verified_paid'
@@ -547,34 +580,34 @@ export type Outcome =
 const HOURS = 'Office Peer se Juma, dopahar 12 baje se shaam 6 baje tak khula hai.'
 
 /**
- * The end of the application, in two halves.
+ * The end of the application.
  *
- * The first half says how it went and sends the rider to the training video.
- * The second half — where to go, what to bring, what is still owed — is held
- * back until after the quiz has been offered and either taken or declined, so
- * a rider is not given directions and then asked to sit through ten questions
- * before they can act on them. Both halves are reached by every path.
+ * One line, and it is the good news: the rider is congratulated and told their
+ * application is registered. Everything else — where to go, what to bring, the
+ * video, the questions — follows in a fixed order from `inviteLines` on.
  */
 export function submittedLines(outcome: Outcome, firstName: string): string[] {
-  const hello = firstName ? `Shukriya ${firstName}!` : 'Shukriya!'
-
+  const hello = firstName ? `Mubarak ho ${firstName}!` : 'Mubarak ho!'
   const how =
     outcome === 'verified_paid'
-      ? `${hello} Aap ke documents check ho gaye hain aur fee bhi mil gayi hai.`
+      ? 'Aap ke documents check ho gaye hain aur fee bhi mil gayi hai.'
       : outcome === 'verified_unpaid'
-        ? `${hello} Aap ke documents check ho gaye hain. Fee abhi jama nahi hui.`
+        ? 'Aap ke documents check ho gaye hain.'
         : outcome === 'not_verified'
-          ? `${hello} Aap ke documents mil gaye hain. Inhein office par check kiya jaye ga.`
-          : `${hello} Aap ki maloomat mehfooz kar li gayi hai.`
+          ? 'Aap ke documents mil gaye hain — inhein office par check kiya jaye ga.'
+          : 'Aap ki maloomat mehfooz kar li gayi hai.'
+  return [`${hello} Aap ki application register ho gayi hai. ${how}`]
+}
 
-  return [
-    how,
-    // The office and the CNIC are named here as well as at the end. A rider
-    // who stops reading after the good news should still know the two things
-    // that decide whether their journey is wasted.
-    'Aap ki application jama ho gayi hai. Ab aap ko office aana hoga, apna asli CNIC le kar.',
-    'Office aane se pehle, ye training video zaroor dekh lein.',
-  ]
+/** Said once the office has been given, never before it. */
+export const WATCH_VIDEO = 'Office aane se pehle, ye training video zaroor dekh lein.'
+
+export type InviteOpts = {
+  owesFee: boolean
+  waitingFor?: string | null
+  licenceExpired?: boolean
+  /** Two photographs and the reader still could not be sure of the card. */
+  licenceUnread?: boolean
 }
 
 /**
@@ -585,49 +618,72 @@ export function submittedLines(outcome: Outcome, firstName: string): string[] {
  * go and renew the card, and until they have, there is nothing the office can
  * do for them either — the same shape as waiting on a bike.
  */
-export function blockedOn(missing: string[], licenceExpired = false): string | null {
+export function blockedOn(
+  missing: string[],
+  opts: { licenceExpired?: boolean; licenceUnread?: boolean } = {},
+): string | null {
+  const o = opts
   const parts: string[] = []
   if (missing.includes('bike')) parts.push('apni bike')
   if (missing.includes('smartphone')) parts.push('touch phone')
   if (missing.includes('license_front')) parts.push('apna driving license')
   if (missing.includes('cnic_front')) parts.push('apna CNIC')
-  if (licenceExpired && !missing.includes('license_front')) parts.push('naya license')
+  if (o.licenceExpired && !missing.includes('license_front')) parts.push('naya license')
   if (parts.length === 0) return null
   if (parts.length === 1) return parts[0]!
   return `${parts.slice(0, -1).join(', ')} aur ${parts[parts.length - 1]}`
 }
 
+/** What to carry, beyond the CNIC that everybody brings. */
+function alsoBring(opts: InviteOpts): string {
+  if (opts.licenceExpired) return ' aur apna naya license'
+  if (opts.licenceUnread) return ' aur apna asli driving license'
+  return ''
+}
+
 /**
- * Where to go, what to bring, and what is still owed.
+ * The invitation to the office. One shape, wherever the conversation reaches it.
  *
- * One shape for everybody, because a rider comparing notes with another rider
- * should hear the same thing. Only two sentences vary: a rider still waiting
- * on a bike or a phone is told to come once they have it, and a rider who has
- * not paid is told the fee is taken at the counter.
+ * The order is the point. A rider who has just spent ten minutes and two and a
+ * half thousand rupees is congratulated and told where to go first — address,
+ * hours, what to bring, and the pin — and only then asked to watch a video and
+ * answer questions. It used to run the other way round: good news, video, ten
+ * questions, directions last, by which time a rider who had stopped reading
+ * had the one thing they needed sitting below the fold.
+ *
+ * The fee is named only when it is still owed. Telling a rider who has already
+ * paid to bring money is how a rider gets asked for it twice.
  */
-export function branchLines(
-  office: string,
-  opts: { owesFee: boolean; waitingFor?: string | null; licenceExpired?: boolean },
-): string[] {
+export function inviteLines(office: string, opts: InviteOpts): string[] {
   const lines: string[] = []
   lines.push(
     opts.waitingFor
       ? `Jab aap ke paas ${opts.waitingFor} aa jaye, to is office aayein:`
-      : 'Ab is office aayein:',
+      : 'Ab apni registration mukammal karne ke liye is office aayein:',
   )
   lines.push(office)
-  lines.push(
-    // The renewed licence is named alongside the CNIC, because it is the thing
-    // the visit exists for and a rider who leaves it at home comes back twice.
-    opts.licenceExpired
-      ? 'Apna asli CNIC aur naya license saath laayein — office par dikhana hoga.'
-      : 'Apna asli CNIC saath laayein — office par dikhana hoga.',
-  )
+  lines.push(HOURS)
+  lines.push(`Apna asli CNIC${alsoBring(opts)} saath laayein — office par dikhana hoga.`)
   if (opts.owesFee)
     lines.push('Registration fee pachees sau rupay office ke counter par jama karayein.')
-  lines.push(HOURS)
   return lines
 }
+
+/**
+ * The last word, after the questions are answered or declined.
+ *
+ * Short, and the office once more: the rider is about to close the tab, and
+ * the only thing that has to survive that is where to go and what to carry.
+ */
+export function farewellLines(opts: InviteOpts): string[] {
+  return [
+    `Bas! Office zaroor aayein, apna asli CNIC${alsoBring(opts)} le kar — wahan aap ka registration mukammal ho jaye ga.`,
+    HOURS,
+  ]
+}
+
+/** The WhatsApp bot sends the whole invitation in one go. */
+export const branchLines = inviteLines
 
 /**
  * The two registration offices, from the process document.
@@ -641,6 +697,7 @@ export const OFFICES = {
     address:
       'foodpanda office, Office No. 1, First Floor, Al Babar Center, F8 Markaz, Islamabad',
     short: 'F8 Markaz, Islamabad',
+    city: 'Islamabad',
     map: '/office-f8.jpg',
     lat: 33.7125,
     lng: 73.0373,
@@ -649,6 +706,7 @@ export const OFFICES = {
     address:
       'foodpanda office, Office No. 2, First Floor, Al Naseer Plaza, Marir Metro Station ke paas, Main Murree Road, Rawalpindi',
     short: 'Saddar, Rawalpindi',
+    city: 'Rawalpindi',
     map: '/office-saddar.jpg',
     lat: 33.5995,
     lng: 73.0627,
@@ -656,6 +714,49 @@ export const OFFICES = {
 } as const
 
 export type OfficeId = keyof typeof OFFICES
+
+/** The cities an office is actually in. */
+export const OFFICE_CITIES = [...new Set(Object.values(OFFICES).map((o) => o.city))]
+
+/** The branches in one city, in the order they are listed above. */
+export const officesIn = (city: string): OfficeId[] =>
+  (Object.keys(OFFICES) as OfficeId[]).filter((id) => OFFICES[id].city === city)
+
+/** Every branch, for a rider whose own city has none. */
+export const ALL_OFFICES = Object.keys(OFFICES) as OfficeId[]
+
+/** The button a rider taps when none of the offices will do. */
+export const NO_OFFICE = 'In mein se koi nahi'
+
+/**
+ * Which branches to offer, and what to say before offering them.
+ *
+ * A rider in a city we are in picks between that city's branches. A rider
+ * anywhere else is told plainly that we are not in their city — not left to
+ * work it out from a list of two places they have never heard of — and then
+ * offered the same list with a way out at the bottom.
+ */
+export function officeChoice(city: string): {
+  offices: OfficeId[]
+  say: string
+  wayOut: boolean
+} {
+  const here = officesIn(city)
+  if (here.length)
+    return {
+      offices: here,
+      say:
+        here.length === 1
+          ? `Achha, ${city}! Aap ka foodpanda office ye hai — neeche daba kar confirm karein.`
+          : `Achha, ${city}! Aap kaunse office aana pasand karein ge? Neeche se chunein.`,
+      wayOut: false,
+    }
+  return {
+    offices: ALL_OFFICES,
+    say: `Maaf kijiye, ${city} mein filhaal hamara koi office nahi hai. Lekin aap neeche diye gaye offices mein se kisi ek ko chun sakte hain.`,
+    wayOut: true,
+  }
+}
 
 /** Great-circle distance in kilometres. */
 export function distanceKm(

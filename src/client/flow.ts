@@ -1,9 +1,11 @@
 import {
   audioSources,
-  blockedOn,
-  branchLines,
+  farewellLines,
+  inviteLines,
   STEP_SPECS,
   submittedLines,
+  WATCH_VIDEO,
+  type InviteOpts,
   type Outcome,
   type StepSpec,
 } from '../shared/steps.ts'
@@ -41,7 +43,7 @@ const bot = (content: string): Message => ({ role: 'assistant', content })
  * or comes from the model, and these are neither. Uplift caches by the words,
  * so the office address is read once for everybody.
  */
-const spoken = (content: string): Message => ({ role: 'assistant', content, unscripted: true })
+export const spoken = (content: string): Message => ({ role: 'assistant', content, unscripted: true })
 
 /**
  * Whether a step's answer is already on file.
@@ -75,19 +77,50 @@ export const askMessages = (step: Step): Message[] => [
   ...(step.audio ? [voice(step.audio)] : []),
 ]
 
-/**
- * Closing messages. The office line is a placeholder — the nearest branch will
- * be looked up from the GPS fix once that lands.
- */
 /** The mandatory training video, which every closing message carries. */
 export const TRAINING_VIDEO = 'pofJtK4o2z4'
 
+export type Office = {
+  address: string
+  short: string
+  lat: number
+  lng: number
+  map: string
+}
+
 /**
- * The first half of the ending: how it went, the video, and the offer to take
- * the quiz now. The directions to the office follow later, from `branch`.
+ * The pin: a picture of the street, and a tap that opens Google Maps.
+ *
+ * A rider who has never been to F-8 Markaz needs to see it, not read an
+ * address, and the two things they will do with it — look, and navigate — are
+ * the two things this is.
  */
-export const submitted = (outcome: Outcome, firstName: string): Message[] => [
+const pin = (office: Office): Message => ({
+  role: 'assistant',
+  content: office.short,
+  kind: 'location',
+  src: office.map,
+  place: { lat: office.lat, lng: office.lng, address: office.address },
+})
+
+/**
+ * The invitation to the office, in the order it has to happen.
+ *
+ * Congratulations and the registration first, then where to go and what to
+ * bring, then the pin — and only after all of that the video and the offer to
+ * answer the questions now. A rider who stops reading at the good news has
+ * already been told the thing that decides whether their journey is wasted.
+ */
+export const submitted = (
+  outcome: Outcome,
+  firstName: string,
+  office: Office,
+  opts: InviteOpts,
+): Message[] => [
   ...submittedLines(outcome, firstName).map(spoken),
+  ...inviteLines(office.address, opts).map(spoken),
+  pin(office),
+  spoken(WATCH_VIDEO),
   {
     role: 'assistant',
     content: '',
@@ -100,22 +133,12 @@ export const submitted = (outcome: Outcome, firstName: string): Message[] => [
 ]
 
 /**
- * The second half: where to go, what to bring, what is owed — and the pin,
- * because a rider who has never been to F-8 Markaz needs to see it, not read
- * an address. Every path ends here, exactly once.
+ * The last word, after the questions are answered or declined. The office and
+ * the pin again, because the rider is about to close the tab.
  */
-export const branch = (
-  office: { address: string; short: string; lat: number; lng: number; map: string },
-  opts: { owesFee: boolean; waitingFor?: string | null; licenceExpired?: boolean },
-): Message[] => [
-  ...branchLines(office.address, opts).map(spoken),
-  {
-    role: 'assistant',
-    content: office.short,
-    kind: 'location',
-    src: office.map,
-    place: { lat: office.lat, lng: office.lng, address: office.address },
-  },
+export const farewell = (office: Office, opts: InviteOpts): Message[] => [
+  ...farewellLines(opts).map(spoken),
+  pin(office),
 ]
 
 /**
@@ -126,6 +149,15 @@ export const branch = (
  * reason these recordings exist is that the refusals used to be text.
  */
 export const expiredLicence = (): Message[] => [spoken(SAY.licenseExpired.text)]
+
+/**
+ * Two photographs and the reader still could not be sure of the card.
+ *
+ * Spoken, like the expiry note, and for the same reason: it changes what the
+ * rider has to carry to the office, and a rider who cannot read the line is
+ * the one most likely to arrive without it.
+ */
+export const unreadableLicence = (): Message[] => [spoken(SAY.licenseUnreadable.text)]
 
 /** A quiz question, numbered so the rider knows how far in they are. */
 export const quizAsk = (q: Question, n: number, of: number): Message[] => [

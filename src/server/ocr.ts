@@ -7,8 +7,20 @@
  */
 export const OCR_ENABLED = process.env.OCR_ENABLED !== 'false'
 
-export type Word = { text: string; x: number; y: number; w: number; h: number }
+/**
+ * One recognised box, with how sure the reader was of it.
+ *
+ * PaddleOCR scores every box it reads and drops anything under 0.5 as noise.
+ * What survives ranges from "definitely those characters" to a shape it had to
+ * guess at, and until now both looked identical by the time they reached the
+ * rider — which is how a licence number with a guessed digit became a number
+ * we told a recruiter to trust.
+ */
+export type Word = { text: string; x: number; y: number; w: number; h: number; score?: number }
 export type Reading = { lines: string[]; words: Word[] }
+
+/** Under this, a value read off a card is a guess, not a reading. */
+export const SURE = 0.85
 
 /**
  * Below this, the page was not read — almost always a tilted or blurred photo.
@@ -24,7 +36,11 @@ type Service = {
     options?: { flatten?: boolean },
   ) => Promise<{
     text?: string
-    results?: { text?: string; box?: { x: number; y: number; width: number; height: number } }[]
+    results?: {
+      text?: string
+      confidence?: number
+      box?: { x: number; y: number; width: number; height: number }
+    }[]
   }>
 }
 
@@ -94,6 +110,7 @@ export async function read(bytes: Uint8Array, mime: string): Promise<Reading | n
         y: r.box!.y,
         w: r.box!.width,
         h: r.box!.height,
+        ...(typeof r.confidence === 'number' ? { score: r.confidence } : {}),
       }))
 
     return { lines, words }

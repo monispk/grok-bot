@@ -162,6 +162,34 @@ export function columnUnder(words: Word[], labels: string[], maxDyFactor = 4): s
   return rows.map((r) => r.trim()).filter(Boolean)
 }
 
+/**
+ * How sure the reader was of a value, by finding the box it came out of.
+ *
+ * The values are pulled off `lines`, which carry no scores; the scores live on
+ * `words`. Matching them back up is crude — normalise both and look for one
+ * inside the other — but it only has to be right about identifiers, which are
+ * long and distinctive enough that a wrong match is unlikely.
+ *
+ * Null means the value could not be traced to a box, which is not the same as
+ * a low score and is not treated as one: a PDF's text layer has no scores at
+ * all, and refusing every PDF licence would be a strange way to handle that.
+ */
+export function scoreOf(words: Word[], value: string | null): number | null {
+  if (!value) return null
+  const want = value.replace(/[^a-z0-9]/gi, '').toUpperCase()
+  if (want.length < 3) return null
+  let worst: number | null = null
+  for (const w of words) {
+    if (typeof w.score !== 'number') continue
+    const got = w.text.replace(/[^a-z0-9]/gi, '').toUpperCase()
+    if (!got) continue
+    if (!got.includes(want) && !want.includes(got)) continue
+    // Several boxes can carry one value between them; the weakest decides.
+    if (worst === null || w.score < worst) worst = w.score
+  }
+  return worst
+}
+
 /** A proof of residence has to be recent to prove anything. */
 const BILL_MAX_AGE_DAYS = 92
 
@@ -220,6 +248,20 @@ export function inspect(kind: DocKind, reading: Reading): Inspection {
     const licExpiry = licExpiryRaw ? parseDate(licExpiryRaw) : null
     fields.expiry = licExpiry?.iso ?? null
     fields.expired = licExpiry ? String(licExpiry.date.getTime() < Date.now()) : null
+
+    /*
+     * How sure the reader was of the two values that matter.
+     *
+     * The number identifies the licence and the date decides whether it is any
+     * use, and a guessed character in either is worse than no reading at all —
+     * a rider told their licence expired in 2021 when the card says 2031 has
+     * been refused on our mistake. Recorded here; what to do about it is
+     * decided in verify.ts, where the vision model gets a turn first.
+     */
+    const numberScore = scoreOf(reading.words, fields.number)
+    const expiryScore = scoreOf(reading.words, licExpiryRaw)
+    if (numberScore !== null) fields.numberScore = numberScore.toFixed(3)
+    if (expiryScore !== null) fields.expiryScore = expiryScore.toFixed(3)
 
     /**
      * Several marks, any two. Requiring the heading alone threw away a card

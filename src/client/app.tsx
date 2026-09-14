@@ -11,9 +11,11 @@ import { holdFresh } from './fresh.ts'
 import {
   alreadyAnswered,
   askMessages,
-  branch,
   expiredLicence,
+  farewell,
+  spoken as readAloud,
   submitted,
+  unreadableLicence,
   quizAsk,
   quizSay,
   STEPS,
@@ -23,10 +25,12 @@ import {
 } from './flow.ts'
 import {
   audioSources,
-  whyNotPick,
-  distanceKm,
-  nearestOffice,
+  feeReceivedLine,
+  type InviteOpts,
+  NO_OFFICE,
+  officeChoice,
   OFFICES,
+  type OfficeId,
   type Outcome,
 } from '../shared/steps.ts'
 import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../shared/quiz.ts'
@@ -53,7 +57,7 @@ import { CANCEL_PX, useMicGesture } from './mic.tsx'
 import { MicSheet } from './micsheet.tsx'
 import { shrinkImage } from './image.ts'
 import { lookup, pushSoon, resume } from './sync.ts'
-import { blip, CHOICES, Choices, type Choice } from './choices.tsx'
+import { blip, cashBell, CHOICES, Choices, type Choice } from './choices.tsx'
 import { Camera } from './camera.tsx'
 import { BEAT_MS, GROUP_MS, MAX_TICKS, VOICE_PATIENCE_MS, WORD_MS } from './pace.ts'
 import { isReady, setOrder, stopAll, whenReady } from './autoplay.ts'
@@ -241,6 +245,15 @@ export function App() {
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Lines said once per visit, so reopening a sheet does not repeat them. */
   const saidOnce = useRef(new Set<string>())
+  /**
+   * How many times each step has been answered and sent back.
+   *
+   * Only the licence uses it, and only to stop asking: a card the reader
+   * cannot be sure of is worth one more photograph and no more than that.
+   * Not in the flow state, because it is about this sitting at the step and
+   * not about the application.
+   */
+  const [tries, setTries] = useState<Record<string, number>>({})
   /** Testing only: everything collected so far, on one screen. */
   const [dashOpen, setDashOpen] = useState(false)
   /** When the server last confirmed it holds this application. */
@@ -565,21 +578,29 @@ export function App() {
    * once, which `sentBranch` is for — three call sites and a reload between
    * them is more than enough to send it twice.
    */
+  /**
+   * What the invitation has to say about this rider: whether they still owe
+   * the fee, what they are waiting on, and what to carry. Read in two places —
+   * the invitation and the farewell — which must agree.
+   */
+  const inviteOpts = (f: store.FlowState): InviteOpts => {
+    const licenceExpired = f.collected['license.expired'] === 'true'
+    const licenceUnread = f.collected['license.unreadable'] === 'true'
+    return {
+      // Only a rider the rail has actually taken money from owes nothing.
+      owesFee: f.payment?.state !== 'paid',
+      waitingFor: blockedOn(f.missing ?? [], { licenceExpired, licenceUnread }),
+      licenceExpired,
+      licenceUnread,
+    }
+  }
+
+  /** The last word: the office once more, and the pin. */
   const goToBranch = useCallback((f: store.FlowState, before: Message[] = []) => {
     if (f.sentBranch) return
-    const office = OFFICES[f.branch ?? 'f8']
-    const outcome = outcomeFor(f)
     setFlow((prev) => ({ ...prev, sentBranch: true }))
     setMessages((m) =>
-      append(m, [
-        ...before,
-        ...branch(office, {
-          // Only a rider the rail has actually taken money from owes nothing.
-          owesFee: f.payment?.state !== 'paid',
-          waitingFor: blockedOn(f.missing ?? [], f.collected['license.expired'] === 'true'),
-          licenceExpired: f.collected['license.expired'] === 'true',
-        }),
-      ]),
+      append(m, [...before, ...farewell(OFFICES[f.branch ?? 'f8'], inviteOpts(f))]),
     )
   }, [])
 
@@ -657,7 +678,12 @@ export function App() {
         },
       }
       setFlow((prev) => ({ ...prev, quiz: withQuiz.quiz }))
-      setMessages((m) => append(m, [...before, ...submitted(outcome, f.firstName)]))
+      setMessages((m) =>
+        append(m, [
+          ...before,
+          ...submitted(outcome, f.firstName, OFFICES[f.branch ?? 'f8'], inviteOpts(f)),
+        ]),
+      )
     },
     [],
   )
@@ -743,11 +769,29 @@ export function App() {
         return
       }
 
-      // Still pending after the wait is "not received" as far as the rider is
-      // concerned — the counter is open — but it stays pending on the record,
-      // because the money may yet move.
-      const note = result.state === 'paid' ? [] : [bot(SAY.feeFailed.text)]
-      conclude(result.state === 'paid' ? 'verified_paid' : 'verified_unpaid', flow, note)
+      /*
+       * Money arriving gets a sound of its own.
+       *
+       * A rider has just approved a debit of Rs 2,500 in another app and come
+       * back to this one. The bell says it landed before they have read a
+       * word, which for a rider who reads slowly is the whole message — and
+       * the line that follows gives them the reference to quote if anyone at
+       * the office ever disputes it.
+       *
+       * Still pending after the wait is "not received" as far as the rider is
+       * concerned — the counter is open — but it stays pending on the record,
+       * because the money may yet move.
+       */
+      const paid = result.state === 'paid'
+      if (paid) {
+        cashBell()
+        say(readAloud(feeReceivedLine(result.rail, result.ref)))
+      }
+      const note = paid ? [] : [bot(SAY.feeFailed.text)]
+      // The settled payment, not the one this effect started with: `flow`
+      // still says "initiated", which had a rider who had just paid being
+      // told to bring the money to the counter.
+      conclude(paid ? 'verified_paid' : 'verified_unpaid', { ...flow, payment: result }, note)
     })()
   }, [step, flow, conclude, say])
 
@@ -772,6 +816,9 @@ export function App() {
         const payable =
           !next &&
           !merged.ineligible &&
+          // A rider we have no office for is not charged for a journey they
+          // cannot make, whatever their documents said.
+          !merged.noOffice &&
           outcomeFor(merged) === 'verified_unpaid' &&
           (rail === 'easypaisa' || rail === 'jazzcash')
         if (payable)
@@ -785,7 +832,7 @@ export function App() {
         // Everybody is offered the quiz now, because everybody is sent to an
         // office — a rider waiting on a bike included, who is told to come once
         // they have it. Answering here saves them the same queue.
-        else if (!next)
+        else if (!next && !merged.noOffice)
           merged.quiz = merged.quiz ?? {
             offered: true,
             declined: false,
@@ -799,10 +846,19 @@ export function App() {
             ...extra,
             ...(next
               ? askMessages(next)
-              : merged.payment?.state === 'initiated'
-                ? // The fee is being taken; the rest waits for the rail.
-                  [bot(SAY.feeAsking.text)]
-                : submitted(outcomeFor(merged), merged.firstName)),
+              : merged.noOffice
+                ? // Already said, in `noOfficeForThem`: there is no office to
+                  // invite them to, so there is nothing to add.
+                  []
+                : merged.payment?.state === 'initiated'
+                  ? // The fee is being taken; the rest waits for the rail.
+                    [bot(SAY.feeAsking.text)]
+                  : submitted(
+                      outcomeFor(merged),
+                      merged.firstName,
+                      OFFICES[merged.branch ?? 'f8'],
+                      inviteOpts(merged),
+                    )),
           ]),
         )
         return merged
@@ -887,6 +943,58 @@ export function App() {
    * Everything that happens once the rider's words are in the thread, however
    * they arrived. Typed and spoken answers are the same from here on.
    */
+  /**
+   * The city the rider typed, resolved to one spelling.
+   *
+   * The list answers most of them without a call; the model handles the towns
+   * and the neighbourhoods it does not list. An answer that is not a place at
+   * all gets the question again rather than a branch list, because a rider who
+   * misread the question is not a rider who lives nowhere.
+   */
+  const onCity = useCallback(
+    async (text: string, withUser: Message[]) => {
+      setWorking(true)
+      let city: string | null = null
+      let nearest: string | null = null
+      try {
+        const res = await fetch('/api/city', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text }),
+        })
+        const got = (await res.json()) as { city?: string; nearest?: string }
+        city = got.city ?? null
+        nearest = got.nearest ?? null
+      } catch {
+        /* handled below */
+      }
+      setWorking(false)
+
+      // A town we do not list resolves to the listed city nearest it, which is
+      // enough to decide whether we have an office anywhere near them.
+      const resolved = city ?? nearest
+      if (!resolved) {
+        say(bot(SAY.cityUnclear.text))
+        return
+      }
+
+      const choice = officeChoice(resolved)
+      setFlow((f) => ({
+        ...f,
+        city: resolved,
+        pickOffice: true,
+        collected: {
+          ...f.collected,
+          city: resolved,
+          'city.said': text.trim().slice(0, 80),
+          ...(city ? {} : { 'city.nearest': resolved }),
+        },
+      }))
+      say(readAloud(choice.say))
+    },
+    [say],
+  )
+
   const processText = useCallback(
     async (text: string, withUser: Message[]) => {
       /**
@@ -1006,6 +1114,18 @@ export function App() {
         return
       }
 
+      if (current.id === 'city') {
+        // A rider still choosing a branch has already answered this; anything
+        // they type now is a question, not another city.
+        if (pickOffice) {
+          if (asksSomething(text)) await runFaq(withUser)
+          else say(bot(SAY.repeat.text))
+          return
+        }
+        await onCity(text, withUser)
+        return
+      }
+
       if (current.id === 'wallet') {
         const rail = readRail(text)
         if (!rail) {
@@ -1118,7 +1238,7 @@ export function App() {
         say(bot(SAY.repeat.text), ...askMessages(current))
       }
     },
-    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz, flow.resume, flow.applicationId, fullName, restore],
+    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz, flow.resume, flow.applicationId, fullName, restore, onCity, pickOffice],
   )
 
   /** A reply button: the words go in the thread, the answer goes down the usual path. */
@@ -1356,6 +1476,10 @@ export function App() {
         if (flow.applicationId) body.append('applicationId', flow.applicationId)
         if (fullName) body.append('expectedName', fullName)
         if (cnic) body.append('expectedCnic', cnic)
+        // How many times this step has been tried. A licence the reader could
+        // not be sure of is sent back once; a second doubtful one is accepted
+        // and flagged, so nobody photographs the same card all afternoon.
+        body.append('attempt', String((tries[current.id] ?? 0) + 1))
         // The selfie is checked against the CNIC already uploaded. Both are
         // still held in memory server-side, which is why this is sent now.
         if (current.id === 'selfie' && collected['cnic_front.uploadId'])
@@ -1392,6 +1516,7 @@ export function App() {
         // The document was read and is not what this step asked for. Say why and
         // ask again — the step does not move.
         if (data.verification && data.verification.pass === false) {
+          setTries((t) => ({ ...t, [current.id]: (t[current.id] ?? 0) + 1 }))
           say(
             bot(
               data.verification?.reason ??
@@ -1432,11 +1557,23 @@ export function App() {
         // it current — but the rider hears why the office, not the wallet, is
         // the next thing that happens to them.
         const expired = gathered['license.expired'] === 'true'
+        // Two photographs and the reader still could not be sure. Not the
+        // rider's fault and not worth a third attempt — the card is in their
+        // hand, and a recruiter reads it in a second.
+        const unreadable = gathered['license.unreadable'] === 'true'
 
-        advanceFrom(step, [thanksDoc(), ...(expired ? expiredLicence() : [])], {
-          ...(seen && !cnic ? { cnic: seen } : {}),
-          collected: { ...collected, ...gathered },
-        })
+        advanceFrom(
+          step,
+          [
+            thanksDoc(),
+            ...(unreadable ? unreadableLicence() : []),
+            ...(expired ? expiredLicence() : []),
+          ],
+          {
+            ...(seen && !cnic ? { cnic: seen } : {}),
+            collected: { ...collected, ...gathered },
+          },
+        )
       } catch {
         settle(undefined)
         setError(SAY.uploadFailed.text)
@@ -1444,100 +1581,45 @@ export function App() {
         setWorking(false)
       }
     },
-    [current, step, fullName, cnic, collected, say, advanceFrom],
+    [current, step, fullName, cnic, collected, say, advanceFrom, tries, flow.applicationId],
   )
 
   /**
-   * Finishes the location step with a branch, however it was arrived at.
-   * Offered as buttons when the pin cannot be trusted, so a rider is never
-   * stuck at the last step with three documents already sent.
+   * Finishes the last step with a branch, once the rider has chosen one.
+   *
+   * Chosen, never derived. This used to be decided from a GPS fix, which on
+   * the handsets riders actually use failed more often than it worked — no
+   * fix indoors, no permission prompt inside an in-app browser, or a position
+   * from the phone network that put a rider in the wrong city. Every one of
+   * those failures landed on the last step, after three documents had been
+   * sent. A rider knows which office they can get to.
    */
   const chooseOffice = useCallback(
-    (branch: 'f8' | 'saddar', extra: Record<string, string> = {}) => {
+    (branch: OfficeId, extra: Record<string, string> = {}) => {
       advanceFrom(step, [thanksGps()], {
         branch,
-        collected: { ...collected, 'gps.office': OFFICES[branch].short, ...extra },
+        pickOffice: false,
+        collected: { ...collected, 'office.chosen': OFFICES[branch].short, ...extra },
       })
     },
     [step, collected, advanceFrom],
   )
 
-  const onGps = useCallback(() => {
-    setError(null)
-    if (!current || current.kind !== 'gps') return
-    if (!navigator.geolocation) {
-      say(bot('Is phone mein location ki suvidha nahi hai.'))
-      return
-    }
-    setWorking(true)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setWorking(false)
-        const { latitude, longitude } = pos.coords
-        const at = { lat: latitude, lng: longitude, accuracy: pos.coords.accuracy }
-        const why = whyNotPick(at)
-        if (why) {
-          // A fix arrived, but not one an office can be chosen from — too
-          // vague to tell them apart, or a rider nowhere near either. Ask,
-          // and show the pin in the thread first: without it a rider took
-          // the question to mean their tap had not counted.
-          say({ role: 'user', content: `Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}` })
-          setFlow((f) => ({
-            ...f,
-            pickOffice: true,
-            collected: {
-              ...f.collected,
-              'gps.latitude': latitude.toFixed(6),
-              'gps.longitude': longitude.toFixed(6),
-              'gps.accuracyMetres': String(Math.round(pos.coords.accuracy)),
-              'gps.office': 'asked the rider — the pin was not usable',
-            },
-          }))
-          say(bot(why === 'far' ? SAY.farFromOffices.text : SAY.pickOffice.text))
-          return
-        }
-        advanceFrom(
-          step,
-          [
-            {
-              role: 'user',
-              content: `Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-            },
-            thanksGps(),
-          ],
-          {
-            // Which branch to send them to, decided here while the pin is in
-            // hand. The offices are twelve kilometres and a motorway apart, so
-            // naming the wrong one costs a rider a wasted morning.
-            branch: nearestOffice({ lat: latitude, lng: longitude }),
-            collected: {
-              ...collected,
-              'gps.latitude': latitude.toFixed(6),
-              'gps.longitude': longitude.toFixed(6),
-              'gps.accuracyMetres': String(Math.round(pos.coords.accuracy)),
-              'gps.nearestOffice': OFFICES[nearestOffice({ lat: latitude, lng: longitude })].short,
-              'gps.distanceKm': distanceKm(
-                { lat: latitude, lng: longitude },
-                OFFICES[nearestOffice({ lat: latitude, lng: longitude })],
-              ).toFixed(1),
-            },
-          },
-        )
-      },
-      () => {
-        setWorking(false)
-        // Asked once, then offered the choice. Repeating the request forever
-        // stranded a verified rider at the last step over a GPS chip.
-        setFlow((f) => ({
-          ...f,
-          pickOffice: true,
-          collected: { ...f.collected, 'gps.office': 'asked the rider — no location' },
-        }))
-        say(bot(SAY.locationDenied.text), bot(SAY.pickOffice.text))
-      },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
-    )
-  }, [current, step, collected, say, advanceFrom])
+  /**
+   * Nothing we can offer them. Said plainly, and the conversation ends there.
+   *
+   * No video, no questions, no invitation: a rider who has just been told the
+   * nearest office is three hundred kilometres away is not going to sit
+   * through ten multiple-choice questions, and asking them to would be a way
+   * of not taking their answer seriously.
+   */
+  const noOfficeForThem = useCallback(() => {
+    advanceFrom(step, [bot(NO_OFFICE), bot(SAY.noOfficeNearby.text)], {
+      pickOffice: false,
+      noOffice: true,
+      collected: { ...collected, 'office.chosen': 'none of the offices suit the rider' },
+    })
+  }, [step, collected, advanceFrom])
 
   const stop = useCallback(() => {
     abort.current?.abort()
@@ -1756,21 +1838,22 @@ export function App() {
             </div>
           )
         )}
-        {current?.kind === 'gps' && !pickOffice && revealed >= messages.length && (
+        {/* The branches, once the rider has said which city they are in. A
+            rider in a city we are in sees that city's offices; anyone else
+            sees all of them, and a way to say none of them will do. */}
+        {current?.id === 'city' && pickOffice && revealed >= messages.length && (
           <div class="replies">
-            <button class="reply" onClick={onGps} disabled={busy}>
-              📍 Location bhejein
-            </button>
-          </div>
-        )}
-        {current?.kind === 'gps' && pickOffice && revealed >= messages.length && (
-          <div class="replies">
-            {(['f8', 'saddar'] as const).map((id) => (
+            {officeChoice(flow.city ?? '').offices.map((id) => (
               <button key={id} class="reply office" onClick={() => { blip(); chooseOffice(id) }} disabled={busy}>
                 {OFFICES[id].short}
                 <small>{OFFICES[id].address.replace('foodpanda office, ', '')}</small>
               </button>
             ))}
+            {officeChoice(flow.city ?? '').wayOut && (
+              <button class="reply" onClick={() => { blip(); noOfficeForThem() }} disabled={busy}>
+                {NO_OFFICE}
+              </button>
+            )}
           </div>
         )}
         {current?.kind === 'confirm' && CHOICES[current.id] && revealed >= messages.length && !flow.resume && (

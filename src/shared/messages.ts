@@ -44,6 +44,28 @@ export const SAY = {
     '/say-not-license',
   ),
   /**
+   * The licence read, but not well enough to trust.
+   *
+   * A guessed digit in a licence number is worse than no number, and a guessed
+   * digit in a date has told a rider their valid licence had expired. So the
+   * card is photographed again, with the three things that actually fix it —
+   * light, glare, and holding the camera square.
+   */
+  licenseUnclear: say(
+    'License ke number ya tareekh saaf nahi parhi ja rahi. Baraye meherbani achi roshni mein, seedha rukh kar ke, aur bina chamak (reflection) ke dobara tasveer khenchein.',
+    '/say-license-unclear',
+    false,
+  ),
+  /**
+   * Two tries and still not readable. The rider is not stopped over it — the
+   * card is in their hand and a recruiter can read it in a second.
+   */
+  licenseUnreadable: say(
+    'Aap ka license theek se parha nahi ja saka. Koi baat nahi — aap ki application aage barh rahi hai, lekin apna asli driving license foodpanda office zaroor saath laayein.',
+    '/say-license-unreadable',
+    false,
+  ),
+  /**
    * An expired licence. Not a refusal: another photograph of the same card
    * cannot make it current, so the document is kept and the application goes
    * on — it simply stops being a verified one, and the rider is told now,
@@ -294,6 +316,25 @@ export const SAY = {
   locationDenied: say(
     'Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara koshish karein.',
     '/say-location-denied',
+  ),
+
+  /**
+   * The city question, and what follows it.
+   *
+   * A rider types where they live; the answer decides which branches they are
+   * offered. All three of these are spoken at runtime rather than recorded,
+   * because two of them carry the rider's own city in them.
+   */
+  cityUnclear: say(
+    'Maaf kijiye, sheher ka naam samajh nahi aaya. Baraye meherbani sirf apne sheher ka naam likhein — maslan Rawalpindi, Lahore, ya Peshawar.',
+    '/say-city-unclear',
+    false,
+  ),
+  /** Nothing we can offer them, and no reason to waste their journey. */
+  noOfficeNearby: say(
+    'Maaf kijiye. Filhaal aap ke sheher mein hamara koi office nahi hai. Aap ki maloomat mehfooz kar li gayi hai — jab aap ke ilaqay mein mauqa hua, hum aap se khud raabta karein ge. Shukriya!',
+    '/say-no-office-nearby',
+    false,
   ),
 } as const
 

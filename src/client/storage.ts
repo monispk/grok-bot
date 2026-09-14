@@ -46,8 +46,15 @@ export type FlowState = {
   noWallet?: boolean
   /** The nearer of the two offices, from the rider's pin. */
   branch?: 'f8' | 'saddar'
-  /** The pin could not be used, so the rider is choosing their office. */
+  /** The city the rider gave, resolved to one canonical spelling. */
+  city?: string
+  /** The rider is choosing which branch to come to. */
   pickOffice?: boolean
+  /**
+   * None of the offices suit them. The conversation ends there: no video, no
+   * questions, no invitation to a city they do not live in.
+   */
+  noOffice?: boolean
   /** Which rail the rider's number is on, once they have said. */
   rail?: 'easypaisa' | 'jazzcash' | 'both' | 'neither'
   /** The fee: what was attempted, and how it ended. */
