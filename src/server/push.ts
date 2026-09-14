@@ -409,9 +409,29 @@ export async function backfill(days = 60, limit = 500): Promise<number> {
     [days, limit],
   )
   let queued = 0
-  for (const row of rows ?? [])
-    queued += await queueFields(row.id, row.flow, row.history ?? [], row.pushed ?? {})
-  if (queued) console.log(`push: backfilled ${queued} field(s) the backend had never seen`)
+  for (const row of rows ?? []) {
+    const pushed = row.pushed ?? {}
+    queued += await queueFields(row.id, row.flow, row.history ?? [], pushed)
+
+    /*
+     * And the documents, which only ever queued at the moment they were
+     * uploaded. Everything collected before the endpoint existed had its
+     * fields backfilled and its licence, CNIC and selfie left sitting here —
+     * the pictures an office visit is checked against, delivered to nobody.
+     *
+     * Voice notes are not here: they travel inside the transcript, as a link.
+     */
+    const held = await query<{ id: string; kind: string }>(
+      `SELECT id, kind FROM uploads WHERE application = $1 AND kind <> 'voice'`,
+      [row.id],
+    )
+    for (const doc of held ?? []) {
+      if (pushed[`documents.${doc.kind}`]) continue
+      await queueDocument(row.id, doc.id, doc.kind, null)
+      queued++
+    }
+  }
+  if (queued) console.log(`push: backfilled ${queued} item(s) the backend had never seen`)
   return queued
 }
 
