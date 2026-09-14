@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { delta, forBackend } from './push.ts'
+import { delta, forBackend, voicePairs } from './push.ts'
 import { trackable, unflatten } from './ingest.ts'
 
 const ID = '11111111-2222-4333-8444-555555555555'
@@ -72,4 +72,39 @@ test('working state of ours is never a field they are owed', () => {
   const names = Object.keys(flat)
   assert.ok(!names.some((n) => /resume|sentBranch|payRetried|applicationId/.test(n)), names.join())
   assert.equal(flat['candidate_name'], 'Monis')
+})
+
+/**
+ * A recording belongs to a message, and the two lists are matched by position
+ * and never by content. A rider who answers "haan" twice produces two
+ * identical messages, and matching on the words would attach the audio to
+ * whichever came first.
+ */
+test('a recording is paired with its message by position', () => {
+  const VOICE = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+  const OTHER = 'ffffffff-1111-4222-8333-444444444444'
+  const messages = [
+    { role: 'assistant', type: 'text', content: 'Kya aap ke paas bike hai?' },
+    { role: 'user', type: 'voice', content: 'haan', audio_url: `https://x.test/api/upload/${VOICE}` },
+    { role: 'assistant', type: 'text', content: 'Aur touch phone?' },
+    { role: 'user', type: 'voice', content: 'haan', audio_url: `https://x.test/api/upload/${OTHER}` },
+  ]
+  assert.deepEqual(voicePairs(messages as never, [22332, 22333, 22334, 22335]), [
+    { uploadId: VOICE, messageId: 22333 },
+    { uploadId: OTHER, messageId: 22335 },
+  ])
+})
+
+test('a voice note with no recording of ours is not queued', () => {
+  const messages = [{ role: 'user', type: 'voice', content: 'haan ji' }]
+  assert.deepEqual(voicePairs(messages as never, [22332]), [])
+})
+
+test('nothing is paired when the ids did not arrive', () => {
+  const messages = [
+    { role: 'user', type: 'voice', content: 'haan', audio_url: 'https://x.test/api/upload/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' },
+  ]
+  assert.deepEqual(voicePairs(messages as never, undefined), [])
+  assert.deepEqual(voicePairs(messages as never, [null]), [])
+  assert.deepEqual(voicePairs(undefined, [1]), [])
 })

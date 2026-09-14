@@ -24,7 +24,7 @@
 import { createHash } from 'node:crypto'
 import { query } from './db.ts'
 import { ingestBody, trackable, unflatten, type Ingest } from './ingest.ts'
-import { host } from './thread.ts'
+import { host, uploadId as idFromUrl, type Entry } from './thread.ts'
 import { find as findUpload } from './uploads.ts'
 
 const ENDPOINT = (process.env.ROZEENA_ENDPOINT ?? '').replace(/\/+$/, '')
@@ -159,6 +159,60 @@ export async function queueDocument(
   )
 }
 
+/**
+ * Queues a rider's recording against the message it belongs to.
+ *
+ * The bytes, not the link. Our links expire with the recording at sixty days,
+ * on infrastructure the recruiter reading a rider's file next quarter has no
+ * claim on; theirs does not. The link still travels on the message as a record
+ * of where the audio came from, and they never fetch it.
+ *
+ * `messageId` is theirs, learned from the ingest response that carried the
+ * transcript — which is why the transcript has to land first.
+ */
+export async function queueVoiceNote(
+  id: string,
+  uploadId: string,
+  messageId: number,
+): Promise<void> {
+  if (!pushReady()) return
+  await query(
+    `INSERT INTO outbox (application, endpoint, idempotency, body, kind, fields)
+     VALUES ($1, '/ingest/voicenote', $2, $3, 'voicenote', $4)
+     ON CONFLICT (idempotency) DO NOTHING`,
+    [
+      id,
+      `${id}:voice:${uploadId}`,
+      JSON.stringify({ applicationId: id, uploadId, messageId, mark: messageId }),
+      JSON.stringify([`voice.${uploadId}`]),
+    ],
+  )
+}
+
+/**
+ * The recordings in a batch of messages, paired with the ids their end gave
+ * them.
+ *
+ * Matched by position and never by content: `message_ids[i]` belongs to
+ * `messages[i]`. A rider who answers "haan" twice has two identical messages,
+ * and matching on the words would attach the audio to whichever came first.
+ */
+export function voicePairs(
+  messages: Entry[] | undefined,
+  ids: unknown,
+): { uploadId: string; messageId: number }[] {
+  if (!Array.isArray(messages) || !Array.isArray(ids)) return []
+  const out: { uploadId: string; messageId: number }[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    const messageId = ids[i]
+    if (!m || m.type !== 'voice' || typeof messageId !== 'number') continue
+    const uploadId = idFromUrl(m.audio_url)
+    if (uploadId) out.push({ uploadId, messageId })
+  }
+  return out
+}
+
 type Due = {
   id: string
   application: string
@@ -183,6 +237,8 @@ const backoff = (attempts: number) => Math.min(2 ** attempts, 900) * 1000
 type Sent = {
   /** Accepted. The only case in which anything is marked as delivered. */
   ok: boolean
+  /** One id per message we sent, in our order. Their `message_ids`. */
+  messageIds?: unknown[]
   /** Refused in a way that retrying cannot fix, so stop — but do not pretend. */
   permanent: boolean
   status: number
@@ -206,7 +262,25 @@ async function send(row: Due, submission: number | null): Promise<Sent> {
   const headers: Record<string, string> = KEY ? { 'x-ingest-key': KEY } : {}
   try {
     let res: Response
-    if (row.kind === 'document') {
+    if (row.kind === 'voicenote') {
+      // Their endpoint attaches the audio to a message they already hold, so
+      // there is nothing to send until the transcript has landed and a
+      // submission exists. A 409 is the same answer they give, and is retried.
+      if (!submission)
+        return { ok: false, permanent: false, status: 409, detail: 'no submission_id yet' }
+      const id = String(row.body['uploadId'] ?? '')
+      const upload = await findUpload(id)
+      if (!upload)
+        // Swept at the end of its retention. The words went across with the
+        // transcript; the recording is beyond recovery.
+        return { ok: true, permanent: false, status: 410, detail: 'the recording is no longer held' }
+      const form = new FormData()
+      form.append('submission_id', String(submission))
+      form.append('message_id', String(row.body['messageId'] ?? ''))
+      form.append('sha256', createHash('sha256').update(upload.bytes).digest('hex'))
+      form.append('file', new Blob([upload.bytes as BlobPart], { type: upload.mime }), upload.name)
+      res = await fetch(url, { method: 'POST', headers, body: form, signal: AbortSignal.timeout(TIMEOUT) })
+    } else if (row.kind === 'document') {
       // A document cannot be posted until they have an application to hang it
       // on, and the id for that only exists once a fields call has landed.
       if (!submission)
@@ -243,12 +317,15 @@ async function send(row: Due, submission: number | null): Promise<Sent> {
         signal: AbortSignal.timeout(TIMEOUT),
       })
     }
-    const text = (await res.text()).slice(0, 300)
+    const text = (await res.text()).slice(0, 600)
     let got: number | undefined
+    let ids: unknown[] | undefined
     if (res.ok) {
       try {
-        const n = (JSON.parse(text) as { submission_id?: unknown }).submission_id
-        if (typeof n === 'number') got = n
+        const body = JSON.parse(text) as { submission_id?: unknown; message_ids?: unknown }
+        if (typeof body.submission_id === 'number') got = body.submission_id
+        // One id per message we sent, in our order. What a recording attaches to.
+        if (Array.isArray(body.message_ids)) ids = body.message_ids
       } catch {
         /* a 200 with something other than JSON is still a 200 */
       }
@@ -259,6 +336,7 @@ async function send(row: Due, submission: number | null): Promise<Sent> {
       status: res.status,
       detail: res.ok ? 'ok' : text,
       ...(got ? { submission: got } : {}),
+      ...(ids ? { messageIds: ids } : {}),
     }
   } catch (err) {
     return {
@@ -332,6 +410,20 @@ export async function drain(limit = 20): Promise<{ sent: number; failed: number 
         await acknowledge(row, result)
         await query(`DELETE FROM outbox WHERE id = $1`, [row.id])
         sent++
+        /*
+         * The transcript has landed and they have told us what each message is
+         * called. Anything in it that was a voice note now has somewhere for
+         * its bytes to go, so it is queued — and skipped if it has already been
+         * delivered, which is what stops a re-sent transcript re-sending audio.
+         */
+        if (row.kind === 'fields' && result.messageIds) {
+          const seen = (await known(row.application)).pushed
+          const messages = ((row.body['patch'] ?? {}) as Ingest).messages
+          for (const { uploadId, messageId } of voicePairs(messages, result.messageIds)) {
+            if (seen[`voice.${uploadId}`]) continue
+            await queueVoiceNote(row.application, uploadId, messageId)
+          }
+        }
         continue
       }
       failed++
@@ -417,7 +509,40 @@ export async function backfill(days = 60, limit = 500): Promise<number> {
   )
   let queued = 0
   for (const row of rows ?? []) {
-    const pushed = row.pushed ?? {}
+    let pushed = row.pushed ?? {}
+
+    /*
+     * A recording we still hold that the backend has never been given.
+     *
+     * Their endpoint attaches audio to a *message*, and a message's id only
+     * comes back on the ingest response that carried it. A transcript that has
+     * not changed is never re-sent, so those ids are never learned and the
+     * recordings sit here for ever. Re-sending the transcript is free — they
+     * ignore messages they already hold and report the ids they already gave —
+     * so the transcript is forgotten, queued again, and the ids come with it.
+     *
+     * Only when nothing is already queued for this application: a recording
+     * that has given up after twelve attempts stays in the outbox, which stops
+     * this from re-posting the same transcript every ten minutes for ever.
+     */
+    const recordings = await query<{ id: string }>(
+      `SELECT id FROM uploads WHERE application = $1 AND kind = 'voice'`,
+      [row.id],
+    )
+    const orphans = (recordings ?? []).filter((v) => !pushed[`voice.${v.id}`])
+    if (orphans.length) {
+      const busy = await query<{ n: string }>(
+        `SELECT count(*) AS n FROM outbox WHERE application = $1`,
+        [row.id],
+      )
+      if (Number(busy?.[0]?.n ?? 0) === 0) {
+        await query(`UPDATE applications SET pushed = pushed - 'messages' WHERE id = $1`, [row.id])
+        const { messages: _drop, ...rest } = pushed
+        pushed = rest
+        console.log(`push: ${orphans.length} recording(s) on ${row.id} have no message to attach to`)
+      }
+    }
+
     queued += await queueFields(row.id, row.flow, row.history ?? [], pushed)
 
     /*
