@@ -140,7 +140,6 @@ export const STEP_SPECS: StepSpec[] = [
      * every phone, and gives an answer that can be counted afterwards.
      */
     id: 'city',
-    audio: '/ask-city',
     kind: 'text',
     ask: 'Aakhri sawal. Aap kis sheher mein rehte hain?',
     need: 'Baraye meherbani apne sheher ka naam likhein.',

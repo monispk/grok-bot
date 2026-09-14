@@ -71,11 +71,16 @@ const voice = (base: string): Message => ({
   sources: audioSources(base),
 })
 
-/** A step's question, plus its spoken version when it has one. */
-export const askMessages = (step: Step): Message[] => [
-  bot(step.ask),
-  ...(step.audio ? [voice(step.audio)] : []),
-]
+/**
+ * A step's question, and its voice.
+ *
+ * A recording where one has been made, and Uplift where one has not. The
+ * alternative was a step naming a clip that does not exist: the bubble 404s
+ * and removes itself, so the question arrives silently — which for the rider
+ * this is built for is the question not arriving at all.
+ */
+export const askMessages = (step: Step): Message[] =>
+  step.audio ? [bot(step.ask), voice(step.audio)] : [spoken(step.ask)]
 
 /** The mandatory training video, which every closing message carries. */
 export const TRAINING_VIDEO = 'pofJtK4o2z4'
