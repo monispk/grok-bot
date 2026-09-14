@@ -251,3 +251,46 @@ test('a question is not a yes just because it ends in "hai"', () => {
   assert.equal(readYesNo('haan hai, magar salary kitni hai?'), 'yes')
   assert.equal(readYesNo('nahi hai, kya zaroori hai?'), 'no')
 })
+
+/**
+ * Reported with a screenshot: a rider said JazzCash twice by voice and was
+ * asked the same question both times, in the same words.
+ *
+ * Whisper writes it in Urdu and never the same way twice — جیز کیش, جیس کیش,
+ * جاز کیش — and the reader matched the first half against a single spelling.
+ * The second half does not vary, and کیش belongs to nothing else said here.
+ */
+test('JazzCash is heard however Whisper spells it', () => {
+  for (const said of [
+    'میرے پاس جیس کیش ہے',
+    'جیز کیش',
+    'جاز کیش',
+    'میرے پاس جیزکیش اکاؤنٹ ہے',
+    'jazzcash',
+    'Jazz Cash',
+    'jaz kash hai',
+    'JC',
+  ])
+    assert.equal(readRail(said), 'jazzcash', said)
+})
+
+test('Easypaisa is heard however Whisper spells it', () => {
+  for (const said of [
+    'ایزی پیسہ',
+    'میرے پاس ایزی پیسا ہے',
+    'easypaisa',
+    'easy paisa',
+    'EP',
+  ])
+    assert.equal(readRail(said), 'easypaisa', said)
+})
+
+test('both, and neither, still win over either', () => {
+  assert.equal(readRail('دونوں'), 'both')
+  assert.equal(readRail('جیس کیش اور ایزی پیسہ dono hain'), 'both')
+  // A denial beats a wallet named inside it.
+  assert.equal(readRail('میرے پاس جیس کیش نہیں ہے'), 'neither')
+  assert.equal(readRail('koi nahi'), 'neither')
+  // Not understanding is not an answer.
+  assert.equal(readRail('samajh nahi aaya'), null)
+})

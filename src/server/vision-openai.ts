@@ -1,17 +1,14 @@
 /**
- * The last reader: OpenAI's vision model, for the cards the other two lose.
+ * The reader for a driving licence. The only one.
  *
- * There are three now, and the order is a cost order. PaddleOCR runs here for
- * nothing and handles a Punjab licence in decent light. Qwen on Groq costs a
- * fraction of a cent and handles the provincial formats the label matching was
- * never taught. This one costs perhaps twenty times that per card, and is
- * reached only when both of the others have come back with a number or a date
- * they could not be sure of — a glared laminate, a torn card, a photograph
- * taken at an angle in the dark.
+ * There were three — label matching on a local OCR, then qwen, then this, each
+ * covering for the last — and between them they still got a licence wrong
+ * often enough to matter. Every card has one number and one date that decide
+ * anything, and a reader that is right about them most of the time is a reader
+ * that sends real riders away and waves expired cards through. Cheapness is
+ * not worth much when the answer is acted on.
  *
- * Which is rare, and worth paying for when it happens: the alternative is a
- * rider photographing the same card for the third time, or arriving at an
- * office with a licence nobody knew had expired.
+ * It costs a fraction of a cent per card and takes two to four seconds.
  *
  * The schema and the prompt are from the integration notes supplied with the
  * key, with their reasoning kept: every field is required and an empty string
@@ -19,7 +16,24 @@
  * name wrongly rejects a real applicant; an empty one costs nothing.
  */
 import { Agent, fetch } from 'undici'
-import type { LicenceRead } from './vision.ts'
+
+/**
+ * What a licence says, or null where the card does not say it.
+ *
+ * `isLicence` is the question that matters most: a rider who sends their CNIC
+ * at the licence step must still be asked again, so a reader that extracts
+ * fields from anything would be worse than no reader at all.
+ */
+export type LicenceRead = {
+  isLicence: boolean
+  name: string | null
+  number: string | null
+  cnic: string | null
+  expiry: string | null
+  readable: boolean
+  /** A learner's permit rather than a full licence. Recorded, not acted on. */
+  learner: boolean
+}
 
 const BASE = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
 const KEY = process.env.OPENAI_API_KEY ?? ''
@@ -29,7 +43,7 @@ const TIMEOUT = Number(process.env.OPENAI_VISION_TIMEOUT_SECONDS ?? 40) * 1000
 /** Their limit is larger, but a rider's photograph is already shrunk. */
 const MAX_BYTES = 8 * 1024 * 1024
 
-export const lastResortReady = () =>
+export const licenceReaderReady = () =>
   Boolean(KEY && process.env.OPENAI_VISION_ENABLED !== 'false')
 
 const agent = new Agent({ keepAliveTimeout: 30_000, connections: 4 })
@@ -122,20 +136,20 @@ export function shapeOpenAi(raw: Record<string, unknown>): LicenceRead {
   const printed = str(raw['expiry_date'])
   return {
     isLicence: raw['is_driving_license'] === true,
-    authority: null,
     name: str(raw['holder_name']),
     number: str(raw['license_number']),
     cnic: cnic.length === 13 ? cnic : null,
     expiry: printed ? isoDate(printed) : null,
     readable: raw['unreadable'] !== true,
+    learner: raw['is_learner_permit'] === true,
   }
 }
 
-export async function readLicenceLastResort(
+export async function readLicence(
   bytes: Uint8Array,
   mime: string,
 ): Promise<LicenceRead | null> {
-  if (!lastResortReady() || bytes.byteLength > MAX_BYTES) return null
+  if (!licenceReaderReady() || bytes.byteLength > MAX_BYTES) return null
 
   try {
     const url = `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`
@@ -166,7 +180,7 @@ export async function readLicenceLastResort(
       }),
     })
     if (!res.ok) {
-      console.error('vision (openai):', res.status, (await res.text()).slice(0, 200))
+      console.error('licence reader:', res.status, (await res.text()).slice(0, 200))
       return null
     }
     const body = (await res.json()) as {
@@ -175,14 +189,12 @@ export async function readLicenceLastResort(
     }
     const text = body.choices?.[0]?.message?.content ?? ''
     if (!text) return null
-    console.log(
-      `vision (openai): ${MODEL} read a licence, ${body.usage?.total_tokens ?? '?'} tokens`,
-    )
+    console.log(`licence reader: ${MODEL}, ${body.usage?.total_tokens ?? '?'} tokens`)
     return shapeOpenAi(JSON.parse(text) as Record<string, unknown>)
   } catch (err) {
-    // A timeout is not a statement about the document. Whatever the cheaper
-    // readers made of it stands, and the rider is not failed on our outage.
-    console.error('vision (openai):', err instanceof Error ? err.message : err)
+    // A timeout is not a statement about the document. The card is accepted
+    // unchecked rather than refused: never fail an applicant on our outage.
+    console.error('licence reader:', err instanceof Error ? err.message : err)
     return null
   }
 }

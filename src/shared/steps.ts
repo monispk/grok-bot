@@ -436,8 +436,24 @@ export function readRail(text: string): Rail | null {
   const denied =
     saysNo(text, ['nai', 'nay', 'no', 'none', 'neither', 'nope']) || has('نہیں', 'کوئی')
   const both = has('dono', 'donon', 'both', 'دونوں')
-  const easypaisa = has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*paisa/i.test(text)
-  const jazzcash = has('jazzcash', 'jazz', 'jc', 'جاز') || /jazz\s*cash/i.test(text)
+
+  /*
+   * Whisper writes these in Urdu, and never the same way twice. JazzCash comes
+   * back as جیز کیش, جیس کیش, جاز کیش — two words, sometimes one, and the
+   * variation is all in the first half. Matching the first half is what this
+   * did, against the single spelling جاز, so a rider who said "جیس کیش" was
+   * asked the same question until they gave up.
+   *
+   * The second half does not vary, and belongs to nothing else a rider says
+   * here: کیش is cash and پیس is paisa. Those are what is matched, alongside
+   * whatever Latin the rider might type.
+   */
+  const easypaisa =
+    has('easypaisa', 'easy', 'ep', 'ایزی') || /easy\s*pai?sa/i.test(text) || /پیس/.test(text)
+  const jazzcash =
+    has('jazzcash', 'jazz', 'jaz', 'jc', 'جاز') ||
+    /ja?zz?\s*(cash|kash)/i.test(text) ||
+    /ک[یي]ش/.test(text)
 
   // A denial beats everything: "dono nahi", "koi nahi", "easypaisa nahi hai".
   if (denied) return 'neither'

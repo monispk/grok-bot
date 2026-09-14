@@ -74,9 +74,12 @@ http
       }))
     }
 
-    // Non-streaming JSON calls (name extraction). Treat anything that is not a
-    // question as a name, which is enough to exercise the flow offline.
-    if (body.response_format?.type === 'json_object') {
+    // Non-streaming JSON calls. The licence reader asks for a `json_schema`
+    // and everything else for a `json_object`; both land here, and a vision
+    // call is told apart by its content being an array of parts rather than a
+    // string. Gating this on `json_object` alone sent the licence reader's
+    // request to the chat branch, which echoed the prompt back at it.
+    if (body.response_format?.type === 'json_object' || body.response_format?.type === 'json_schema') {
       const last = body.messages?.at(-1)?.content
       /**
        * A vision call sends content as an array of parts, not a string. This
@@ -92,19 +95,30 @@ http
          */
         const yes = process.env.MOCK_VISION === 'licence'
         res.writeHead(200, { 'content-type': 'application/json' })
+        // The licence reader's schema, which is the only vision call left.
         return res.end(JSON.stringify({
           choices: [{ message: { content: JSON.stringify(
             yes
               ? {
-                  is_licence: true,
-                  authority: 'Traffic Police, Sindh',
-                  name: 'MOCK RIDER',
-                  number: 'SI-24-000000',
-                  cnic: '3520201427267',
-                  expiry: '2030-01-01',
-                  readable: true,
+                  is_driving_license: true,
+                  unreadable: false,
+                  holder_name: 'MOCK RIDER',
+                  license_number: 'SI-24-000000',
+                  cnic_number: '3520201427267',
+                  expiry_date: '01.01.2030',
+                  issue_date: '01.01.2025',
+                  is_learner_permit: false,
                 }
-              : { is_licence: false, readable: true },
+              : {
+                  is_driving_license: false,
+                  unreadable: false,
+                  holder_name: '',
+                  license_number: '',
+                  cnic_number: '',
+                  expiry_date: '',
+                  issue_date: '',
+                  is_learner_permit: false,
+                },
           ) } }],
           usage: { total_tokens: 1300 },
         }))

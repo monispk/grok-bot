@@ -44,6 +44,18 @@ export const SAY = {
     '/say-not-license',
   ),
   /**
+   * A licence sent as a PDF.
+   *
+   * The reader needs pixels, and a scanner app's PDF has no text layer worth
+   * having either. Asking for a photograph is honest and costs the rider
+   * nothing: the card is already in their hand.
+   */
+  licensePhotoPlease: say(
+    'License ki PDF file ke bajaye, card ki seedhi tasveer khenchein — neeche camera ka nishan daba kar.',
+    '/say-license-photo-please',
+    false,
+  ),
+  /**
    * The licence read, but not well enough to trust.
    *
    * A guessed digit in a licence number is worse than no number, and a guessed

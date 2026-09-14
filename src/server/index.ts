@@ -23,8 +23,7 @@ import { extractName } from './extract.ts'
 import { STEP_SPECS } from '../shared/steps.ts'
 import { closeApplication, findOpen, isUuid, loadApplication, saveApplication } from './applications.ts'
 import { transcodeReady } from './audio.ts'
-import { visionReady } from './vision.ts'
-import { lastResortReady } from './vision-openai.ts'
+import { licenceReaderReady } from './vision-openai.ts'
 import { detailPage, listPage, loginPage, type Row as AdminRow, type Waiting } from './admin.ts'
 import { QUESTIONS } from '../shared/quiz.ts'
 import {
@@ -83,9 +82,8 @@ app.get('/healthz', (c) =>
     facial: facialReady(),
     rizq: rizqReady(),
     // The licence reader of last resort, for cards the labels do not know.
-    vision: visionReady(),
-    // The reader of last resort, for cards the other two cannot manage.
-    visionLastResort: lastResortReady(),
+    // The one reader a driving licence goes through.
+    licenceReader: licenceReaderReady(),
     push: pushReady(),
     // The queue's depth as the worker last saw it: 0 means everything the
     // backend is owed has been delivered.

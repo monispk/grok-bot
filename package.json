@@ -12,7 +12,7 @@
     "build:server": "esbuild src/server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --noEmit",
-    "dev:mock": "npm run build && concurrently -k -n mock,tts,rails,app -c gray,gray,gray,cyan \"node scripts/mock-upstream.mjs\" \"node scripts/mock-uplift.mjs\" \"MOCK_PAY=pending node scripts/mock-rails.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 UPLIFT_API_KEY=mock UPLIFT_VOICE_ID=helpdesk-agent UPLIFT_BASE_URL=http://localhost:4011/v1 EASYPAISA_ENABLED=true EASYPAISA_BASE_URL=http://localhost:4012 EASYPAISA_USERNAME=mock EASYPAISA_PASSWORD=mock EASYPAISA_STORE_ID=1 EASYPAISA_INITIATE_TIMEOUT=5 EASYPAISA_INQUIRE_TIMEOUT=5 PORT=3099 node dist/server/index.js\"",
+    "dev:mock": "npm run build && concurrently -k -n mock,tts,rails,app -c gray,gray,gray,cyan \"node scripts/mock-upstream.mjs\" \"node scripts/mock-uplift.mjs\" \"MOCK_PAY=pending node scripts/mock-rails.mjs\" \"GROQ_API_KEY=mock GROQ_BASE_URL=http://localhost:4010 OPENAI_API_KEY=mock OPENAI_BASE_URL=http://localhost:4010 UPLIFT_API_KEY=mock UPLIFT_VOICE_ID=helpdesk-agent UPLIFT_BASE_URL=http://localhost:4011/v1 EASYPAISA_ENABLED=true EASYPAISA_BASE_URL=http://localhost:4012 EASYPAISA_USERNAME=mock EASYPAISA_PASSWORD=mock EASYPAISA_STORE_ID=1 EASYPAISA_INITIATE_TIMEOUT=5 EASYPAISA_INQUIRE_TIMEOUT=5 PORT=3099 node dist/server/index.js\"",
     "test": "tsx --test src/server/*.test.ts",
     "e2e": "tsx e2e/flow.mjs",
     "talk": "tsx e2e/conversations.mjs",

@@ -2,9 +2,8 @@ import { SAY } from '../shared/messages.ts'
 import { inspect, type DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { ocrReady, readCnicFront } from './rozee.ts'
-import { read, SPARSE_WORDS, SURE } from './ocr.ts'
-import { readLicence, visionReady } from './vision.ts'
-import { lastResortReady, readLicenceLastResort } from './vision-openai.ts'
+import { read, SPARSE_WORDS } from './ocr.ts'
+import { licenceReaderReady, readLicence } from './vision-openai.ts'
 
 export type Verification = {
   pass: boolean
@@ -80,6 +79,21 @@ export async function verifyDocument(opts: {
     console.log('rozee ocr unavailable, reading the CNIC locally')
   }
 
+  /**
+   * A driving licence is read by one reader, and it is the vision model.
+   *
+   * There were three — label matching here, then qwen, then this — each one
+   * covering for the last, and between them they still got a licence wrong
+   * often enough to matter. Every card has one number and one date that decide
+   * anything, and a reader that is right about them most of the time is a
+   * reader that sends real riders away and waves expired cards through.
+   *
+   * So the cheap readers are gone from this path rather than kept as a
+   * fallback. A fallback that is wrong is worse than no fallback: it produces
+   * an answer, and an answer is acted on.
+   */
+  if (kind === 'license') return await readLicenceCard(bytes, mime, attempt, expectedName, expectedCnic)
+
   const reading = await read(bytes, mime)
   const isPhoto = mime !== 'application/pdf'
 
@@ -93,147 +107,8 @@ export async function verifyDocument(opts: {
 
   const found = reading && !sparse ? inspect(kind, reading) : null
 
-  /**
-   * A licence that read, but not well enough.
-   *
-   * Two values decide what a licence is worth: the number, which identifies
-   * it, and the expiry, which says whether it is any use. The local reader
-   * loses the expiry about a third of the time — the same card, uploaded three
-   * times, gave the date twice — and when it does read one, it does not always
-   * read it right. A guessed digit in a date has told a rider with a card good
-   * until 2031 that theirs expired in 2021.
-   *
-   * So a card missing either value, or unsure of either, goes to the vision
-   * model. It is the better reader and it is looking at the same pixels, so
-   * what it says replaces a guess and fills a gap. What the local reader was
-   * sure of is kept: it read that off the image, and a model asked to check a
-   * doubtful field should not get to rewrite a confident one.
-   */
-  if (found?.pass && kind === 'license' && isPhoto) {
-    const f = found.fields
-    const shaky = (value: string | null | undefined, score: string | null | undefined) =>
-      !value || (score != null && Number(score) < SURE)
-
-    const filled: Record<string, string | null> = { ...f }
-    const doubtful = () => shaky(filled.number, filled.numberScore) || shaky(filled.expiry, filled.expiryScore)
-
-    /** Takes whatever a reader saw, for the values still in doubt. */
-    const absorb = (seen: Awaited<ReturnType<typeof readLicence>>, who: string) => {
-      if (!seen?.isLicence || !(seen.expiry || seen.number || seen.name)) return false
-      let used = false
-      for (const [key, value, score] of [
-        ['expiry', seen.expiry, filled.expiryScore],
-        ['number', seen.number, filled.numberScore],
-        ['name', seen.name, null],
-        ['cnic', seen.cnic, null],
-      ] as const) {
-        if (!value) continue
-        if (filled[key] && !shaky(filled[key], score)) continue
-        filled[key] = value
-        // Read off the image by a model that looked at it. There is no score
-        // to put on that, and its absence means "no longer in doubt".
-        if (key === 'expiry') delete filled.expiryScore
-        if (key === 'number') delete filled.numberScore
-        used = true
-      }
-      if (used) {
-        filled.readBy = filled.readBy ? `${filled.readBy} + ${who}` : `local OCR + ${who}`
-        console.log(`${who}: corrected or filled a licence the reader was unsure of`)
-      }
-      return used
-    }
-
-    /*
-     * Three readers, cheapest first, each one asked only about what is still
-     * in doubt. Qwen handles the provincial formats the label matching was
-     * never taught; the last resort costs perhaps twenty times as much and is
-     * reached only for the cards it cannot manage either — a glared laminate,
-     * a torn card, a photograph taken at an angle in the dark.
-     */
-    if (doubtful() && visionReady()) absorb(await readLicence(bytes, mime), 'vision')
-    if (doubtful() && lastResortReady())
-      absorb(await readLicenceLastResort(bytes, mime), 'openai vision')
-
-    // Recomputed from whatever the expiry finally is, sure or not.
-    filled.expired = filled.expiry
-      ? String(new Date(filled.expiry).getTime() < Date.now())
-      : null
-
-    /*
-     * Still a guess. One more photograph, with the three things that actually
-     * fix it — light, glare, and holding the camera square — and if that does
-     * not work either, the card goes to the office in the rider's hand rather
-     * than the rider going home.
-     */
-    const unsure = shaky(filled.number, filled.numberScore) || shaky(filled.expiry, filled.expiryScore)
-    if (unsure && attempt < 2)
-      return {
-        pass: false,
-        checked: true,
-        reason: SAY.licenseUnclear.text,
-        missing: ['licence not read clearly'],
-        fields: {},
-        nameVerdict: null,
-        nameScore: null,
-      }
-    if (unsure) {
-      // Accepted, and honest about it. An expiry we are not sure of is not an
-      // expiry: claiming one either way from a guessed date is the mistake
-      // this whole path exists to avoid.
-      filled.unreadable = 'true'
-      if (shaky(filled.expiry, filled.expiryScore)) {
-        filled.expiry = null
-        filled.expired = null
-      }
-    }
-    return settle(filled, true, null, found.missing, expectedName, expectedCnic)
-  }
-
   if (found?.pass)
     return settle(found.fields, true, null, found.missing, expectedName, expectedCnic)
-
-  /**
-   * The labels did not add up. Before refusing a rider, look at the card.
-   *
-   * Only licences, and only photographs. A CNIC has one national format that
-   * Rozee reads properly; a licence has one per province, and the label
-   * matching above knows Punjab's. This is what stops a Sindh or KPK card
-   * being refused for the crime of being printed differently.
-   */
-  if (kind === 'license' && isPhoto && visionReady()) {
-    const seen = await readLicence(bytes, mime)
-    if (seen && seen.isLicence && seen.readable)
-      return settle(
-        {
-          name: seen.name,
-          number: seen.number,
-          cnic: seen.cnic,
-          expiry: seen.expiry,
-          expired: seen.expiry ? String(new Date(seen.expiry).getTime() < Date.now()) : null,
-          authority: seen.authority,
-          readBy: 'vision',
-        },
-        true,
-        null,
-        [],
-        expectedName,
-        expectedCnic,
-      )
-    // It looked and said this is not a licence. That is a firmer answer than
-    // the label matching could give, so it is the one the rider hears.
-    if (seen && !seen.isLicence)
-      return {
-        pass: false,
-        checked: true,
-        reason: SAY.notLicense.text,
-        missing: ['not a driving licence'],
-        fields: {},
-        nameVerdict: null,
-        nameScore: null,
-      }
-    // Unavailable, or it could not read the photograph either: fall through to
-    // whatever the labels made of it.
-  }
 
   if (!reading) return open()
   if (sparse && reading.words.length > 0)
@@ -256,6 +131,87 @@ export async function verifyDocument(opts: {
     expectedName,
     expectedCnic,
   )
+}
+
+/** A refusal the rider can act on: what was wrong, in their own language. */
+const refuse = (reason: string, why: string): Verification => ({
+  pass: false,
+  checked: true,
+  reason,
+  missing: [why],
+  fields: {},
+  nameVerdict: null,
+  nameScore: null,
+})
+
+/**
+ * A driving licence, read by the vision model and nothing else.
+ *
+ * The card is the one document in the flow whose contents decide something:
+ * the number identifies it and the expiry says whether it is any use, and both
+ * have to be right. What is *not* read is as important — an expiry nobody
+ * could make out is left null rather than guessed at, because a guessed date
+ * has told a rider with a card good until 2031 that theirs expired in 2021.
+ *
+ * Two photographs, and no more. The first failure asks for a better picture
+ * with the three things that actually fix one; the second is accepted and
+ * flagged, and the rider brings the card to the office where a person reads it
+ * in a second. Nobody photographs the same licence three times.
+ */
+async function readLicenceCard(
+  bytes: Uint8Array,
+  mime: string,
+  attempt: number,
+  expectedName: string,
+  expectedCnic: string,
+): Promise<Verification> {
+  /*
+   * A PDF, which vision cannot read — it needs pixels, and a scanner app's PDF
+   * has no text layer worth having either. Asking for a photograph is both
+   * honest and trivial for the rider: the card is in their hand.
+   */
+  if (mime === 'application/pdf') return refuse(SAY.licensePhotoPlease.text, 'licence sent as a pdf')
+
+  // Nothing configured, or their API did not answer. Never fail an applicant
+  // on our own outage: the document is kept, the branch visit is the backstop.
+  if (!licenceReaderReady()) {
+    console.warn('licence: no OPENAI_API_KEY — accepting the card unchecked')
+    return open('no licence reader configured')
+  }
+  const seen = await readLicence(bytes, mime)
+  if (!seen) return open('the licence reader did not answer')
+
+  // It looked, and it says this is something else. A firmer answer than any
+  // amount of label matching could give, so it is the one the rider hears.
+  if (!seen.isLicence) return refuse(SAY.notLicense.text, 'not a driving licence')
+
+  const fields: Record<string, string | null> = {
+    name: seen.name,
+    number: seen.number,
+    cnic: seen.cnic,
+    expiry: seen.expiry,
+    expired: seen.expiry ? String(new Date(seen.expiry).getTime() < Date.now()) : null,
+    // Recorded, not acted on. A learner permit is a licensing question for the
+    // office, not something to turn somebody away over in a chat window.
+    ...(seen.learner ? { learner: 'true' } : {}),
+    readBy: 'openai vision',
+  }
+
+  /*
+   * A licence needs both halves. A number with no date cannot be checked for
+   * expiry, and a date with no number cannot be tied to the card it came from.
+   */
+  const complete = Boolean(seen.readable && seen.number && seen.expiry)
+  if (!complete && attempt < 2) return refuse(SAY.licenseUnclear.text, 'licence not read clearly')
+  if (!complete) {
+    fields.unreadable = 'true'
+    // What was not read stays unread. Half a licence is not an expiry claim.
+    if (!seen.expiry) {
+      fields.expiry = null
+      fields.expired = null
+    }
+  }
+  return settle(fields, true, null, [], expectedName, expectedCnic)
 }
 
 /**
