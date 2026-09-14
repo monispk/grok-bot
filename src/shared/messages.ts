@@ -230,6 +230,25 @@ export const SAY = {
    * details are worth keeping, and they are told to come back to this same
    * chat when they have the thing.
    */
+  /**
+   * A required document the rider does not have.
+   *
+   * Not a rejection, and not the end of the conversation: the rest of their
+   * details are still worth having, and they are told to come back to this
+   * same chat. What it must not do is what it used to — repeat the line about
+   * pressing the camera button at someone who has just explained, three
+   * times, that there is nothing to photograph.
+   */
+  needLicense: say(
+    'Foodpanda rider ke liye driving license zaroori hai. Jab aap ka license ban jaye, isi chat par wapas aa kar apni registration mukammal kar lijiye ga.',
+    '/say-need-license',
+    false,
+  ),
+  needCnicDoc: say(
+    'Registration ke liye asli CNIC zaroori hai. Jab aap ke paas apna CNIC ho, isi chat par wapas aa kar apni registration mukammal kar lijiye ga.',
+    '/say-need-cnic-doc',
+    false,
+  ),
   knockoutAck: say(
     'Theek hai, note kar liya. Abhi aap apne documents jama kara dein — jab aap ke paas ye cheez aa jaye, tab isi chat par aa kar registration mukammal kar lijiye ga.',
     '/say-knockout-ack',

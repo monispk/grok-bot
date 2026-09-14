@@ -21,6 +21,13 @@ export type Session = {
   history: Msg[]
   /** Screened out — no smartphone. Kept, so they can resume if that changes. */
   ineligible: boolean
+  /**
+   * Required things the rider does not have yet — a bike, a phone, a driving
+   * licence. Recorded rather than held against them: it decides what the
+   * closing message asks them to bring, and it keeps the fee out of the chat.
+   * Optional because sessions written before it exists are still resumable.
+   */
+  missing?: string[]
   updatedAt: number
 }
 

@@ -36,6 +36,7 @@ import {
   dropRepeat,
   readPhone,
   readRail,
+  saysHasnt,
   readYesNo,
   stripAskBack,
   stripEcho,
@@ -974,6 +975,33 @@ export function App() {
       }
 
       if (current.kind !== 'text') {
+        /*
+         * "I don't have one" is an answer, and it used to be unhearable here.
+         * A rider with no driving licence said so twice by voice and once in
+         * English, and all three times was told to press the camera button —
+         * because an upload step only ever expected a file.
+         *
+         * It is not a rejection. The licence and the CNIC are both required,
+         * so they are recorded as missing, which takes the fee out of the
+         * chat and ends at an office; the rest of the details are still worth
+         * collecting, and the rider is told to come back to this same chat.
+         *
+         * Not the selfie: it is taken here and now, so there is nothing a
+         * rider can fail to have.
+         */
+        const required =
+          current.id === 'license_front'
+            ? SAY.needLicense
+            : current.id === 'cnic_front'
+              ? SAY.needCnicDoc
+              : null
+        if (required && saysHasnt(text)) {
+          if (asksSomething(text)) await runFaq(withUser)
+          say(bot(required.text), bot(SAY.knockoutAck.text))
+          advanceFrom(step, [], { missing: [...(missing ?? []), current.id] })
+          return
+        }
+
         // A document or location was asked for, and text cannot satisfy it. A
         // question is answered, then the step is asked again. Anything else —
         // "Sent", "ho gaya", "ok" — gets the step's own line and nothing more:

@@ -368,6 +368,36 @@ export function saysUnsure(text: string): boolean {
   return UNSURE_URDU.test(text) && /نہیں|نہ\b/.test(text)
 }
 
+/**
+ * "I don't have one", said to a step that asked for a document.
+ *
+ * A rider without a driving licence told us so three times — twice by voice,
+ * once in English — and each time was handed the same line about pressing the
+ * camera button. Nothing in the flow could hear a refusal at an upload step,
+ * because an upload step only ever expected a file.
+ *
+ * The negative is never enough on its own: "nahi samajh aaya" is not a rider
+ * without a licence. So it wants a denial plus either something about having
+ * or not having, or a message short enough that at "send me a photograph of
+ * your licence" it can only mean one thing.
+ */
+const OWNS = /\b(paas|pas|pass|have|has|had|got|own|owns|licence|license|card|cnic)\b/
+const OWNS_URDU = /پاس|لائسنس|لائسینس|لیسنز|لایسنس|شناختی|کارڈ/
+
+export function saysHasnt(text: string): boolean {
+  // "pata nahi" is a rider who did not understand, not one without a licence.
+  if (saysUnsure(text)) return false
+
+  const t = text.toLowerCase().replace(/['’]/g, '')
+  const denied =
+    /نہیں|نہ\b|نا\b/.test(text) ||
+    saysNo(t, ['nai', 'nay', 'no', 'none', 'nope', 'not', 'dont', 'doesnt', 'havent', 'without'])
+  if (!denied) return false
+
+  if (OWNS.test(t) || OWNS_URDU.test(text)) return true
+  return t.split(/\s+/).filter(Boolean).length <= 5
+}
+
 export function saysNo(text: string, extra: readonly string[] = []): boolean {
   const words = text.toLowerCase().split(/[^a-z]+/).filter(Boolean)
   return words.some((w) => NEGATIVE_SHAPE.test(w) || extra.includes(w))
@@ -559,7 +589,9 @@ export function blockedOn(missing: string[], licenceExpired = false): string | n
   const parts: string[] = []
   if (missing.includes('bike')) parts.push('apni bike')
   if (missing.includes('smartphone')) parts.push('touch phone')
-  if (licenceExpired) parts.push('naya license')
+  if (missing.includes('license_front')) parts.push('apna driving license')
+  if (missing.includes('cnic_front')) parts.push('apna CNIC')
+  if (licenceExpired && !missing.includes('license_front')) parts.push('naya license')
   if (parts.length === 0) return null
   if (parts.length === 1) return parts[0]!
   return `${parts.slice(0, -1).join(', ')} aur ${parts[parts.length - 1]}`

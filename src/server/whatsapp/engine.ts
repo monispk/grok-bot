@@ -7,6 +7,7 @@ import {
   submittedLines,
   blockedOn,
   readYesNo,
+  saysHasnt,
   STEP_SPECS,
   dropRepeat,
   stripEcho,
@@ -152,7 +153,8 @@ async function advance(to: string, session: Session, confirm: string, extra: str
   }
   // The fee and the verification results decide which of the four is sent.
   // WhatsApp gets both halves at once: it has no quiz to sit between them.
-  const outcome = session.ineligible ? 'not_eligible' : 'not_verified'
+  const missing = session.missing ?? []
+  const outcome = session.ineligible || missing.length ? 'not_eligible' : 'not_verified'
   const licenceExpired = session.collected['license.expired'] === 'true'
   await say(
     to,
@@ -163,7 +165,7 @@ async function advance(to: string, session: Session, confirm: string, extra: str
     ...branchLines(OFFICES.f8.address, {
       owesFee: true,
       licenceExpired,
-      waitingFor: blockedOn([], licenceExpired),
+      waitingFor: blockedOn(missing, licenceExpired),
     }),
   )
 }
@@ -253,6 +255,24 @@ export async function handleIncoming(raw: Incoming): Promise<void> {
 
   if (msg.type === 'text' && msg.text) {
     if (step.kind !== 'text') {
+      // "I don't have one" is an answer. A required document the rider does
+      // not have is recorded and the flow moves on; repeating the request at
+      // someone who has just explained there is nothing to photograph is what
+      // this used to do.
+      const required =
+        step.id === 'license_front'
+          ? SAY.needLicense
+          : step.id === 'cnic_front'
+            ? SAY.needCnicDoc
+            : null
+      if (required && saysHasnt(msg.text)) {
+        session.history.push({ role: 'user', content: msg.text })
+        session.missing = [...new Set([...(session.missing ?? []), step.id])]
+        await advance(to, session, required.text, [SAY.knockoutAck.text])
+        await sessions.save(session)
+        return
+      }
+
       // A document or a location was asked for; text cannot satisfy it.
       await answerThenReask(to, session, msg.text)
       await sessions.save(session)

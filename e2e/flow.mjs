@@ -1290,6 +1290,38 @@ await check('"Sent" at a document step sends nothing and moves nowhere', async (
   assert.equal(ORDER[step], 'license_front', 'the step moved on without a document')
 })
 
+await check('"I don\'t have one" at the licence step is heard, not re-asked', async () => {
+  /*
+   * Reported with a screenshot: the rider said they had no driving licence
+   * twice by voice and once in English, and all three times was told to press
+   * the camera button. An upload step only ever expected a file.
+   */
+  await primeAt(at('license_front'), [{ role: 'assistant', content: 'License bhejein.' }])
+  await page.waitForSelector('footer textarea')
+  await page.fill('footer textarea', 'mere paas driving license nahi hai')
+  await page.click('footer button.send')
+
+  const told = await settle(async () =>
+    (await stored()).some((m) => /driving license zaroori hai/.test(m.content || '')),
+  )
+  assert.ok(told, 'the rider was never told a licence is required')
+
+  const moved = await settle(async () =>
+    page.evaluate(() => {
+      const f = JSON.parse(localStorage.getItem('grok-bot:flow'))
+      return (f.missing || []).includes('license_front')
+    }),
+  )
+  assert.ok(moved, 'the missing licence was not recorded')
+
+  const log = await stored()
+  const asked = log.filter((m) => /driving license ke front ki tasveer chahiye/.test(m.content || ''))
+  assert.equal(asked.length, 0, 'the step was asked again anyway')
+
+  const step = await page.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).step)
+  assert.ok(step > at('license_front'), 'the flow stayed on a step the rider cannot answer')
+})
+
 await spoken('nothing spins while a line is being read', async () => {
   // The spinner is positioned over its bubble. A voice note still being read has
   // an empty bubble with no height, so the spinner escaped and span over the
