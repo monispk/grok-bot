@@ -485,7 +485,8 @@ export function detailPage(
  *
  * The API answers an unauthenticated request with JSON, which is right for the
  * app and useless for a page — a recruiter opening this saw the word
- * "Unauthorized" and nothing else. The password is the same one the chat uses.
+ * "Unauthorized" and nothing else. ACCESS_PASSWORD is what it wants; since the
+ * chat was opened up, this is the only place it is asked for.
  */
 export function loginPage(wrong = false): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -499,7 +500,7 @@ export function loginPage(wrong = false): string {
 </style></head><body>
 <form class="signin" onsubmit="go(event)">
   <h1>Rider applications</h1>
-  <p><small>Staff only. Same password as the chat.</small></p>
+  <p><small>Staff only.</small></p>
   <input id="p" type="password" placeholder="Password" autofocus autocomplete="current-password">
   <button type="submit">Sign in</button>
   ${wrong ? '<p class="err">That password was not accepted.</p>' : ''}

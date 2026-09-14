@@ -247,8 +247,6 @@ export function App() {
   const [syncedAt, setSyncedAt] = useState(0)
   /** The in-chat front camera, for the selfie: open, refused, or neither. */
   const [selfieCam, setSelfieCam] = useState<'open' | 'refused' | null>(null)
-  const [gate, setGate] = useState({ required: false, authed: true })
-  const [password, setPassword] = useState('')
 
   const abort = useRef<AbortController | null>(null)
   const messagesRef = useRef(messages)
@@ -283,15 +281,6 @@ export function App() {
    * broken, and their being visible is how a rider learns they exist at all.
    */
   const wantsUpload = current?.kind === 'upload'
-
-  useEffect(() => {
-    fetch('/api/session')
-      .then((r) => r.json())
-      .then((s: { authRequired: boolean; authed: boolean }) =>
-        setGate({ required: s.authRequired, authed: s.authed }),
-      )
-      .catch(() => {})
-  }, [])
 
   useEffect(() => {
     messagesRef.current = messages
@@ -387,10 +376,9 @@ export function App() {
    * swapped for another browser halfway through.
    */
   useEffect(() => {
-    if (gate.required && !gate.authed) return
     if (!messages.some((m) => m.role === 'user')) return
     pushSoon(flow, messages, setSyncedAt)
-  }, [flow, messages, gate])
+  }, [flow, messages])
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -857,12 +845,6 @@ export function App() {
               if (acc) setMessages((m) => [...m, fromModel(acc)])
               setStreaming(null)
               setError(message)
-              abort.current = null
-              resolve()
-            },
-            onUnauthorized: () => {
-              setStreaming(null)
-              setGate({ required: true, authed: false })
               abort.current = null
               resolve()
             },
@@ -1599,23 +1581,6 @@ export function App() {
     setError(null)
   }, [])
 
-  const login = useCallback(
-    async (e: Event) => {
-      e.preventDefault()
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password }),
-      })
-      if (res.ok) {
-        setGate({ required: true, authed: true })
-        setPassword('')
-        setError(null)
-      } else setError('Wrong password')
-    },
-    [password],
-  )
-
   const rendered = useMemo(
     () =>
       messages.map((m) =>
@@ -1625,25 +1590,6 @@ export function App() {
       ),
     [messages],
   )
-
-  if (gate.required && !gate.authed) {
-    return (
-      <div class="gate">
-        <form onSubmit={login}>
-          <h1>Foodpanda Delivery Rider Onboarding</h1>
-          <input
-            type="password"
-            value={password}
-            placeholder="Access password"
-            autofocus
-            onInput={(e) => setPassword((e.target as HTMLInputElement).value)}
-          />
-          <button type="submit">Enter</button>
-          {error && <p class="err">{error}</p>}
-        </form>
-      </div>
-    )
-  }
 
   return (
     <div class="shell">

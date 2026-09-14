@@ -712,34 +712,6 @@ textarea::placeholder { color: var(--muted); }
 .fab:disabled { opacity: .45; cursor: default; }
 footer button.stop { background: var(--err); }
 
-/* ---------- password gate ---------- */
-
-.gate { display: grid; place-items: center; height: 100dvh; padding: 24px; }
-.gate form { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); }
-.gate h1 { font-size: 19px; margin: 0 0 4px; text-align: center; }
-
-.gate input {
-  font: inherit;
-  font-size: 16px;
-  min-height: var(--tap);
-  padding: 11px 15px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--fg);
-}
-
-.gate button {
-  border: 0;
-  border-radius: 12px;
-  min-height: var(--tap);
-  cursor: pointer;
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  font-size: 15px;
-}
-
 /* ---------- wider screens ---------- */
 
 @media (min-width: 640px) {

@@ -4,7 +4,6 @@ export type Handlers = {
   onDelta: (text: string) => void
   onDone: () => void
   onError: (message: string) => void
-  onUnauthorized: () => void
 }
 
 const RETRIES = 4
@@ -43,7 +42,6 @@ export async function runTurn(
             body: JSON.stringify({ messages }),
           })
 
-      if (res.status === 401) return h.onUnauthorized()
       if (!res.ok || !res.body) {
         const detail = (await res.json().catch(() => null)) as {
           error?: string

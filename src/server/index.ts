@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, statSync } from 'node:fs'
 import { Hono, type Context } from 'hono'
 import { streamSSE, type SSEStreamingApi } from 'hono/streaming'
-import { authRequired, grant, guard, isAuthed } from './auth.ts'
+import { authRequired, grant, isAuthed, staffOnly } from './auth.ts'
 import { allow } from './limit.ts'
 import {
   completeJson,
@@ -180,8 +180,13 @@ app.get('/api/ping', (c) => {
   return c.body(null, 204)
 })
 
+/**
+ * Who is asking, for the staff pages. The chat no longer consults this: it is
+ * open, and it used to render a password box before a rider could say a word.
+ */
 app.get('/api/session', (c) => c.json({ authed: isAuthed(c), authRequired }))
 
+// How a recruiter gets into /admin. The chat has no way in to ask for.
 app.post('/api/login', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Too many attempts' }, 429)
   const body = await c.req.json().catch(() => ({}) as { password?: string })
@@ -269,7 +274,7 @@ const DOC_KINDS: DocKind[] = ['cnic_front', 'cnic_back', 'license', 'bill']
 const asDocKind = (v: unknown): DocKind | null =>
   typeof v === 'string' && (DOC_KINDS as string[]).includes(v) ? (v as DocKind) : null
 
-app.post('/api/upload', guard, async (c) => {
+app.post('/api/upload', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
 
   const body = await c.req.parseBody().catch(() => null)
@@ -323,7 +328,7 @@ app.post('/api/upload', guard, async (c) => {
   return c.json({ id, name, mime, size, verification, face })
 })
 
-app.get('/api/upload/:id', guard, async (c) => {
+app.get('/api/upload/:id', async (c) => {
   const u = await findUpload(c.req.param('id') ?? '')
   if (!u) return c.json({ error: 'Not found' }, 404)
   c.header('content-type', u.mime)
@@ -333,7 +338,7 @@ app.get('/api/upload/:id', guard, async (c) => {
 })
 
 // Asking for a line to be spoken costs an Uplift call, so it is gated.
-app.post('/api/speak', guard, async (c) => {
+app.post('/api/speak', async (c) => {
   if (!allow(clientIp(c), 'speech')) return c.json({ error: 'Rate limited' }, 429)
   if (!speechReady()) return c.json({ ok: false, reason: 'unavailable' })
 
@@ -361,7 +366,7 @@ app.get('/api/speak/:id', async (c) => {
 const HISTORY_CAP = 256 * 1024
 const digits = (v: unknown) => (typeof v === 'string' ? v.replace(/\D/g, '') : '')
 
-app.put('/api/application/:id', guard, async (c) => {
+app.put('/api/application/:id', async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
   const raw = await c.req.text()
@@ -390,13 +395,13 @@ app.put('/api/application/:id', guard, async (c) => {
   return c.json({ ok, queued })
 })
 
-app.post('/api/application/:id/close', guard, async (c) => {
+app.post('/api/application/:id/close', async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
   return c.json({ ok: await closeApplication(id) })
 })
 
-app.post('/api/application/lookup', guard, async (c) => {
+app.post('/api/application/lookup', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const phone = digits(body['phone'])
@@ -406,7 +411,7 @@ app.post('/api/application/lookup', guard, async (c) => {
   return c.json(found ? { found: true, ...found } : { found: false })
 })
 
-app.post('/api/application/resume', guard, async (c) => {
+app.post('/api/application/resume', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
   const id = body['id']
@@ -417,7 +422,7 @@ app.post('/api/application/resume', guard, async (c) => {
   return snap ? c.json(snap) : c.json({ error: 'Not found' }, 404)
 })
 
-app.post('/api/transcribe', guard, async (c) => {
+app.post('/api/transcribe', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
 
   const body = await c.req.parseBody().catch(() => null)
@@ -445,7 +450,7 @@ app.post('/api/transcribe', guard, async (c) => {
   return c.json({ ...result, id: held?.id })
 })
 
-app.post('/api/extract-name', guard, async (c) => {
+app.post('/api/extract-name', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
   const text = typeof body.text === 'string' ? body.text : ''
@@ -466,7 +471,7 @@ app.post('/api/extract-name', guard, async (c) => {
  * Takes the registration fee. Called once, at the end, and only for a rider
  * whose checks passed — the client decides that; this route does the debit.
  */
-app.post('/api/pay', guard, async (c) => {
+app.post('/api/pay', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as {
     rail?: unknown
@@ -490,7 +495,7 @@ app.post('/api/pay', guard, async (c) => {
  * which takes as long as it takes; the page asks here every few seconds until
  * the rail says paid or failed, or a minute has gone by.
  */
-app.post('/api/pay/status', guard, async (c) => {
+app.post('/api/pay/status', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { rail?: unknown; ref?: unknown }
   const rail = body.rail === 'jazzcash' ? 'jazzcash' : 'easypaisa'
   const ref = typeof body.ref === 'string' ? body.ref.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) : ''
@@ -505,13 +510,13 @@ app.post('/api/pay/status', guard, async (c) => {
  * some networks, so the choice of a vision model has to be made from where the
  * app actually runs.
  */
-app.get('/api/models', guard, async (c) => c.json(await listModels()))
+app.get('/api/models', staffOnly, async (c) => c.json(await listModels()))
 
 /**
  * Sends whatever is waiting, now, rather than at the next tick. For turning the
  * push on without waiting, and for seeing what a failing backend says.
  */
-app.post('/api/push/drain', guard, async (c) => {
+app.post('/api/push/drain', staffOnly, async (c) => {
   if (!pushReady()) return c.json({ error: 'no ROZEENA_ENDPOINT' }, 409)
   const filled = await backfill()
   const result = await drain(100)
@@ -527,11 +532,12 @@ app.post('/api/push/drain', guard, async (c) => {
  * numbers and CNICs.
  */
 /**
- * The recruiter's view. Behind the same password as everything else, because
- * it is a list of real people's names, numbers and CNICs.
+ * The recruiter's view, and the only place a password is still asked for. The
+ * chat is open — a rider cannot be handed a password before they can apply —
+ * but this is a list of real people's names, numbers, CNICs and faces.
  */
 app.get('/admin', async (c) => {
-  // Not `guard`: that answers with JSON, which is right for the app and
+  // Not `staffOnly`: that answers with JSON, which is right for the app and
   // useless for a page. A person gets a way in instead.
   if (!isAuthed(c)) return c.html(loginPage())
   const id = c.req.query('id') ?? ''
@@ -560,7 +566,7 @@ app.get('/admin', async (c) => {
   return c.html(listPage(rows, waiting, pushReady()))
 })
 
-app.get('/api/applications', guard, async (c) => {
+app.get('/api/applications', staffOnly, async (c) => {
   const limit = Math.min(200, Math.max(1, Number(c.req.query('limit') ?? 50)))
   const rows = await query<{
     id: string
@@ -618,7 +624,7 @@ app.get('/api/applications', guard, async (c) => {
   })
 })
 
-app.get('/api/application/:id/push', guard, async (c) => {
+app.get('/api/application/:id/push', staffOnly, async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
   const rows = await query<{ flow: Record<string, unknown>; pushed_at: Record<string, string> }>(
@@ -644,7 +650,7 @@ app.get('/api/application/:id/push', guard, async (c) => {
   })
 })
 
-app.post('/api/wallet', guard, async (c) => {
+app.post('/api/wallet', async (c) => {
   if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
   const body = (await c.req.json().catch(() => ({}))) as { phone?: unknown; name?: unknown }
   const phone = typeof body.phone === 'string' ? body.phone.replace(/\D/g, '') : ''
@@ -653,7 +659,7 @@ app.post('/api/wallet', guard, async (c) => {
   return c.json(await checkWallet(phone, name))
 })
 
-app.post('/api/compare-names', guard, async (c) => {
+app.post('/api/compare-names', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { a?: unknown; b?: unknown }
   const a = typeof body.a === 'string' ? body.a.slice(0, 200) : ''
   const b = typeof body.b === 'string' ? body.b.slice(0, 200) : ''
@@ -662,7 +668,7 @@ app.post('/api/compare-names', guard, async (c) => {
   return c.json({ verdict: r.verdict, score: r.score, reason: r.reason })
 })
 
-app.post('/api/chat', guard, async (c) => {
+app.post('/api/chat', async (c) => {
   if (!allow(clientIp(c)))
     return c.json({ error: 'Slow down a moment — rate limited.' }, 429)
 
@@ -694,7 +700,7 @@ app.post('/api/chat', guard, async (c) => {
   })
 })
 
-app.get('/api/chat/resume', guard, async (c) => {
+app.get('/api/chat/resume', async (c) => {
   const turnId = c.req.query('turn') ?? ''
   const from = Number.parseInt(c.req.query('from') ?? '0', 10) || 0
   sseHeaders(c)

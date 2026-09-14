@@ -2,6 +2,18 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Context, Next } from 'hono'
 import { getCookie, setCookie } from 'hono/cookie'
 
+/**
+ * The password on the staff surfaces.
+ *
+ * It used to be on the chat as well, which meant a rider — the person this
+ * whole thing is for — had to be told a password before they could say their
+ * name. The chat is now open, as a public application form has to be.
+ *
+ * What it still protects is everything that looks at what riders sent: the
+ * admin dashboard, the list of applications, the ops routes. Those hold names,
+ * phone numbers, CNICs, licences and photographs of faces, and nothing about
+ * removing the rider's password makes them any less worth protecting.
+ */
 const PASSWORD = process.env.ACCESS_PASSWORD ?? ''
 export const authRequired = PASSWORD.length > 0
 
@@ -36,7 +48,11 @@ export function grant(c: Context, password: string): boolean {
   return true
 }
 
-export async function guard(c: Context, next: Next) {
+/**
+ * Staff only. Never put this on a route a rider's own page has to call —
+ * that is what used to make the chat ask for a password.
+ */
+export async function staffOnly(c: Context, next: Next) {
   if (!isAuthed(c)) return c.json({ error: 'Unauthorized' }, 401)
   await next()
 }
