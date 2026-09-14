@@ -20,7 +20,7 @@ import {
   quizSay,
   STEPS,
   thanksDoc,
-  thanksGps,
+  thanksOffice,
   thanksName,
 } from './flow.ts'
 import {
@@ -1596,7 +1596,7 @@ export function App() {
    */
   const chooseOffice = useCallback(
     (branch: OfficeId, extra: Record<string, string> = {}) => {
-      advanceFrom(step, [thanksGps()], {
+      advanceFrom(step, [thanksOffice()], {
         branch,
         pickOffice: false,
         collected: { ...collected, 'office.chosen': OFFICES[branch].short, ...extra },

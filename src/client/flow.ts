@@ -177,4 +177,9 @@ export const thanksName = (firstName: string): Message =>
   bot(firstName ? `Shukriya ${firstName}!` : 'Shukriya!')
 
 export const thanksDoc = (): Message => bot('Shukriya, tasveer mil gayi.')
-export const thanksGps = (): Message => bot('Shukriya, location mil gayi.')
+/**
+ * Said when the rider picks their branch. It used to say the location had been
+ * received, which was true when there was a location to receive and became a
+ * small lie the moment the step became a question.
+ */
+export const thanksOffice = (): Message => bot('Shukriya, office chun liya gaya.')
