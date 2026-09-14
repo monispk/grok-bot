@@ -141,6 +141,19 @@ export async function init() {
       sha256      text NOT NULL,
       created_at  timestamptz NOT NULL DEFAULT now()
     )`,
+    /*
+     * A repair, and an idempotent one.
+     *
+     * A selfie is uploaded with no `kind` — that absence, plus a card to check
+     * it against, is how the upload route recognises one — and it was stored
+     * as "unknown" for want of anything better. Which is not a kind the ingest
+     * API accepts, so those rows were refused with a 400 when they were
+     * finally forwarded. Nothing else ever reached this table without a kind.
+     */
+    `UPDATE uploads SET kind = 'selfie' WHERE kind = 'unknown'`,
+    // The rows that carried the old name are refused for good; deleting them
+    // lets the sweep queue the same documents again under the right one.
+    `DELETE FROM outbox WHERE fields @> '["documents.unknown"]'::jsonb`,
   ]
 
   let failed = 0

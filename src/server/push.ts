@@ -170,6 +170,13 @@ type Due = {
   attempts: number
 }
 
+/**
+ * The kinds their document endpoint will take. Anything else is refused with a
+ * 400 and sits in the queue as a permanent failure, so it is not queued at all
+ * — a voice note, or a row left over from before selfies had a name.
+ */
+const DOC_KINDS = ['license', 'cnic_front', 'cnic_back', 'selfie', 'utility_bill']
+
 /** Widening delay, capped: a backend that is down for an hour is not hammered. */
 const backoff = (attempts: number) => Math.min(2 ** attempts, 900) * 1000
 
@@ -422,8 +429,8 @@ export async function backfill(days = 60, limit = 500): Promise<number> {
      * Voice notes are not here: they travel inside the transcript, as a link.
      */
     const held = await query<{ id: string; kind: string }>(
-      `SELECT id, kind FROM uploads WHERE application = $1 AND kind <> 'voice'`,
-      [row.id],
+      `SELECT id, kind FROM uploads WHERE application = $1 AND kind = ANY($2)`,
+      [row.id, DOC_KINDS],
     )
     for (const doc of held ?? []) {
       if (pushed[`documents.${doc.kind}`]) continue
