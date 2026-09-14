@@ -163,7 +163,7 @@ const ago = (d: Date | string) => {
 
 /** How much of an application the backend has, and how much it is still owed. */
 export function syncOf(row: Row, waiting: Waiting[]) {
-  const all = Object.keys(forBackend(row.flow))
+  const all = Object.keys(forBackend(row.id, row.flow, row.history ?? []))
   const delivered = all.filter((f) => f in (row.pushed_at ?? {}))
   const queued = new Set(waiting.filter((w) => w.application === row.id).flatMap((w) => w.fields))
   const pending = all.filter((f) => !delivered.includes(f) && queued.has(f))

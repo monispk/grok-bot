@@ -27,9 +27,17 @@ const pool = URL
       max: 5,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      // Railway's private network terminates TLS at the edge; inside it the
-      // hostname is internal and the certificate will not match.
-      ssl: URL.includes('railway.internal') ? undefined : { rejectUnauthorized: false },
+      /*
+       * Railway's private network terminates TLS at the edge; inside it the
+       * hostname is internal and the certificate will not match. And a plain
+       * `sslmode=disable` in the URL means what it says — without it there was
+       * no way to point this at a Postgres on a laptop, which is where the
+       * push is easiest to prove.
+       */
+      ssl:
+        URL.includes('railway.internal') || /[?&]sslmode=disable\b/.test(URL)
+          ? undefined
+          : { rejectUnauthorized: false },
     })
   : null
 
@@ -117,6 +125,12 @@ export async function init() {
      */
     `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed jsonb NOT NULL DEFAULT '{}'::jsonb`,
     `ALTER TABLE applications ADD COLUMN IF NOT EXISTS pushed_at jsonb NOT NULL DEFAULT '{}'::jsonb`,
+    /*
+     * The id the Rozeena ingest API hands back on the first call for an
+     * application. Every call after it carries this instead of our own id —
+     * without somewhere to keep it, each push would create a second candidate.
+     */
+    `ALTER TABLE applications ADD COLUMN IF NOT EXISTS submission_id bigint`,
 
     `CREATE TABLE IF NOT EXISTS uploads (
       id          text PRIMARY KEY,

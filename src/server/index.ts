@@ -317,13 +317,21 @@ app.post('/api/upload', async (c) => {
     else face = { outcome: 'unavailable', reason: 'the CNIC is no longer held', latency: 0 }
   }
 
-  // The picture itself goes to the backend too, with what we made of it. The
-  // bytes are read when the row is sent, not held in it.
+  /*
+   * The picture itself goes to the backend too, with what we made of it. The
+   * bytes are read when the row is sent, not held in it.
+   *
+   * A selfie arrives with no `kind` — that absence, plus a card to check it
+   * against, is how this route knows it is one. Which meant selfies were
+   * uploaded, matched, stored and then pushed to nobody: the one line that
+   * forwards a document asked for a kind, and a selfie had none.
+   */
   const application = typeof body?.['applicationId'] === 'string' ? body['applicationId'] : ''
-  if (application && kind) void queueDocument(application, id, kind, verification)
+  const sending = kind ?? (againstId ? 'selfie' : null)
+  if (application && sending) void queueDocument(application, id, sending, verification)
   // And kept, so a recruiter can see what the rider sent after the half hour
   // it lives in memory. After the response, never in front of the rider.
-  void keep(result.upload, application || null, kind)
+  void keep(result.upload, application || null, sending)
 
   return c.json({ id, name, mime, size, verification, face })
 })
@@ -391,7 +399,9 @@ app.put('/api/application/:id', async (c) => {
   })
   // Queued, not sent: the rider's next message must not wait on somebody
   // else's server. A worker drains the queue behind them.
-  const queued = ok ? await queueFields(id, flow) : 0
+  // The conversation goes with them: their ingest call takes the transcript in
+  // the same payload, and it is what puts a rider's voice notes back in place.
+  const queued = ok ? await queueFields(id, flow, history) : 0
   return c.json({ ok, queued })
 })
 
@@ -434,12 +444,16 @@ app.post('/api/transcribe', async (c) => {
   const result = await transcribe(bytes, mime)
 
   /**
-   * Kept, like a document, and for the same day.
+   * Kept, like a document, and for as long.
    *
    * A voice note is the rider's own half of the conversation; the transcript
    * is only our reading of it. Whoever reviews an application — or argues
    * with one — needs to be able to hear it, and so does the rider, whose own
    * bubble used to point at a blob URL that died with the page.
+   *
+   * And forwarded, for the same reason: the backend was receiving the result
+   * of a conversation it had never heard. `queueVoice` carries the id the
+   * transcript uses to put the clip back in its bubble.
    */
   const held = hold(mime, bytes)
   if (held) {
@@ -627,10 +641,12 @@ app.get('/api/applications', staffOnly, async (c) => {
 app.get('/api/application/:id/push', staffOnly, async (c) => {
   const id = c.req.param('id')
   if (!isUuid(id)) return c.json({ error: 'Bad id' }, 400)
-  const rows = await query<{ flow: Record<string, unknown>; pushed_at: Record<string, string> }>(
-    `SELECT flow, pushed_at FROM applications WHERE id = $1`,
-    [id],
-  )
+  const rows = await query<{
+    flow: Record<string, unknown>
+    history: unknown[]
+    pushed_at: Record<string, string>
+    submission_id: number | null
+  }>(`SELECT flow, history, pushed_at, submission_id FROM applications WHERE id = $1`, [id])
   const row = rows?.[0]
   if (!row) return c.json({ error: 'Not found' }, 404)
   type Owed = { kind: string; fields: string[]; attempts: number; last_error: string | null }
@@ -638,9 +654,10 @@ app.get('/api/application/:id/push', staffOnly, async (c) => {
     `SELECT kind, fields, attempts, last_error FROM outbox WHERE application = $1 ORDER BY id`,
     [id],
   )
-  const now = forBackend(row.flow)
+  const now = forBackend(id, row.flow, row.history ?? [])
   return c.json({
     endpoint: pushReady(),
+    submissionId: row.submission_id,
     delivered: row.pushed_at ?? {},
     waiting: (owed ?? []).flatMap((o: Owed) => o.fields),
     neverQueued: Object.keys(now).filter(
