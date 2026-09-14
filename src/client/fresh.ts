@@ -42,31 +42,76 @@ export function staleTarget(v: {
   return url.href
 }
 
+/**
+ * How often an open page asks again.
+ *
+ * Checking only at load was not enough. A tab opened a minute before a deploy
+ * keeps the old build for as long as it stays open — which is exactly the
+ * case that kept happening: a fix went out, the rider's page had loaded
+ * moments earlier, and the very conversation that proved the fix ran against
+ * the build without it.
+ */
+const AGAIN_MS = 60_000
+
+/**
+ * Set by the app while a rider is mid-turn — typing, or waiting on an answer.
+ *
+ * A reload is safe: the thread and the flow are both on disk and come back.
+ * What does not come back is the half-typed message in the composer, so a page
+ * that has gone stale waits for a quiet moment rather than taking one.
+ */
+let held = false
+export const holdFresh = (busy: boolean) => {
+  held = busy
+}
+
 export function keepFresh(): void {
   const built = typeof __COMMIT__ === 'string' ? __COMMIT__ : ''
   if (!built) return
 
-  void fetch('/healthz', { cache: 'no-store' })
-    .then((r) => r.json())
-    .then((s: { commit?: string }) => {
-      const live = s.commit ?? ''
-      let tried: string | null = null
-      try {
-        tried = sessionStorage.getItem(TRIED)
-      } catch {
-        return // no storage means no way to stop a loop, so do not start one
-      }
-      const go = staleTarget({ built, live, href: location.href, tried })
-      if (!go) return
-      try {
-        sessionStorage.setItem(TRIED, live)
-      } catch {
-        return
-      }
-      console.warn(`stale page (${built}), the server is on ${live} — reloading`)
-      location.replace(go)
-    })
-    .catch(() => {
-      /* offline, or the check itself failed: the page it has is the page it keeps */
-    })
+  // The first check is the page arriving: there is nothing to interrupt yet,
+  // and the sooner a stale page goes the less of the conversation it spoils.
+  let first = true
+  let stop = false
+
+  const check = () => {
+    if (stop) return
+    void fetch('/healthz', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((s: { commit?: string }) => {
+        const live = s.commit ?? ''
+        let tried: string | null = null
+        try {
+          tried = sessionStorage.getItem(TRIED)
+        } catch {
+          stop = true
+          return // no storage means no way to stop a loop, so do not start one
+        }
+        const go = staleTarget({ built, live, href: location.href, tried })
+        if (!go) return
+        // Stale, but the rider is busy. Leave it; the next check will ask again.
+        if (!first && held) return
+        try {
+          sessionStorage.setItem(TRIED, live)
+        } catch {
+          stop = true
+          return
+        }
+        console.warn(`stale page (${built}), the server is on ${live} — reloading`)
+        location.replace(go)
+      })
+      .catch(() => {
+        /* offline, or the check itself failed: the page it has is the page it keeps */
+      })
+      .finally(() => {
+        first = false
+      })
+  }
+
+  check()
+  setInterval(check, AGAIN_MS)
+  // A phone that was put down and picked up again has probably missed one.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check()
+  })
 }

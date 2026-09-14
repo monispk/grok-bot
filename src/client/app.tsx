@@ -7,6 +7,7 @@ import {
   useState,
 } from 'preact/hooks'
 import { Dashboard } from './dashboard.tsx'
+import { holdFresh } from './fresh.ts'
 import {
   alreadyAnswered,
   askMessages,
@@ -259,6 +260,16 @@ export function App() {
   const recApp = useRef<HTMLInputElement | null>(null)
 
   const busy = streaming !== null || working
+
+  /*
+   * A stale page replaces itself, but not while the rider is mid-turn: the
+   * thread and the flow both survive a reload and the half-typed message in
+   * the composer does not.
+   */
+  useEffect(() => {
+    holdFresh(busy || draft.trim().length > 0)
+  }, [busy, draft])
+
   const current = STEPS[step]
 
   /**
