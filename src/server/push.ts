@@ -16,7 +16,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { query } from './db.ts'
-import { get as getUpload } from './uploads.ts'
+import { find as findUpload } from './uploads.ts'
 
 const ENDPOINT = (process.env.ROZEENA_ENDPOINT ?? '').replace(/\/+$/, '')
 const TOKEN = process.env.ROZEENA_TOKEN ?? ''
@@ -151,11 +151,15 @@ async function send(row: Due): Promise<{ ok: boolean; status: number; detail: st
   try {
     let res: Response
     if (row.kind === 'document') {
-      const upload = getUpload(String(row.body['uploadId'] ?? ''))
+      // From the database if it has fallen out of memory, which it will have:
+      // a document sits in memory for half an hour and the backlog this drains
+      // can be days old. Reading memory only, every document queued before the
+      // endpoint existed was reported as lost while sitting in Postgres.
+      const upload = await findUpload(String(row.body['uploadId'] ?? ''))
       if (!upload)
-        // The bytes are gone — held for thirty minutes and not forwarded in
-        // time. The backend is told what was checked; the picture itself is
-        // beyond recovery, and saying so is better than retrying forever.
+        // Genuinely gone: swept at the end of its retention. The backend is
+        // told what was checked; the picture itself is beyond recovery, and
+        // saying so is better than retrying forever.
         return { ok: true, status: 410, detail: 'the document is no longer held' }
       const form = new FormData()
       form.append('applicationId', String(row.body['applicationId'] ?? ''))
