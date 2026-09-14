@@ -40,6 +40,7 @@ export type Stored = {
   video?: string
   place?: { lat?: number; lng?: number; address?: string }
   at?: number
+  seq?: number
 }
 
 export type Entry = {
@@ -47,8 +48,19 @@ export type Entry = {
   /** The words: what was typed, what was said, or the label of the button tapped. */
   content: string
   type: 'text' | 'voice' | 'audio' | 'document' | 'image' | 'video' | 'location' | 'choice'
-  /** ISO 8601, from the rider's own phone. Absent if the bubble predates stamping. */
+  /**
+   * ISO 8601, always UTC, from the rider's own phone. Absent only on a bubble
+   * that predates stamping.
+   */
   at?: string
+  /**
+   * Where this message sits in the conversation, counting from one.
+   *
+   * `at` alone cannot order a thread: a batch of lines stamped together shares
+   * a millisecond. This is given once when the bubble is created and never
+   * changes, so it survives a reload and the trimming of older messages.
+   */
+  seq?: number
   /** A voice note, fetchable — the ingest document endpoint will not take audio. */
   audio_url?: string
   /** For a document, which one, so it lines up with the file sent separately. */
@@ -88,9 +100,15 @@ const docKind = (m: Stored): string | undefined => {
 
 export function entry(m: Stored): Entry | null {
   const role = m.role === 'user' ? 'user' : 'assistant'
+  // toISOString is UTC by definition — the Z is the point. A missing `at` is
+  // the thing to avoid: the far end stamps those with its own local clock.
   const at = typeof m.at === 'number' ? new Date(m.at).toISOString() : undefined
   const content = (m.content ?? '').trim()
-  const base = { role, ...(at ? { at } : {}) } as const
+  const base = {
+    role,
+    ...(at ? { at } : {}),
+    ...(typeof m.seq === 'number' ? { seq: m.seq } : {}),
+  } as const
 
   if (m.kind === 'audio') {
     const src = audioSrc(m)

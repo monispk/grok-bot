@@ -24,6 +24,15 @@ export type Message = {
   tmp?: string
   /** Transient: the upload is still in flight. */
   pending?: boolean
+  /**
+   * Where this message sits in the conversation, counting from one.
+   *
+   * `at` is not enough to sort by: a batch of lines stamped together shares a
+   * millisecond, and the backend has no way to put them back in order. Given
+   * once, when the bubble is created, and never changed — so a message that
+   * has already been delivered is not rewritten into a new one.
+   */
+  seq?: number
 }
 
 export type FlowState = {
@@ -192,15 +201,22 @@ export function keepable(messages: Message[]): Message[] {
       )
       // A line that was never actually spoken is a spinner, not a voice note.
       .filter((m) => !(m.kind === 'audio' && m.speak && !m.sources))
-      // A rider's own voice note used to live only in a blob URL, which dies
-      // with the page, so it was kept as plain text rather than a player
-      // pointing nowhere. Now the clip is stored when it is transcribed: keep
-      // the player when it points somewhere real, and fall back to the words.
+      /*
+       * A rider's own voice note used to live only in a blob URL, which dies
+       * with the page, so it was kept as plain text rather than a player
+       * pointing nowhere. Now the clip is stored when it is transcribed: keep
+       * the player when it points somewhere real, and fall back to the words.
+       *
+       * Rebuilt field by field, which quietly threw away `at` — so every voice
+       * note reached the backend with no time on it and was stamped with the
+       * clock at the far end instead. Spread and drop what cannot survive,
+       * rather than listing what can.
+       */
       .map((m) =>
         m.role === 'user' && m.kind === 'audio'
           ? m.sources?.some((s) => !s.src.startsWith('blob:'))
-            ? { role: m.role, content: m.content, kind: m.kind, src: m.src, sources: m.sources }
-            : { role: m.role, content: m.content }
+            ? { ...m, pending: false, tmp: undefined, speak: undefined }
+            : { role: m.role, content: m.content, at: m.at, id: m.id, seq: m.seq }
           : m.src?.startsWith('blob:') || m.pending
             ? { ...m, src: m.src?.startsWith('blob:') ? undefined : m.src, pending: false, tmp: undefined }
             : m,

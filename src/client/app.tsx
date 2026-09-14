@@ -116,10 +116,29 @@ function outcomeFor(f: store.FlowState): Outcome {
   return 'verified_unpaid'
 }
 
+/**
+ * Gives a new bubble its time, its identity, and its place in the thread.
+ *
+ * The place is counted from whatever the thread already holds rather than from
+ * a counter of its own, so it survives a reload, a resumed application, and the
+ * trimming of old messages — all three of which reset a module-level counter
+ * and none of which change what came before.
+ *
+ * A message that already has both is returned untouched. Rewriting a delivered
+ * message is how one becomes two at the other end.
+ */
 const stamp = (list: Message[]): Message[] => {
   let now = 0
+  let place = list.reduce((n, m) => Math.max(n, m.seq ?? 0), 0)
   return list.map((m) =>
-    m.at && m.id ? m : { ...m, at: m.at ?? (now ||= Date.now()), id: m.id ?? `m${++seq}` },
+    m.at && m.id
+      ? m
+      : {
+          ...m,
+          at: m.at ?? (now ||= Date.now()),
+          id: m.id ?? `m${++seq}`,
+          seq: m.seq ?? ++place,
+        },
   )
 }
 

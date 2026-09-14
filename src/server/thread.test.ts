@@ -127,3 +127,37 @@ test('the office pin keeps its coordinates', () => {
 test('reading the same thread twice produces the same messages', () => {
   assert.equal(JSON.stringify(asMessages(HISTORY)), JSON.stringify(asMessages(HISTORY)))
 })
+
+/**
+ * Two things the backend needs to put a thread back in order, and one of them
+ * was being thrown away.
+ *
+ * `keepable` rebuilt a rider's voice note field by field and lost `at` with
+ * everything else it did not list, so every recording arrived with no time and
+ * was stamped by the clock at the far end — in Pakistan time, while everything
+ * around it was UTC.
+ */
+test('every message carries a UTC time and its place in the thread', () => {
+  const out = asMessages([
+    { role: 'assistant', content: 'Aap ka number?', at: 1_760_000_000_000, seq: 7 },
+    { role: 'user', content: '03219459738', at: 1_760_000_001_000, seq: 8 },
+  ])
+  assert.equal(out[0]!.at, '2025-10-09T08:53:20.000Z')
+  assert.ok(out[0]!.at!.endsWith('Z'), 'the time is not UTC')
+  assert.deepEqual(out.map((m) => m.seq), [7, 8])
+})
+
+/**
+ * A batch of lines stamped together shares a millisecond, which is exactly
+ * when the order matters and exactly when `at` cannot supply it.
+ */
+test('lines stamped in the same millisecond are still ordered', () => {
+  const same = 1_760_000_000_000
+  const out = asMessages([
+    { role: 'assistant', content: 'Pehla', at: same, seq: 1 },
+    { role: 'assistant', content: 'Doosra', at: same, seq: 2 },
+    { role: 'assistant', content: 'Teesra', at: same, seq: 3 },
+  ])
+  assert.equal(new Set(out.map((m) => m.at)).size, 1, 'the times were meant to collide')
+  assert.deepEqual(out.map((m) => m.seq), [1, 2, 3])
+})
