@@ -108,3 +108,30 @@ test('nothing is paired when the ids did not arrive', () => {
   assert.deepEqual(voicePairs(messages as never, [null]), [])
   assert.deepEqual(voicePairs(undefined, [1]), [])
 })
+
+/**
+ * Their side creates the candidate on the first call and keys it by
+ * `from_number`. A live rider's first push happens a second after they type
+ * their name — two questions before the phone exists — so every application
+ * collected through the chat was created with no number at all, while the ones
+ * that were backfilled looked right because their first call carried
+ * everything at once.
+ */
+test('an application with no number yet is not sent, and one with a number is', () => {
+  const early = { step: 1, firstName: 'Saman', fullName: 'Saman Arif', collected: {} }
+  assert.equal(forBackend(ID, early, [])['from_number'], undefined)
+
+  const withPhone = { ...early, step: 3, phone: '923219459738' }
+  assert.equal(forBackend(ID, withPhone, [])['from_number'], '923219459738')
+})
+
+test('the number is never derived from anything but the number', () => {
+  // A CNIC is thirteen digits and a mobile is twelve; nothing should turn one
+  // into the other, at any point, in either direction.
+  const f = { step: 4, fullName: 'Saman Arif', phone: '923219459738', cnic: '3520224890294', collected: {} }
+  const flat = forBackend(ID, f, [])
+  assert.equal(flat['from_number'], '923219459738')
+  assert.equal(flat['collected.phone'], '923219459738')
+  assert.equal(flat['collected.cnic'], '3520224890294')
+  assert.notEqual(flat['from_number'], flat['collected.cnic'])
+})

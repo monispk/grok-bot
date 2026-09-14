@@ -99,12 +99,31 @@ export async function queueFields(
   id: string,
   flow: Record<string, unknown>,
   history: unknown[] = [],
-  sent?: Record<string, unknown>,
+  known_?: Row,
 ): Promise<number> {
   if (!pushReady()) return 0
-  const seen = sent ?? (await known(id)).pushed ?? {}
+  const row = known_ ?? (await known(id))
+  const seen = row.pushed ?? {}
 
   const full = ingestBody(id, flow, history)
+
+  /*
+   * Nothing is created without a number to reach the rider on.
+   *
+   * Their side creates the candidate — and the conversation it belongs to — on
+   * the first call, and keys it by `from_number`. A live rider's first push
+   * happens a second and a half after they type their *name*, which is two
+   * questions before the phone exists, so every application collected through
+   * the chat was created with no number at all. The twelve that were
+   * backfilled looked right precisely because their first call carried the
+   * whole application at once.
+   *
+   * So the first call waits for the phone. Nothing is lost by waiting: the
+   * application is already in our Postgres, the sweep queues it the moment the
+   * number arrives, and a lead nobody can telephone was never a lead.
+   */
+  if (!row.submission_id && !full.from_number) return 0
+
   const changed = delta(trackable(full, sha), seen)
   const names = Object.keys(changed)
   if (!names.length) return 0
@@ -115,6 +134,10 @@ export async function queueFields(
   // carried whole whenever that hash has moved.
   const patch = unflatten(changed) as Ingest
   if ('messages' in changed) patch.messages = full.messages
+  // And the number on every call, changed or not. It costs a dozen bytes and
+  // it is the field their record is keyed by; being certain they have it beats
+  // being clever about not repeating ourselves.
+  if (full.from_number) patch.from_number = full.from_number
 
   await query(
     `INSERT INTO outbox (application, endpoint, idempotency, body, kind, fields)
@@ -500,8 +523,9 @@ export async function backfill(days = 60, limit = 500): Promise<number> {
     flow: Record<string, unknown>
     history: unknown[]
     pushed: Record<string, unknown>
+    submission_id: number | null
   }>(
-    `SELECT id, flow, history, pushed FROM applications
+    `SELECT id, flow, history, pushed, submission_id FROM applications
       WHERE updated_at > now() - ($1 || ' days')::interval
       ORDER BY updated_at DESC
       LIMIT $2`,
@@ -543,7 +567,11 @@ export async function backfill(days = 60, limit = 500): Promise<number> {
       }
     }
 
-    queued += await queueFields(row.id, row.flow, row.history ?? [], pushed)
+    queued += await queueFields(row.id, row.flow, row.history ?? [], {
+      id: row.id,
+      pushed,
+      submission_id: row.submission_id === null ? null : Number(row.submission_id),
+    })
 
     /*
      * And the documents, which only ever queued at the moment they were
