@@ -102,6 +102,16 @@ export type FlowState = {
   /** The fee has already been offered a second attempt. Only ever one. */
   payRetried?: boolean
   /**
+   * The face check is running, between the last answer and the ending.
+   * Nothing is decided and no fee is taken while this is true.
+   */
+  verifying?: boolean
+  /**
+   * The face check has had its final say — matched, did not, or could not be
+   * run. Stops the ending asking for it a second time.
+   */
+  faceChecked?: boolean
+  /**
    * An earlier application on this number, found when the number was given.
    * The rider is being asked whether to carry on with it; nothing moves until
    * they answer.

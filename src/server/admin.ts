@@ -23,6 +23,8 @@ export type Row = {
   pushed_at: Record<string, string>
 }
 
+import { MIN_SIMILARITY } from './rozee.ts'
+
 export type Waiting = { application: string; fields: string[]; attempts: number; last_error: string | null }
 
 const esc = (v: unknown) =>
@@ -127,6 +129,23 @@ export function bubble(m: Msg): string {
     )
 
   return wrap(words ? esc(words) : '')
+}
+
+/**
+ * The face check, said in full.
+ *
+ * It is the criterion a rider is actually verified by — the selfie against the
+ * photograph on their CNIC — and the number behind it decides the answer, so
+ * the number is shown, along with the bar it had to clear. The bar comes from
+ * the one place that sets it rather than being written out again here.
+ */
+export function faceMatch(recorded: string | undefined): string {
+  if (!recorded) return 'not run'
+  const score = /\(([\d.]+)\)/.exec(recorded)?.[1]
+  if (!score) return recorded
+  return Number(score) >= MIN_SIMILARITY
+    ? `matched — ${score} of 100`
+    : `no match — ${score} of 100, below ${MIN_SIMILARITY}`
 }
 
 /** Pakistan time, because that is where everyone reading this is. */
@@ -362,7 +381,7 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
   <div class="card"><b>${pushOn ? 'on' : 'off'}</b><span>backend push</span></div>
 </div>
 <div class="tablewrap"><table>
-<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face</th><th>Licence</th>
+<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face Match</th><th>Licence</th>
 <th>Wallet</th><th>Docs</th><th>Fee</th><th>Quiz</th><th>Synced</th></tr></thead>
 <tbody>${body || '<tr><td colspan="11"><small>No applications yet.</small></td></tr>'}</tbody>
 </table></div>
@@ -428,7 +447,7 @@ export function detailPage(
   </div>
 
   <div class="panel"><h2>Verification</h2>
-    ${kv('Selfie matches CNIC', c['checks.faceMatch'])}
+    ${kv('Face Match', faceMatch(c['checks.faceMatch']))}
     ${kv('Licence name vs CNIC', c['checks.licenceVsCnic'])}
     ${kv('Wallet in rider’s name', c['checks.wallet'])}
     ${kv('Licence number', c['license.number'])}

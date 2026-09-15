@@ -19,7 +19,15 @@ const OCR_KEY = process.env.WA_OCR_APP_KEY ?? ''
 const FACIAL_URL = process.env.WA_FACIAL_API_URL ?? 'https://secure.rozee.pk/rest/api/facial'
 const FACIAL_ID = process.env.WA_FACIAL_APP_ID ?? ''
 const FACIAL_KEY = process.env.WA_FACIAL_APP_KEY ?? ''
-const MIN_SIMILARITY = Number(process.env.FACIAL_MIN_SIMILARITY ?? 60)
+/**
+ * The score at which two photographs are the same person.
+ *
+ * Below it the match is not trusted and the rider is verified by a person at
+ * the office instead — a wasted journey for them — so it is not a number to
+ * guess at, and it is read from one place rather than repeated wherever the
+ * verdict is displayed or forwarded.
+ */
+export const MIN_SIMILARITY = Number(process.env.FACIAL_MIN_SIMILARITY ?? 60)
 
 export const ocrReady = () => Boolean(OCR_ID && OCR_KEY)
 export const facialReady = () => Boolean(FACIAL_ID && FACIAL_KEY)

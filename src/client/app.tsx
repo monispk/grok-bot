@@ -827,6 +827,30 @@ export function App() {
         while (STEPS[j] && alreadyAnswered(STEPS[j]!, merged)) j++
         merged.step = j
         const next = STEPS[j]
+
+        /*
+         * Everything is in. Before anything is decided, the face check gets
+         * its final say.
+         *
+         * It has usually already run, at the selfie step, where a mismatch
+         * could be answered with a better photograph. What this catches is the
+         * check that never ran — a service that timed out, or a card that had
+         * aged out. Left alone, that rider reaches the end unverified through
+         * no fault of their own: charged nothing, and sent to an office to
+         * prove by hand what a second of API time would have settled.
+         *
+         * Nothing is decided and no fee is taken while it runs.
+         */
+        const decided = (merged.collected['checks.faceMatch'] ?? '').startsWith('match')
+        const canCheck =
+          Boolean(merged.collected['cnic_front.uploadId']) &&
+          Boolean(merged.collected['selfie.uploadId'])
+        if (!next && !merged.noOffice && !merged.ineligible && !decided && !merged.faceChecked && canCheck) {
+          merged.verifying = true
+          setMessages((m) => append(m, [...extra, bot(SAY.verifyingFace.text)]))
+          return merged
+        }
+
         // Collection just ended. A verified rider with a wallet is asked to pay
         // before anything is concluded; everyone else is concluded here.
         // A rider with both accounts is charged on Easypaisa: it is the rail
@@ -885,6 +909,46 @@ export function App() {
     },
     [],
   )
+
+  /**
+   * The last check, run once, between the final answer and the ending.
+   *
+   * However it comes back — matched, did not match, or could not be run — the
+   * answer is recorded and the flow moves on. A rider is never left waiting on
+   * somebody else's service, and an outage is never held against them: it
+   * reads as "not checked", which sends them to an office rather than taking
+   * their money on a verification we do not have.
+   */
+  const checking = useRef(false)
+  useEffect(() => {
+    if (!flow.verifying || checking.current) return
+    checking.current = true
+    void (async () => {
+      let mark = 'not checked'
+      try {
+        const res = await fetch('/api/face-check', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            cnic: collected['cnic_front.uploadId'],
+            selfie: collected['selfie.uploadId'],
+          }),
+        })
+        const got = (await res.json()) as { outcome?: string; score?: number }
+        const score = typeof got.score === 'number' ? got.score.toFixed(1) : '?'
+        if (got.outcome === 'pass') mark = `match (${score})`
+        else if (got.outcome === 'fail') mark = `mismatch (${score})`
+      } catch {
+        /* left as "not checked"; the office verifies by hand */
+      }
+      checking.current = false
+      advanceFrom(STEPS.length - 1, [], {
+        verifying: false,
+        faceChecked: true,
+        collected: { ...collected, 'checks.faceMatch': mark },
+      })
+    })()
+  }, [flow.verifying, collected, advanceFrom])
 
   /** Answer a question from the FAQ. Resolves when the reply is complete. */
   const runFaq = useCallback(

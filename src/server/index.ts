@@ -14,7 +14,7 @@ import {
   type Msg,
   listModels,
 } from './provider.ts'
-import { accept, find as findUpload, get as getUpload, hold, keep } from './uploads.ts'
+import { accept, find as findUpload, hold, keep } from './uploads.ts'
 import type { DocKind } from './fields.ts'
 import { compareNames } from './names.ts'
 import { warmOcr } from './ocr.ts'
@@ -236,7 +236,10 @@ app.post('/api/upload', async (c) => {
   let face: Awaited<ReturnType<typeof matchFace>> | null = null
   const againstId = typeof body?.['against'] === 'string' ? body['against'] : ''
   if (kind === null && againstId && facialReady()) {
-    const card = getUpload(againstId)
+    // From the database when it has fallen out of memory, which it will have
+    // for any rider who took more than half an hour over their documents.
+    // Reading memory alone left those riders unverified on our own retention.
+    const card = await findUpload(againstId)
     if (card) face = await matchFace(card.bytes, bytes)
     else face = { outcome: 'unavailable', reason: 'the CNIC is no longer held', latency: 0 }
   }
@@ -399,6 +402,33 @@ app.post('/api/city', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
   const text = typeof body.text === 'string' ? body.text : ''
   return c.json(await readCity(text))
+})
+
+/**
+ * The face check, run again once everything has been collected.
+ *
+ * It runs first at the selfie step, where a mismatch can be answered with
+ * another photograph. This is the second pass: a rider whose check could not be
+ * run at all — the service timed out, or the card had aged out of memory before
+ * that was fixed — would otherwise reach the end unverified through no fault of
+ * their own, be charged nothing, and be sent to an office to prove by hand
+ * something this could have settled in a second.
+ *
+ * Takes the two uploads by id. Both are on disk for sixty days, so this works
+ * however long the rider took.
+ */
+app.post('/api/face-check', async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const cnicId = typeof body['cnic'] === 'string' ? body['cnic'] : ''
+  const selfieId = typeof body['selfie'] === 'string' ? body['selfie'] : ''
+  if (!facialReady())
+    return c.json({ outcome: 'unavailable', reason: 'no credentials', latency: 0 })
+  const card = await findUpload(cnicId)
+  const selfie = await findUpload(selfieId)
+  if (!card || !selfie)
+    return c.json({ outcome: 'unavailable', reason: 'the pictures are no longer held', latency: 0 })
+  return c.json(await matchFace(card.bytes, selfie.bytes))
 })
 
 app.post('/api/extract-name', async (c) => {

@@ -7,6 +7,7 @@
  * translation is where that lives, not scattered through the delivery code.
  */
 import { STEP_SPECS } from '../shared/steps.ts'
+import { MIN_SIMILARITY } from './rozee.ts'
 import { asMessages, type Entry } from './thread.ts'
 
 export type Phase = 'collecting' | 'validating' | 'complete' | 'abandoned'
@@ -114,6 +115,10 @@ export function ingestBody(
         verified: face.startsWith('match'),
         name_on_cnic: c['cnic_front.name'] ?? null,
         face_match: face || null,
+        // The number the verdict came from, and the bar it had to clear. A
+        // recruiter reading "no match" deserves to see how close it was.
+        face_match_score: Number(/\(([\d.]+)\)/.exec(face)?.[1] ?? '') || null,
+        face_match_minimum: MIN_SIMILARITY,
         licence_vs_cnic: c['checks.licenceVsCnic'] ?? null,
       },
     }

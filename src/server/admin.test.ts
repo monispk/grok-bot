@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { bubble, uploaded } from './admin.ts'
+import { bubble, faceMatch, uploaded } from './admin.ts'
+import { MIN_SIMILARITY } from './rozee.ts'
 
 /**
  * The admin thread is the record of an application.
@@ -120,4 +121,22 @@ test('a document kind nobody has listed yet is still shown', () => {
     found.map((d) => d.kind),
     ['license', 'vehicle_book'],
   )
+})
+
+/**
+ * The face check is the criterion a rider is verified by, and the number
+ * behind it decides the answer — so a recruiter sees the number, not a tick.
+ */
+test('the face match is reported with its score and the bar it had to clear', () => {
+  assert.equal(faceMatch('match (99.0)'), 'matched — 99.0 of 100')
+  assert.equal(faceMatch(`match (${MIN_SIMILARITY}.0)`), `matched — ${MIN_SIMILARITY}.0 of 100`)
+  assert.equal(
+    faceMatch('mismatch (41.2)'),
+    `no match — 41.2 of 100, below ${MIN_SIMILARITY}`,
+  )
+})
+
+test('a check that never ran says so, rather than reading as a failure', () => {
+  assert.equal(faceMatch(undefined), 'not run')
+  assert.equal(faceMatch('not checked'), 'not checked')
 })

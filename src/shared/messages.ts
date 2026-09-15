@@ -44,6 +44,18 @@ export const SAY = {
     '/say-not-license',
   ),
   /**
+   * Said while the last check runs.
+   *
+   * A second or two of silence at the end of a ten-minute conversation reads
+   * as the thing having crashed, and a rider who reloads then is a rider who
+   * has to be found again by name and number.
+   */
+  verifyingFace: say(
+    'Ek lamha — aap ki selfie ka CNIC ki tasveer se milan kiya ja raha hai.',
+    '/say-verifying-face',
+    false,
+  ),
+  /**
    * A licence sent as a PDF.
    *
    * The reader needs pixels, and a scanner app's PDF has no text layer worth
