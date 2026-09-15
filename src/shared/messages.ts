@@ -265,7 +265,7 @@ export const SAY = {
     false,
   ),
   askAccountNumber: say(
-    'Ab apna account number likh dein. Poora number likhein, jaisa bank ki app ya cheque book par likha hai.',
+    'Ab apna account number likh dein. Poora number likhein, jaisay bank ki app ya cheque book par likha hai.',
     '/say-ask-account-number',
     false,
   ),
