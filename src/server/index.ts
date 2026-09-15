@@ -45,8 +45,6 @@ import { verifyDocument } from './verify.ts'
 import { facialReady, matchFace, ocrReady } from './rozee.ts'
 import { checkWallet, rizqReady } from './rizq.ts'
 import { anyRailReady, inquire, newRef, payEasypaisa, payJazzcash } from './pay.ts'
-import { handleIncoming, type Incoming } from './whatsapp/engine.ts'
-import { validSignature, VERIFY_TOKEN, whatsappReady } from './whatsapp/client.ts'
 import { getTurn, startTurn, subscribe, type TurnEvent } from './turns.ts'
 import { forModel } from '../shared/wire.ts'
 
@@ -69,7 +67,6 @@ app.get('/healthz', (c) =>
     ok: true,
     model: MODEL,
     commit: COMMIT,
-    whatsapp: whatsappReady,
     speech: speechReady(),
     db: dbReady(),
     fee: FEE_PAISA,
@@ -92,87 +89,6 @@ app.get('/healthz', (c) =>
     ...(feeOverridden ? { feeChargedInstead: CHARGE_PAISA } : {}),
   }),
 )
-
-// ---------------------------------------------------------------- WhatsApp --
-// Meta calls these, so they sit outside the password gate. Authenticity comes
-// from the signature instead.
-
-/** Meta's subscription handshake: echo the challenge if the token matches. */
-app.get('/webhook/whatsapp', (c) => {
-  const mode = c.req.query('hub.mode')
-  const token = c.req.query('hub.verify_token')
-  const challenge = c.req.query('hub.challenge') ?? ''
-  if (mode === 'subscribe' && VERIFY_TOKEN && token === VERIFY_TOKEN)
-    return c.text(challenge, 200)
-  return c.text('Forbidden', 403)
-})
-
-// Meta retries anything it does not see acknowledged quickly, and it redelivers
-// on retry, so ids are remembered to avoid running a step twice.
-const handled = new Set<string>()
-setInterval(() => handled.clear(), 30 * 60_000).unref()
-
-app.post('/webhook/whatsapp', async (c) => {
-  const raw = await c.req.text()
-  if (!validSignature(raw, c.req.header('x-hub-signature-256'))) {
-    console.error('whatsapp: rejected a webhook with a bad signature')
-    return c.text('Forbidden', 403)
-  }
-
-  let body: unknown
-  try {
-    body = JSON.parse(raw)
-  } catch {
-    return c.text('Bad Request', 400)
-  }
-
-  const incoming = parseWebhook(body)
-
-  // Acknowledge first: OCR and a model call take longer than Meta will wait.
-  void (async () => {
-    for (const msg of incoming) {
-      if (handled.has(msg.id)) continue
-      handled.add(msg.id)
-      try {
-        await handleIncoming(msg)
-      } catch (err) {
-        console.error('whatsapp: handler failed', err instanceof Error ? err.message : err)
-      }
-    }
-  })()
-
-  return c.text('EVENT_RECEIVED', 200)
-})
-
-function parseWebhook(body: unknown): Incoming[] {
-  const out: Incoming[] = []
-  const b = body as {
-    entry?: { changes?: { value?: { messages?: Record<string, any>[] } }[] }[]
-  }
-  for (const entry of b.entry ?? [])
-    for (const change of entry.changes ?? [])
-      for (const m of change.value?.messages ?? []) {
-        if (!m.from || !m.id || !m.type) continue
-        out.push({
-          from: String(m.from),
-          id: String(m.id),
-          type: String(m.type),
-          text: m.text?.body ? String(m.text.body) : undefined,
-          mediaId:
-            m.image?.id ?? m.document?.id ?? m.audio?.id ?? m.voice?.id ?? undefined,
-          mime:
-            m.image?.mime_type ??
-            m.document?.mime_type ??
-            m.audio?.mime_type ??
-            m.voice?.mime_type ??
-            undefined,
-          latitude: m.location?.latitude,
-          longitude: m.location?.longitude,
-        })
-      }
-  return out
-}
-// -------------------------------------------------------------- /WhatsApp --
 
 // Cheap endpoint the client hits on composer focus and on an idle timer, purely
 // to keep the browser's TLS connection to Railway's edge warm. A cold handshake
@@ -364,8 +280,8 @@ app.post('/api/speak', async (c) => {
   return id ? c.json({ ok: true, id }) : c.json({ ok: false, reason: 'unavailable' })
 })
 
-// Fetching one is open: WhatsApp audio is collected by Meta, not by the rider,
-// and the id cannot be guessed without already knowing the words.
+// Fetching one is open: the id cannot be guessed without already knowing the
+// words, and the chat that plays it is open too.
 app.get('/api/speak/:id', async (c) => {
   const found = await audioFor(c.req.param('id'))
   if (!found) return c.text('Not found', 404)

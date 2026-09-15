@@ -163,7 +163,7 @@ export function groqFetch(path: string, init: Parameters<typeof fetch>[1] = {}) 
   })
 }
 
-/** One complete reply, no streaming. WhatsApp messages are atomic. */
+/** One complete reply, no streaming, for the small structured calls. */
 export async function completeText(messages: Msg[]): Promise<string | null> {
   try {
     const res = await fetch(`${BASE}/chat/completions`, {

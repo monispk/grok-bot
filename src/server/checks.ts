@@ -6,7 +6,7 @@ import { verifyDocument } from './verify.ts'
  *
  * This is the surface another bot should call — the LangGraph flow, a batch
  * re-check, anything. Each takes the bytes and returns a decision plus whatever
- * it could read. Nothing here knows about HTTP, WhatsApp or the web app.
+ * it could read. Nothing here knows about HTTP or the web app.
  *
  * Every check fails open: if OCR is unavailable, or the file is a PDF with no
  * text layer, the document is accepted unchecked rather than trapping someone

@@ -1,15 +1,15 @@
 /**
- * The application sequence, shared by the web app and the WhatsApp bot.
+ * The application sequence: every question a rider is asked, in order.
  *
- * Prompts live here once so the two transports cannot drift apart. Retry text is
- * split: `need` states what is required and is identical everywhere, while the
- * hint that tells someone *how* to send it differs — the web app has an on-screen
- * camera button, WhatsApp has its own attachment menu, and telling a WhatsApp
- * user to press a button that isn't there would be worse than saying nothing.
+ * The prompts live here rather than beside the code that sends them, so the
+ * words, the recording that speaks them and the answer that satisfies them
+ * stay in one place. Retry text is split in two: `need` states what is
+ * required, and `webHint` says how to send it — a rider who has understood the
+ * question and cannot find the button needs the second, not the first again.
  */
 import { SAY } from './messages.ts'
 
-export type StepKind = 'text' | 'confirm' | 'upload' | 'gps'
+export type StepKind = 'text' | 'confirm' | 'upload'
 export type DocKind = 'cnic_front' | 'cnic_back' | 'license' | 'bill'
 
 
@@ -29,12 +29,10 @@ export type StepSpec = {
    */
   gate?: boolean
   ask: string
-  /** What is required. Transport-neutral. */
+  /** What is required. */
   need: string
-  /** How to send it, in the web app. */
+  /** How to send it. */
   webHint?: string
-  /** How to send it, in WhatsApp. */
-  waHint?: string
   /**
    * Base path of a spoken version of `ask`, without extension. Many riders read
    * Roman Urdu poorly, so the important questions are also asked aloud.
@@ -42,7 +40,7 @@ export type StepSpec = {
   audio?: string
 }
 
-/** Opus for Android and WhatsApp, AAC because iOS Safari will not play Ogg. */
+/** Opus for Android, AAC because iOS Safari will not play Ogg. */
 export const audioSources = (base: string) => [
   { src: `${base}.opus`, type: 'audio/ogg; codecs=opus' },
   { src: `${base}.m4a`, type: 'audio/mp4' },
@@ -50,7 +48,6 @@ export const audioSources = (base: string) => [
 
 const WEB_CLIP =
   'Neeche camera ka nishan daba kar tasveer khenchein, ya clip ka nishan daba kar file chunein.'
-const WA_CLIP = 'Tasveer khenchein aur isi chat mein bhej dein.'
 
 export const STEP_SPECS: StepSpec[] = [
   {
@@ -100,7 +97,6 @@ export const STEP_SPECS: StepSpec[] = [
     ask: 'Ab apne driving license ke saamne wale hissay (front) ki tasveer bhejein.',
     need: 'Iske liye driving license ke front ki tasveer chahiye.',
     webHint: WEB_CLIP,
-    waHint: WA_CLIP,
   },
   {
     id: 'cnic_front',
@@ -110,7 +106,6 @@ export const STEP_SPECS: StepSpec[] = [
     ask: 'Ab apne CNIC ke saamne wale hissay (front) ki tasveer bhejein.',
     need: 'Iske liye CNIC ke front ki tasveer chahiye.',
     webHint: WEB_CLIP,
-    waHint: WA_CLIP,
   },
   {
     // After the CNIC, never before it: the selfie is matched against the
@@ -123,7 +118,6 @@ export const STEP_SPECS: StepSpec[] = [
     ask: 'Ab ek chhoti selfie se aap ki pehchan verify karni hai. Neeche camera ka button dabayen — camera khud khul jayega. Selfie ho jane ke baad main khud aage barh jaungi.',
     need: 'Iske liye aap ki selfie chahiye.',
     webHint: 'Neeche camera ka nishan daba kar apni tasveer khenchein.',
-    waHint: 'Apni selfie khenchein aur isi chat mein bhej dein.',
   },
   {
     /*
@@ -144,13 +138,9 @@ export const STEP_SPECS: StepSpec[] = [
     ask: 'Aakhri sawal. Aap kis sheher mein rehte hain?',
     need: 'Baraye meherbani apne sheher ka naam likhein.',
     webHint: '',
-    waHint: '',
   },
 ]
 
-export const WA_ASK: Record<string, string> = {
-  selfie: 'Ab apni aik selfie khenchein aur bhejein. Apna chehra saaf dikhayein.',
-}
 
 /**
  * Sent when a voice note or attachment arrives at the name question. The name is
@@ -696,9 +686,6 @@ export function farewellLines(opts: InviteOpts): string[] {
     HOURS,
   ]
 }
-
-/** The WhatsApp bot sends the whole invitation in one go. */
-export const branchLines = inviteLines
 
 /**
  * The two registration offices, from the process document.

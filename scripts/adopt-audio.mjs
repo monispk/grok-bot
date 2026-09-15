@@ -3,7 +3,7 @@
  *
  *   node scripts/adopt-audio.mjs docs/audio/step
  *
- * The clips arrive as .ogg because WhatsApp needs Opus in an Ogg container.
+ * The clips arrive as .ogg because Android and Chrome want Opus in an Ogg container.
  * That is already what we serve as .opus — same bytes, different extension —
  * so the only real work is an AAC copy for iOS Safari, which will not play
  * Ogg at all. Nothing is re-synthesised: these are the recordings the index

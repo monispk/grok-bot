@@ -79,15 +79,16 @@ checkCnicFront(doc, against?)   checkCnicBack(doc, against?)
 checkLicense(doc, against?)     checkBill(doc)
 ```
 
-### Two front ends, one core
+### One front end
 
-| | |
-| --- | --- |
-| **Web app** | camera and attachment buttons, front camera for the selfie, staged reveal, debug panel, map |
-| **WhatsApp** | webhook with signature verification, media download, session store, same sequence |
+A web app: camera and attachment buttons, front camera for the selfie, staged
+reveal, debug panel, map. The steps, prompts, FAQ, verification and name
+matching live apart from it, in `src/shared`, so the words and the code that
+sends them cannot drift.
 
-The steps, prompts, FAQ, verification and name matching are shared. Only the
-transport differs. WhatsApp is inert until its credentials are set.
+There was a second front end — a WhatsApp bot running the same step machine,
+inert without its credentials — and it was removed in September 2026. It had
+to be kept compiling through every change to a channel nobody used.
 
 ### Plain words
 
@@ -113,7 +114,7 @@ text box is empty; holding a recording sends it to Whisper
 exactly as if it had been typed — same guard rails, same yes/no reading, same
 model. The clip appears in the thread straight away with a spinner, and what was
 heard is printed beneath it, so a mistranscription is visible rather than
-silently acted on. WhatsApp voice notes are transcribed the same way.
+silently acted on.
 
 The name is the one exception: it must be **typed**, because a misheard name
 would be checked against the CNIC and fail for the wrong reason.
@@ -234,15 +235,10 @@ If neither yes nor no can be read:
 
 **3. Selfie** — `/ask-selfie`
 
-Web:
 > Ab apni aik selfie khenchein. Camera ka button dabayein aur apna chehra saaf dikhayein.
 
-WhatsApp:
-> Ab apni aik selfie khenchein aur bhejein. Apna chehra saaf dikhayein.
-
-Retry: `Iske liye aap ki selfie chahiye.` plus, on the web,
-`Neeche camera ka nishan daba kar apni tasveer khenchein.` and on WhatsApp
-`Apni selfie khenchein aur isi chat mein bhej dein.`
+Retry: `Iske liye aap ki selfie chahiye.` plus
+`Neeche camera ka nishan daba kar apni tasveer khenchein.`
 
 **4. Driving licence, front** — `/ask-license-front`
 
@@ -270,19 +266,12 @@ Retry: `Iske liye utility bill ki tasveer chahiye jis par pata likha ho.`
 
 **8. Location** — `/ask-gps`
 
-Web:
 > Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Neeche "Location bhejein" ka button dabayein.
-
-WhatsApp:
-> Aakhri kaam. Apni location bhejein taake hum aap ko sab se qareeb foodpanda office bata sakein. Attach (📎) daba kar "Location" chunein.
 
 Retry: `Iske liye aap ki location chahiye.`
 
-Shared retry hint on the web for every upload step:
+Shared retry hint for every upload step:
 > Neeche camera ka nishan daba kar tasveer khenchein, ya clip ka nishan daba kar file chunein.
-
-and on WhatsApp:
-> Tasveer khenchein aur isi chat mein bhej dein.
 
 ### Confirmations
 
@@ -330,13 +319,12 @@ The last three have **no recording yet**, so they are sent as text only.
 All live in `public/`, served from the site root — `public/ask-name.opus` is
 `https://<host>/ask-name.opus`.
 
-Each exists **twice**: `.opus` (Ogg/Opus, mono 48 kHz) for Android, Chrome and
-WhatsApp voice notes, and `.m4a` (AAC, mono 24 kHz) because iOS Safari will not
-play Ogg. The player picks whichever the browser reports it can decode; WhatsApp
-is always sent the `.opus`, since Meta accepts opus only inside an ogg container.
+Each exists **twice**: `.opus` (Ogg/Opus, mono 48 kHz) for Android and Chrome,
+and `.m4a` (AAC, mono 24 kHz) because iOS Safari will not play Ogg. The player
+picks whichever the browser reports it can decode.
 
-They are served as `audio/ogg` and `audio/mp4` — a generic byte stream is refused
-by Meta and will not play on iOS.
+They are served as `audio/ogg` and `audio/mp4` — a generic byte stream will not
+play on iOS.
 
 | File | Length | Description |
 | --- | --- | --- |
@@ -380,9 +368,9 @@ ffmpeg -i new.mp3 -c:a libopus -b:a 32k -ar 48000 -ac 1 -application voip public
 ffmpeg -i new.mp3 -c:a aac -b:a 48k -ar 24000 -ac 1 public/<name>.m4a
 ```
 
-Recordings must not mention any on-screen control. The selfie and location
-questions are worded differently on the web and on WhatsApp, and one recording
-serves both.
+Recordings must not mention any on-screen control by name: the words outlive
+the button, and a recording that says "press the green button" is wrong the day
+the button moves. The hint that names a control is text, sent alongside.
 
 ---
 
@@ -394,8 +382,6 @@ serves both.
 | Face match | The selfie is collected but nothing compares it to the CNIC photo. The debug panel shows this check as pending rather than passed |
 | Nearest office | The closing message names both offices; it does not yet pick one from the GPS fix |
 | Verification fail path | Verification is real, but there is no separate "go to the branch to be verified manually" branch yet |
-| WhatsApp credentials | The webhook is built and tested against a stubbed Graph API. `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN` and `PUBLIC_BASE_URL` are needed to bring it up |
-| Session storage | WhatsApp sessions are held in memory, so a redeploy loses anyone mid-application. This is also where CNIC data would live, so it needs the encryption, access control and retention rules in `docs/onboarding-flow.md` |
 | Uplift cost | Each new line costs one Groq call to convert the script and one Uplift call to read it; both are cached, so a repeated line is free. `UPLIFT_API_KEY` and `UPLIFT_VOICE_ID` are set; optional `UPLIFT_OUTPUT_FORMAT` defaults to `MP3_22050_128`. Without the key, answers are text-only |
 | Groq tier | The free tier allows 8,000 tokens a minute across **all** riders at once. A turn costs about 2,740 — the system prompt carries the whole FAQ — so that is roughly **two or three messages a minute in total**. Over it, the rider is told in Roman Urdu that the bot is busy and to try again shortly; the upstream detail goes to the logs. Voice notes do not draw on this budget: Whisper is metered separately, in audio seconds |
 | Other utilities | The bill rules are proven against LESCO. SNGPL, K-Electric, MEPCO and others are untested and may use different labels |

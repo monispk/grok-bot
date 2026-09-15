@@ -13,7 +13,7 @@ import { query } from './db.ts'
  *
  * Synthesising and fetching are separate. Asking for speech costs an Uplift
  * call, so it is behind the same gate as the chat; fetching the result is by an
- * unguessable id and is open, because WhatsApp media is fetched by Meta rather
+ * unguessable id and is open, because the clip is fetched by the rider's page rather
  * than by the rider. That way an open synthesiser is never left running on
  * someone else's account.
  */

@@ -323,8 +323,6 @@ export const SAY = {
     'Is kaam ke liye bara screen wala touch phone zaroori hai. Jab aap ke paas aisa phone ho, tab dobara raabta karein — hum aap ki madad karein ge.',
     '/say-need-smartphone',
   ),
-  // Worded without reference to a button, so one recording serves both the web
-  // app and WhatsApp.
   locationDenied: say(
     'Location nahi mil saki. Baraye meherbani apne phone mein location ki ijazat dein, phir dobara koshish karein.',
     '/say-location-denied',

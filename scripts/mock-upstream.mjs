@@ -135,7 +135,7 @@ http
         }) } }],
       }))
     }
-    // Non-streaming completions (the WhatsApp path) get a plain JSON reply.
+    // Non-streaming completions get a plain JSON reply.
     if (body.stream !== true) {
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end(

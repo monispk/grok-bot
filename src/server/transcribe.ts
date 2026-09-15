@@ -73,7 +73,7 @@ export async function transcribe(bytes: Uint8Array, mime: string): Promise<Trans
   }
 }
 
-/** MediaRecorder emits webm on Chrome and mp4 on Safari; WhatsApp sends ogg. */
+/** MediaRecorder emits webm on Chrome and mp4 on Safari; recorder apps send ogg. */
 function filename(mime: string): string {
   const base = mime.split(';')[0]?.trim()
   const ext =

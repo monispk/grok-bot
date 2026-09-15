@@ -26,8 +26,7 @@ const open = (reason: string | null = null): Verification => ({
 })
 
 /**
- * One document, checked. Shared by the web upload route and the WhatsApp bot so
- * a rider gets the same answer whichever way they applied.
+ * One document, checked.
  *
  * Fails open throughout: no OCR, an unrasterisable PDF or a thrown model call
  * accepts the document unchecked rather than trapping someone behind our

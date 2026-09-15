@@ -8,7 +8,7 @@
  * because a voice engine reading Roman Urdu guesses, and guesses with an
  * English accent. The conversion is the same one the live server uses.
  *
- * It writes .mp3 (what Uplift returns), .opus (Android, Chrome, WhatsApp) and
+ * It writes .mp3 (what Uplift returns), .opus (Android, Chrome) and
  * .m4a (iOS Safari will not play Ogg). The player picks whichever the browser
  * says it can decode.
  *
