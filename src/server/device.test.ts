@@ -59,15 +59,15 @@ test('each way getUserMedia refuses gets its own name', () => {
 })
 
 test('the Chrome intent carries the page and falls back to the plain link', () => {
-  const href = 'https://grok-bot-production-b3a4.up.railway.app/?x=1'
+  const href = 'https://foodpanda.rozeegpt.ai/?x=1'
   const url = chromeIntentUrl(href)
-  assert.ok(url.startsWith('intent://grok-bot-production-b3a4.up.railway.app/?x=1#Intent;'))
+  assert.ok(url.startsWith('intent://foodpanda.rozeegpt.ai/?x=1#Intent;'))
   assert.ok(url.includes('package=com.android.chrome'))
   assert.ok(url.includes(`S.browser_fallback_url=${encodeURIComponent(href)}`))
 })
 
 test('an unsupported Android browser is handed to Chrome, once, before the rider has answered', () => {
-  const href = 'https://grok-bot-production-b3a4.up.railway.app/'
+  const href = 'https://foodpanda.rozeegpt.ai/'
   const uc =
     'Mozilla/5.0 (Linux; U; Android 11; en-US; TECNO KF6n Build/RP1A.200720.011) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/100.0.4896.58 UCBrowser/13.6.5.1319 Mobile Safari/537.36'
   const fb =

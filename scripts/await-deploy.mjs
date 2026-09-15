@@ -17,7 +17,7 @@ const args = process.argv.slice(2)
 const flag = (name, fallback) =>
   args.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=') ?? fallback
 
-const HOST = flag('host', 'https://grok-bot-production-b3a4.up.railway.app')
+const HOST = flag('host', 'https://foodpanda.rozeegpt.ai')
 const TIMEOUT = Number(flag('timeout', 600)) * 1000
 const want = (args.find((a) => !a.startsWith('--')) ??
   execSync('git rev-parse HEAD').toString().trim()).slice(0, 7)

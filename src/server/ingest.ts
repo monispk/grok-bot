@@ -198,7 +198,19 @@ export function trackable(body: Ingest, hash: (s: string) => string): Record<str
   }
   const { messages, ...rest } = body
   walk(rest, '')
-  if (messages?.length) out['messages'] = hash(JSON.stringify(messages))
+  /*
+   * The hash covers what was said, not where our files happen to live.
+   *
+   * `audio_url` is built from this server's public address, so moving the app
+   * to a domain of its own rewrote every voice message and made every stored
+   * conversation look like it had changed — which would have re-sent them all,
+   * and re-sent messages are how one becomes two at the other end. Where a
+   * recording can be fetched from is not part of the conversation.
+   */
+  if (messages?.length)
+    out['messages'] = hash(
+      JSON.stringify(messages.map(({ audio_url: _where, ...said }) => said)),
+    )
   return out
 }
 
