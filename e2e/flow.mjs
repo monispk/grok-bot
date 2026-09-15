@@ -1461,6 +1461,52 @@ await check('voice notes play themselves, one at a time, with a pause', async ()
   }
 })
 
+await check('the bank is asked for even when the wallet question is skipped', async () => {
+  /*
+   * Reported from a real run: the rider had no wallet, and was never asked
+   * where they banked. The rail had been answered earlier — the *number*
+   * question names Easypaisa and JazzCash, so that is where riders say they
+   * have neither — and the wallet step is then skipped as already answered.
+   * The bank questions lived inside that step, so they went with it.
+   */
+  const ctx5 = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const pg = await ctx5.newPage()
+  await pg.goto(`${APP}/?chrome=no`)
+  await pg.evaluate((p) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: p, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '',
+      collected: {}, ineligible: false,
+      // Answered at the number question, which is what skips the wallet step.
+      rail: 'neither', noWallet: true,
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([
+      { role: 'assistant', content: 'Aap ka mobile number kya hai?' },
+    ]))
+  }, at('phone'))
+  await pg.reload()
+  await pg.waitForSelector('footer textarea')
+
+  const text = async () =>
+    (await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]')))
+      .map((m) => m.content || '').join('\n')
+
+  await pg.fill('footer textarea', '03348234444')
+  await pg.click('footer button.send')
+
+  assert.ok(await settle(async () => (await text()).includes('kis bank mein hai'), 25_000),
+    `the wallet step was skipped and the bank was never asked for: ${(await text()).slice(-200)}`)
+
+  // And the answer is taken, rather than read against a stale question.
+  await pg.fill('footer textarea', 'Meezan')
+  await pg.click('footer button.send')
+  assert.ok(await settle(async () => (await text()).includes('account number likh'), 25_000),
+    'the bank was asked for twice, or the answer was not taken')
+  const bank = await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:flow')).bank)
+  assert.equal(bank?.id, '59', `bank recorded as ${JSON.stringify(bank)}`)
+  await pg.context().close()
+})
+
 await check('a rider with neither wallet is asked where they bank', async () => {
   /*
    * A rider with JazzCash or Easypaisa has their account checked against their

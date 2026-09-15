@@ -867,6 +867,24 @@ export function App() {
         const next = STEPS[j]
 
         /*
+         * Where a rider with no wallet banks, asked as the flow passes the
+         * wallet question — however it passes it.
+         *
+         * This used to live inside the wallet step's own answer, which meant it
+         * never ran for the rider who needed it most: a rider says "I have
+         * neither" at the *number* question, because that question names
+         * Easypaisa and JazzCash, and the wallet step is then skipped as
+         * already answered. Their account was never asked for and never
+         * checked, and nothing said so.
+         */
+        const wallet = at('wallet')
+        if (i <= wallet && j > wallet && merged.noWallet && !merged.bank) {
+          merged.asking = 'bank'
+          setMessages((m) => append(m, [...extra, readAloud(SAY.askBank.text)]))
+          return merged
+        }
+
+        /*
          * Everything is in. Before anything is decided, the face check gets
          * its final say.
          *
@@ -1232,6 +1250,70 @@ export function App() {
         return
       }
 
+      /*
+       * The two bank questions, which belong to no step.
+       *
+       * They are asked at the wallet question, where the subject is already
+       * money, and the account number can be asked for again much later if the
+       * check fails — so they are handled here, ahead of the steps, rather
+       * than becoming steps of their own that the rider would have to be
+       * walked back to.
+       */
+      if (flow.asking === 'bank') {
+        setWorking(true)
+        let got: { id?: string | null; name?: string | null; unsure?: boolean } = {}
+        try {
+          const res = await fetch('/api/bank', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text }),
+          })
+          got = await res.json()
+        } catch {
+          /* handled below */
+        }
+        setWorking(false)
+        if (got.id && got.name) {
+          setFlow((f) => ({ ...f, bank: { id: got.id!, name: got.name! }, asking: 'account' }))
+          say(readAloud(SAY.askAccountNumber.text))
+          return
+        }
+        // A name that fits three banks is a question, not an answer; a bank we
+        // cannot reach is not the rider's problem and does not stop them.
+        if (got.unsure) {
+          say(readAloud(SAY.bankUnclear.text))
+          return
+        }
+        setFlow((f) => ({
+          ...f,
+          asking: undefined,
+          collected: { ...f.collected, 'checks.wallet': 'not checked — bank not on the list' },
+        }))
+        say(readAloud(SAY.bankNotListed.text))
+        advanceFrom(at('wallet'), [], {})
+        return
+      }
+
+      if (flow.asking === 'account') {
+        const account = text.trim()
+        if (digitsOnly(account).length < 6 && !asIban(account)) {
+          say(readAloud(SAY.bankRetry.text))
+          return
+        }
+        setFlow((f) => ({ ...f, bankAccount: account, asking: undefined }))
+        /*
+         * Back to where the conversation was.
+         *
+         * The question that was due when the bank was asked about has not been
+         * asked yet — `advanceFrom` moved the step and stopped — so it is asked
+         * now. If there is no question left, the flow was already at its end
+         * and what is waiting is the check itself.
+         */
+        if (current) say(...askMessages(current))
+        else setFlow((f) => ({ ...f, verifying: true }))
+        return
+      }
+
       // Collection is done. The quiz comes first if it is still running; only
       // once it is finished or declined does the bot go back to answering.
       if (!current) {
@@ -1313,64 +1395,6 @@ export function App() {
         return
       }
 
-      /*
-       * The two bank questions, which belong to no step.
-       *
-       * They are asked at the wallet question, where the subject is already
-       * money, and the account number can be asked for again much later if the
-       * check fails — so they are handled here, ahead of the steps, rather
-       * than becoming steps of their own that the rider would have to be
-       * walked back to.
-       */
-      if (flow.asking === 'bank') {
-        setWorking(true)
-        let got: { id?: string | null; name?: string | null; unsure?: boolean } = {}
-        try {
-          const res = await fetch('/api/bank', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ text }),
-          })
-          got = await res.json()
-        } catch {
-          /* handled below */
-        }
-        setWorking(false)
-        if (got.id && got.name) {
-          setFlow((f) => ({ ...f, bank: { id: got.id!, name: got.name! }, asking: 'account' }))
-          say(readAloud(SAY.askAccountNumber.text))
-          return
-        }
-        // A name that fits three banks is a question, not an answer; a bank we
-        // cannot reach is not the rider's problem and does not stop them.
-        if (got.unsure) {
-          say(readAloud(SAY.bankUnclear.text))
-          return
-        }
-        setFlow((f) => ({
-          ...f,
-          asking: undefined,
-          collected: { ...f.collected, 'checks.wallet': 'not checked — bank not on the list' },
-        }))
-        say(readAloud(SAY.bankNotListed.text))
-        advanceFrom(at('wallet'), [], {})
-        return
-      }
-
-      if (flow.asking === 'account') {
-        const account = text.trim()
-        if (digitsOnly(account).length < 6 && !asIban(account)) {
-          say(readAloud(SAY.bankRetry.text))
-          return
-        }
-        setFlow((f) => ({ ...f, bankAccount: account, asking: undefined }))
-        // Checked once the CNIC has been read — the name on the card is what
-        // the title is compared against, and the card has not been sent yet.
-        if (step <= at('wallet')) advanceFrom(at('wallet'), [], {})
-        else setFlow((f) => ({ ...f, verifying: true }))
-        return
-      }
-
       if (current.id === 'city') {
         // A rider still choosing a branch has already answered this; anything
         // they type now is a question, not another city.
@@ -1395,18 +1419,11 @@ export function App() {
           return
         }
         if (rail === 'neither') {
-          /*
-           * The number is already in hand by this point, so what is left to say
-           * is how the fee gets paid — not "send your number anyway", which is
-           * what this said when one line served both questions.
-           *
-           * And then where they bank. A rider with a wallet has already had
-           * their account checked against their CNIC without being asked
-           * anything; this is so a rider without one is not simply left
-           * unverified. Two short questions, here, while the subject is money.
-           */
-          setFlow((f) => ({ ...f, rail, noWallet: true, asking: 'bank' }))
-          say(bot(SAY.noWalletPayAtOffice.text), readAloud(SAY.askBank.text))
+          // The number is already in hand by this point, so what is left to say
+          // is how the fee gets paid — not "send your number anyway", which is
+          // what this said when one line served both questions. Where they bank
+          // is asked by `advanceFrom`, which asks it however the flow got here.
+          advanceFrom(step, [bot(SAY.noWalletPayAtOffice.text)], { rail, noWallet: true })
           return
         }
         advanceFrom(step, [], { rail, noWallet: false })
@@ -1503,7 +1520,28 @@ export function App() {
         say(bot(SAY.repeat.text), ...askMessages(current))
       }
     },
-    [current, step, runFaq, say, advanceFrom, missing, quiz, handleQuiz, flow.resume, flow.applicationId, fullName, restore, onCity, pickOffice],
+    [
+      current,
+      step,
+      runFaq,
+      say,
+      advanceFrom,
+      missing,
+      quiz,
+      handleQuiz,
+      flow.resume,
+      flow.applicationId,
+      // Which bank question is outstanding, and whether one has been answered.
+      // Left out, this callback kept the value it was built with: the rider
+      // named their bank, the state moved on, and the next message was read
+      // against a flow that still thought the bank was being asked for.
+      flow.asking,
+      flow.bank,
+      fullName,
+      restore,
+      onCity,
+      pickOffice,
+    ],
   )
 
   /** A reply button: the words go in the thread, the answer goes down the usual path. */
