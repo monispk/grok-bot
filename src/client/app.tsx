@@ -36,6 +36,7 @@ import {
 } from '../shared/steps.ts'
 import { INTRO as QUIZ_INTRO, pickQuestions, QUESTIONS, readChoice } from '../shared/quiz.ts'
 import { audioForText, awaitingVoice, SAY } from '../shared/messages.ts'
+import { asIban, digitsOnly } from '../shared/account.ts'
 import {
   asksSomething,
   blockedOn,
@@ -87,6 +88,9 @@ const RedMic = () => (
 )
 
 let seq = 0
+
+/** A step's place in the sequence, by name rather than by number. */
+const at = (id: string) => STEPS.findIndex((x) => x.id === id)
 /**
  * Which of the four closings a rider gets.
  *
@@ -574,6 +578,10 @@ export function App() {
      * had been seen. It waits for the card now, and if collection ends without
      * one it says which name it actually used.
      */
+    // A rider with neither wallet has given a bank instead; theirs is checked
+    // in the verification phase, against the same CNIC name, by `/api/bank-account`.
+    if (flow.noWallet) return
+
     const onCard = collected['cnic_front.name']
     const done = step >= STEPS.length
     const name = onCard ?? (done ? fullName : '')
@@ -603,7 +611,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [phone, fullName, collected, step])
+  }, [phone, fullName, collected, step, flow.noWallet])
 
   const say = useCallback((...lines: Message[]) => {
     setMessages((m) => append(m, lines))
@@ -865,7 +873,13 @@ export function App() {
         const canCheck =
           Boolean(merged.collected['cnic_front.uploadId']) &&
           Boolean(merged.collected['selfie.uploadId'])
-        if (!next && !merged.noOffice && !merged.ineligible && !decided && !merged.faceChecked && canCheck) {
+        const faceWanted = !decided && !merged.faceChecked && canCheck
+        // A rider who gave a bank instead of a wallet has a check outstanding
+        // too, and it needs the name off the card, which only exists by now.
+        const bankWanted = Boolean(
+          merged.bank && merged.bankAccount && !merged.collected['checks.wallet'],
+        )
+        if (!next && !merged.noOffice && !merged.ineligible && (faceWanted || bankWanted)) {
           merged.verifying = true
           setMessages((m) => append(m, [...extra, bot(SAY.verifyingFace.text)]))
           return merged
@@ -944,31 +958,93 @@ export function App() {
     if (!flow.verifying || checking.current) return
     checking.current = true
     void (async () => {
-      let mark = 'not checked'
-      try {
-        const res = await fetch('/api/face-check', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            cnic: collected['cnic_front.uploadId'],
-            selfie: collected['selfie.uploadId'],
-          }),
-        })
-        const got = (await res.json()) as { outcome?: string; score?: number }
-        const score = typeof got.score === 'number' ? got.score.toFixed(1) : '?'
-        if (got.outcome === 'pass') mark = `match (${score})`
-        else if (got.outcome === 'fail') mark = `mismatch (${score})`
-      } catch {
-        /* left as "not checked"; the office verifies by hand */
+      // Already settled on an earlier pass — this time round it is the bank
+      // being asked about, and a face is not compared twice.
+      let mark = collected['checks.faceMatch'] ?? ''
+      if (!mark) {
+        mark = 'not checked'
+        try {
+          const res = await fetch('/api/face-check', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              cnic: collected['cnic_front.uploadId'],
+              selfie: collected['selfie.uploadId'],
+            }),
+          })
+          const got = (await res.json()) as { outcome?: string; score?: number }
+          const score = typeof got.score === 'number' ? got.score.toFixed(1) : '?'
+          if (got.outcome === 'pass') mark = `match (${score})`
+          else if (got.outcome === 'fail') mark = `mismatch (${score})`
+        } catch {
+          /* left as "not checked"; the office verifies by hand */
+        }
       }
+      /*
+       * And the bank account, for a rider who had no wallet to check.
+       *
+       * Here rather than at the question, because the name it is compared
+       * against is the one on the CNIC and the card is sent three steps later.
+       * A number that does not resolve is worth one more go — a digit mistyped
+       * from a cheque book is the likeliest reason — and after that it goes to
+       * the office, which is where a bank statement would be looked at anyway.
+       */
+      const gathered: Record<string, string> = { 'checks.faceMatch': mark }
+      let askAgain = false
+      const cnicName = collected['cnic_front.name'] ?? fullName
+      if (flow.bank && flow.bankAccount && !collected['checks.wallet'] && cnicName) {
+        const tries = (flow.bankTries ?? 0) + 1
+        let bank: { outcome?: string; title?: string; titles?: string[] } = {}
+        try {
+          const res = await fetch('/api/bank-account', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ bankId: flow.bank.id, account: flow.bankAccount, name: cnicName }),
+          })
+          bank = await res.json()
+        } catch {
+          /* falls through as unavailable */
+        }
+        const where = flow.bank.name
+        // Which bank, and enough of the number to recognise it — never the
+        // whole thing. A recruiter checking a statement needs the last four.
+        gathered['bank.name'] = where
+        gathered['bank.account'] = `…${digitsOnly(flow.bankAccount).slice(-4)}`
+        if (bank.outcome === 'pass') {
+          gathered['checks.wallet'] = `match — ${bank.title} (${where})`
+          say(readAloud(SAY.bankMatched.text))
+        } else if (bank.outcome === 'fail') {
+          gathered['checks.wallet'] = `no match — ${where}: ${(bank.titles ?? []).join(', ')}`
+          say(readAloud(SAY.bankOtherName.text))
+        } else if (tries < 2) {
+          askAgain = true
+          say(readAloud(SAY.bankRetry.text))
+        } else {
+          gathered['checks.wallet'] = `no match — no account found (${where})`
+          say(readAloud(SAY.bankGaveUp.text))
+        }
+        setFlow((f) => ({ ...f, bankTries: tries }))
+      }
+
       checking.current = false
+      if (askAgain) {
+        // Back to the rider for a better number, and nothing decided until it
+        // comes: the ending waits rather than concluding without the check.
+        setFlow((f) => ({
+          ...f,
+          verifying: false,
+          asking: 'account',
+          collected: { ...f.collected, ...gathered },
+        }))
+        return
+      }
       advanceFrom(STEPS.length - 1, [], {
         verifying: false,
         faceChecked: true,
-        collected: { ...collected, 'checks.faceMatch': mark },
+        collected: { ...collected, ...gathered },
       })
     })()
-  }, [flow.verifying, collected, advanceFrom])
+  }, [flow.verifying, collected, advanceFrom, flow.bank, flow.bankAccount, flow.bankTries, fullName, say])
 
   /** Answer a question from the FAQ. Resolves when the reply is complete. */
   const runFaq = useCallback(
@@ -1227,6 +1303,64 @@ export function App() {
         return
       }
 
+      /*
+       * The two bank questions, which belong to no step.
+       *
+       * They are asked at the wallet question, where the subject is already
+       * money, and the account number can be asked for again much later if the
+       * check fails — so they are handled here, ahead of the steps, rather
+       * than becoming steps of their own that the rider would have to be
+       * walked back to.
+       */
+      if (flow.asking === 'bank') {
+        setWorking(true)
+        let got: { id?: string | null; name?: string | null; unsure?: boolean } = {}
+        try {
+          const res = await fetch('/api/bank', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text }),
+          })
+          got = await res.json()
+        } catch {
+          /* handled below */
+        }
+        setWorking(false)
+        if (got.id && got.name) {
+          setFlow((f) => ({ ...f, bank: { id: got.id!, name: got.name! }, asking: 'account' }))
+          say(readAloud(SAY.askAccountNumber.text))
+          return
+        }
+        // A name that fits three banks is a question, not an answer; a bank we
+        // cannot reach is not the rider's problem and does not stop them.
+        if (got.unsure) {
+          say(readAloud(SAY.bankUnclear.text))
+          return
+        }
+        setFlow((f) => ({
+          ...f,
+          asking: undefined,
+          collected: { ...f.collected, 'checks.wallet': 'not checked — bank not on the list' },
+        }))
+        say(readAloud(SAY.bankNotListed.text))
+        advanceFrom(at('wallet'), [], {})
+        return
+      }
+
+      if (flow.asking === 'account') {
+        const account = text.trim()
+        if (digitsOnly(account).length < 6 && !asIban(account)) {
+          say(readAloud(SAY.bankRetry.text))
+          return
+        }
+        setFlow((f) => ({ ...f, bankAccount: account, asking: undefined }))
+        // Checked once the CNIC has been read — the name on the card is what
+        // the title is compared against, and the card has not been sent yet.
+        if (step <= at('wallet')) advanceFrom(at('wallet'), [], {})
+        else setFlow((f) => ({ ...f, verifying: true }))
+        return
+      }
+
       if (current.id === 'city') {
         // A rider still choosing a branch has already answered this; anything
         // they type now is a question, not another city.
@@ -1251,10 +1385,18 @@ export function App() {
           return
         }
         if (rail === 'neither') {
-          // The number is already in hand by this point, so what is left to say
-          // is how the fee gets paid — not "send your number anyway", which is
-          // what this said when one line served both questions.
-          advanceFrom(step, [bot(SAY.noWalletPayAtOffice.text)], { rail, noWallet: true })
+          /*
+           * The number is already in hand by this point, so what is left to say
+           * is how the fee gets paid — not "send your number anyway", which is
+           * what this said when one line served both questions.
+           *
+           * And then where they bank. A rider with a wallet has already had
+           * their account checked against their CNIC without being asked
+           * anything; this is so a rider without one is not simply left
+           * unverified. Two short questions, here, while the subject is money.
+           */
+          setFlow((f) => ({ ...f, rail, noWallet: true, asking: 'bank' }))
+          say(bot(SAY.noWalletPayAtOffice.text), readAloud(SAY.askBank.text))
           return
         }
         advanceFrom(step, [], { rail, noWallet: false })

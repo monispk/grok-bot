@@ -42,6 +42,9 @@ import { audioFor, speak, speechReady } from './speak.ts'
 import { init as initDb, dbReady, query, sweep } from './db.ts'
 import { announceFee, CHARGE_PAISA, FEE_PAISA, feeOverridden } from './fee.ts'
 import { verifyDocument } from './verify.ts'
+import { bankById } from '../shared/banks.ts'
+import { readBank } from './bank.ts'
+import { checkBankAccount } from './rizq.ts'
 import { facialReady, matchFace, ocrReady } from './rozee.ts'
 import { checkWallet, rizqReady } from './rizq.ts'
 import { anyRailReady, inquire, newRef, payEasypaisa, payJazzcash } from './pay.ts'
@@ -429,6 +432,32 @@ app.post('/api/face-check', async (c) => {
   if (!card || !selfie)
     return c.json({ outcome: 'unavailable', reason: 'the pictures are no longer held', latency: 0 })
   return c.json(await matchFace(card.bytes, selfie.bytes))
+})
+
+/**
+ * Which bank a rider means, and whose the account is.
+ *
+ * Two calls rather than one, because they happen at two different moments in
+ * the conversation: the bank is named, then the number is typed. The bank is
+ * resolved from the list first and only goes to the model when the list cannot
+ * settle it — "Habib" belongs to three banks and is a question, not an answer.
+ */
+app.post('/api/bank', async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown }
+  const text = typeof body.text === 'string' ? body.text : ''
+  return c.json(await readBank(text))
+})
+
+app.post('/api/bank-account', async (c) => {
+  if (!allow(clientIp(c))) return c.json({ error: 'Rate limited' }, 429)
+  const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+  const bank = bankById(typeof body['bankId'] === 'string' ? body['bankId'] : '')
+  const account = typeof body['account'] === 'string' ? body['account'] : ''
+  const name = typeof body['name'] === 'string' ? body['name'] : ''
+  if (!bank || !account || !name)
+    return c.json({ outcome: 'unavailable', reason: 'bank, account and name are all needed' })
+  return c.json(await checkBankAccount(bank, account, name))
 })
 
 app.post('/api/extract-name', async (c) => {

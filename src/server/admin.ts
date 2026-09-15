@@ -148,6 +148,8 @@ export function bankCheck(recorded: string | undefined): { state: BankCheck; det
     return { state: 'cnic not read', detail: recorded.replace(/ — CNIC not read.*/, '') }
   if (recorded.startsWith('match')) return { state: 'match', detail: recorded.slice(8) }
   if (recorded.includes('no account found')) return { state: 'fetch failed', detail: 'no account found' }
+  if (recorded.includes('bank not on the list'))
+    return { state: 'fetch failed', detail: 'the bank is not one we can look up' }
   if (recorded.startsWith('not checked')) return { state: 'fetch failed', detail: 'the service did not answer' }
   if (recorded.startsWith('no match')) return { state: 'mismatch', detail: recorded.slice(11) }
   return { state: 'not run', detail: recorded }
@@ -491,6 +493,7 @@ export function detailPage(
     ${kv('Face Match', faceMatch(c['checks.faceMatch']))}
     ${kv('Licence name vs CNIC', c['checks.licenceVsCnic'])}
     ${kv('Bank / CNIC Name Match', bankTitle(c['checks.wallet']))}
+    ${c['bank.name'] ? kv('Account checked', `${c['bank.name']} ${c['bank.account'] ?? ''}`) : ''}
     ${kv('Licence number', c['license.number'])}
     ${kv(
       'Licence expiry',

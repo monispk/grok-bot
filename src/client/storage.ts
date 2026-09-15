@@ -66,6 +66,16 @@ export type FlowState = {
   noOffice?: boolean
   /** Which rail the rider's number is on, once they have said. */
   rail?: 'easypaisa' | 'jazzcash' | 'both' | 'neither'
+  /**
+   * A rider with neither wallet is asked where they bank instead, so the
+   * account their pay would go into can still be checked against their CNIC.
+   */
+  bank?: { id: string; name: string }
+  bankAccount?: string
+  /** Which of the two bank questions is outstanding, if either. */
+  asking?: 'bank' | 'account'
+  /** Account numbers tried. Two, then it goes to the office. */
+  bankTries?: number
   /** The fee: what was attempted, and how it ended. */
   payment?: {
     rail: string

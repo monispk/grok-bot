@@ -1461,6 +1461,60 @@ await check('voice notes play themselves, one at a time, with a pause', async ()
   }
 })
 
+await check('a rider with neither wallet is asked where they bank', async () => {
+  /*
+   * A rider with JazzCash or Easypaisa has their account checked against their
+   * CNIC without being asked anything at all. This is so a rider without one
+   * is not simply left unverified: the bank, then the number, asked at the
+   * wallet question while the subject is already money.
+   */
+  const ctx4 = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const pg = await ctx4.newPage()
+  await pg.goto(`${APP}/?chrome=no`)
+  await pg.evaluate((w) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: w, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '',
+      collected: {}, ineligible: false, phone: '923348234444',
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([
+      { role: 'assistant', content: 'Aap ke paas Easypaisa hai ya JazzCash?' },
+    ]))
+  }, at('wallet'))
+  await pg.reload()
+  await pg.waitForSelector('footer textarea')
+
+  const text = async () =>
+    (await pg.evaluate(() => JSON.parse(localStorage.getItem('grok-bot:history') || '[]')))
+      .map((m) => m.content || '').join('\n')
+  const send = async (words) => {
+    await pg.fill('footer textarea', words)
+    await pg.click('footer button.send')
+  }
+
+  await send('koi nahi')
+  assert.ok(await settle(async () => (await text()).includes('kis bank mein hai'), 20_000),
+    `never asked which bank: ${(await text()).slice(-200)}`)
+
+  // A name that is three banks is a question, not a guess.
+  await send('habib')
+  assert.ok(await settle(async () => (await text()).includes('poora naam likhein'), 20_000),
+    'a bare "habib" was resolved to one of the three Habibs')
+
+  await send('Habib Bank')
+  assert.ok(await settle(async () => (await text()).includes('account number likh'), 20_000),
+    'never asked for the account number')
+
+  await send('5009-79006753-55')
+  const moved = await settle(async () =>
+    pg.evaluate(() => {
+      const f = JSON.parse(localStorage.getItem('grok-bot:flow') || '{}')
+      return f.bank?.id === '23' && !!f.bankAccount && f.step > 2
+    }), 20_000)
+  assert.ok(moved, 'the bank and account were not recorded, or the flow did not move on')
+  await pg.context().close()
+})
+
 await check('answering stops whatever Rozeena was saying', async () => {
   /*
    * A voice note carrying on over an answer is the app talking across the

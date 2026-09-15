@@ -211,6 +211,64 @@ export const SAY = {
    * wallet was asked for a number they had typed two messages earlier. What
    * they actually need to hear at this point is how the fee gets paid.
    */
+  /*
+   * The bank questions, asked only of a rider who has neither wallet.
+   *
+   * A rider with JazzCash or Easypaisa has already had this check run on their
+   * mobile number without being asked anything at all; these two questions
+   * exist so that a rider without one is not simply left unverified.
+   *
+   * All spoken at runtime rather than recorded: two of them carry a bank's
+   * name, and none is worth a recording until the wording has settled.
+   */
+  askBank: say(
+    'Aap ka bank account kis bank mein hai? Bank ka naam likh dein — maslan HBL, Meezan, ya UBL.',
+    '/say-ask-bank',
+    false,
+  ),
+  bankUnclear: say(
+    'Maaf kijiye, bank ka naam samajh nahi aaya. Baraye meherbani poora naam likhein — maslan "Habib Bank", "Bank Al Habib", ya "Habib Metro".',
+    '/say-bank-unclear',
+    false,
+  ),
+  bankNotListed: say(
+    'Maaf kijiye, is bank ko hum abhi check nahi kar sakte. Koi baat nahi — aap ki application aage barh rahi hai, bank ki tafseel office par le li jaye gi.',
+    '/say-bank-not-listed',
+    false,
+  ),
+  bankChecking: say(
+    'Ek lamha — aap ke account ka naam check kiya ja raha hai.',
+    '/say-bank-checking',
+    false,
+  ),
+  bankMatched: say(
+    'Shukriya! Aap ka bank account aap hi ke naam par hai — tasdeeq ho gayi.',
+    '/say-bank-matched',
+    false,
+  ),
+  /** Wrong number, most likely. One more go before giving up on it. */
+  bankRetry: say(
+    'Ye account number theek se nahi mila. Baraye meherbani apna account number dobara dekh kar likhein — bank ki app ya cheque book par poora number mil jaye ga.',
+    '/say-bank-retry',
+    false,
+  ),
+  /** Two tries. Not a reason to stop anybody. */
+  bankGaveUp: say(
+    'Koi baat nahi, aap ka bank account check nahi ho saka. Aap ki application aage barh rahi hai — office par apni bank ki tafseel saath laayein.',
+    '/say-bank-gave-up',
+    false,
+  ),
+  /** A real account, in somebody else's name. Recorded, never a refusal. */
+  bankOtherName: say(
+    'Ye account kisi aur ke naam par hai. Koi baat nahi — aap ki application aage barh rahi hai, lekin office par is ki tasdeeq karni hogi.',
+    '/say-bank-other-name',
+    false,
+  ),
+  askAccountNumber: say(
+    'Ab apna account number likh dein. Poora number likhein, jaisa bank ki app ya cheque book par likha hai.',
+    '/say-ask-account-number',
+    false,
+  ),
   noWalletPayAtOffice: say(
     'Koi baat nahi. Registration fee pachees sau rupay aap office aa kar, counter par jama kara sakte hain.',
     '/say-fee-at-office',

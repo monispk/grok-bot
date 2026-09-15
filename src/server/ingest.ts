@@ -87,6 +87,8 @@ export function ingestBody(
     licence_read_by: c['license.readBy'],
     name_on_licence: c['license.name'],
     name_on_cnic: c['cnic_front.name'],
+    bank: c['bank.name'],
+    bank_account: c['bank.account'],
     quiz_declined: quiz?.['declined'],
     quiz_answers: Array.isArray(quiz?.['answers']) && (quiz['answers'] as unknown[]).length
       ? (quiz['answers'] as { id: string; chose: string | null }[])
@@ -138,9 +140,15 @@ export function ingestBody(
     }
 
   if (c['checks.wallet'] || flow['rail'])
-    validation['wallet'] = {
+    validation['bank_account'] = {
+      // The account the rider will be paid into, in their own name or not.
       passed: (c['checks.wallet'] ?? '').startsWith('match'),
-      detail: { rail: flow['rail'] ?? null, check: c['checks.wallet'] ?? null },
+      detail: {
+        rail: flow['rail'] ?? null,
+        bank: c['bank.name'] ?? null,
+        account: c['bank.account'] ?? null,
+        check: c['checks.wallet'] ?? null,
+      },
     }
 
   if (payment)

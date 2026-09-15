@@ -1,3 +1,5 @@
+import { candidates } from '../shared/account.ts'
+import type { Bank } from '../shared/banks.ts'
 import { compareNames, phonetic, similarity } from './names.ts'
 
 /**
@@ -173,6 +175,64 @@ export type WalletCheck =
   | { outcome: 'unavailable'; reason: string }
 
 /** Asks both rails about one number, and accepts either. */
+export type BankCheck =
+  | { outcome: 'pass'; title: string; sent: string }
+  | { outcome: 'fail'; titles: string[] }
+  | { outcome: 'notfound' }
+  | { outcome: 'unavailable'; reason: string }
+
+/**
+ * Whose account is this, at this bank, and is it the rider's?
+ *
+ * The number a rider types is tried in a few shapes — separators gone, leading
+ * zeros restored, a doubled branch prefix dropped — because the switch sends
+ * the account as an opaque string and a number that is right but written wrong
+ * fails exactly like one that is wrong.
+ *
+ * Three outcomes that are not the same thing, and are not allowed to look it:
+ * a title that matches, a title that does not, and no answer at all. Only the
+ * middle one is a finding about the rider.
+ */
+export async function checkBankAccount(
+  bank: Bank,
+  typed: string,
+  cnicName: string,
+): Promise<BankCheck> {
+  if (!rizqReady()) return { outcome: 'unavailable', reason: 'not configured' }
+  let auth = await token()
+  if (!auth) return { outcome: 'unavailable', reason: 'could not authenticate' }
+
+  const titles: string[] = []
+
+  for (const { send } of candidates(bank, typed)) {
+    let got = await titleFetch(bank.id, send, auth)
+    if (got && !got.ok && got.stale) {
+      auth = (await token(true)) ?? auth
+      got = await titleFetch(bank.id, send, auth)
+    }
+    if (!got) continue
+
+    if (got.ok) {
+      titles.push(got.title)
+      if (titleMatches(cnicName, got.title))
+        return { outcome: 'pass', title: got.title, sent: send }
+      // A real account in somebody else's name. No other spelling of the same
+      // number will change that, so there is nothing to gain by trying more.
+      return { outcome: 'fail', titles }
+    }
+    // 00 is "cannot verify, or the credentials are wrong" — ambiguous by
+    // design, and the answer for a wrong account number as well as a wrong
+    // bank. It is the signal to try the next shape, not to conclude anything.
+  }
+
+  if (titles.length) return { outcome: 'fail', titles }
+  // Every shape came back "unable to verify". The likeliest reading is that
+  // the number is not an account at this bank — but it is the same code the
+  // service returns when it cannot reach the bank at all, so it is reported as
+  // its own outcome rather than as a verdict on the rider.
+  return { outcome: 'notfound' }
+}
+
 export async function checkWallet(phone: string, cnicName: string): Promise<WalletCheck> {
   if (!rizqReady()) return { outcome: 'unavailable', reason: 'not configured' }
 
