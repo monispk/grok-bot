@@ -202,11 +202,18 @@ export function load(): Message[] {
  * The thread as it can be kept: what survives a reload here is also what is
  * worth sending to the server, so both use this.
  */
+/**
+ * The thread as it can be kept, whole.
+ *
+ * What is dropped here cannot survive being written down: a blob URL that dies
+ * with the page, an upload still in flight, a clip nothing was heard in. What
+ * is *not* dropped is any of the conversation — trimming belongs to the phone,
+ * which has a quota, and not to the copy a recruiter reads.
+ */
 export function keepable(messages: Message[]): Message[] {
   // blob: URLs die with the page, and a half-finished upload should not come
   // back as pending. Persist the bubble, drop what cannot survive a reload.
   return messages
-      .slice(-MAX)
       // A clip nothing could be heard in leaves no transcript. Keep it if the
       // recording itself survived — an unclear clip is exactly the one someone
       // reviewing the thread wants to play — and drop the empty bubble if not.
@@ -243,9 +250,21 @@ export function keepable(messages: Message[]): Message[] {
       )
 }
 
+/**
+ * The thread as this phone keeps it: the same, but only the last `MAX`.
+ *
+ * localStorage is a few megabytes and a rider's thread carries the words of
+ * every question twice over, so the oldest bubbles go. That trim used to be
+ * inside `keepable`, which the server copy also went through — so an
+ * application longer than sixty bubbles reached the recruiter's screen
+ * beginning halfway through, with the welcome, the name and the number cut off
+ * the front and nothing to say they had ever been there.
+ */
+const forThisPhone = (messages: Message[]): Message[] => keepable(messages).slice(-MAX)
+
 export function save(messages: Message[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(keepable(messages)))
+    localStorage.setItem(KEY, JSON.stringify(forThisPhone(messages)))
   } catch {
     /* private mode or quota — history is a convenience, not a requirement */
   }
