@@ -388,7 +388,7 @@ export const SAY = {
    * whether somebody continues — the fee — read like an aside.
    */
   docsBriefing: say(
-    'Registration ke liye ye cheezein chahiye:\n\n1. Driving license ki picture\n2. CNIC ki picture\n3. Registration fee Rs. 2,500\n4. Aap ke bank ya wallet ka naam aur account number',
+    'Registration ke liye ye cheezein chahiye:\n\n1. Driving license ki picture\n2. CNIC ki picture\n3. Aap ke bank ya wallet ka naam aur account number\n4. Registration fee Rs. 2,500',
     '/say-docs-briefing',
   ),
   /** Everything that is not a requirement, kept out of the list above. */

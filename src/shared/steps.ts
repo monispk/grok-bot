@@ -531,8 +531,9 @@ export const WELCOME_SPOKEN = [
   'السلام علیکم! Foodpanda delivery rider کی job میں خوش آمدید۔',
   'میرا نام Rozeena ہے۔ اگر آپ اچھی job ڈھونڈ رہے ہیں، تو Foodpanda delivery rider کی job کے لیے apply کریں۔',
   'Registration کے لیے، چار چیزیں چاہئیں۔',
-  'پہلی، driving license کی picture۔ دوسری، ID card کی picture۔ تیسری، registration fee پچیس سو روپے۔',
-  'اور چوتھی، آپ کے bank یا wallet کا نام اور account number۔',
+  'پہلی، driving license کی picture۔ دوسری، ID card کی picture۔',
+  'تیسری، آپ کے bank یا wallet کا نام اور account number۔',
+  'اور چوتھی، registration fee پچیس سو روپے۔',
   'یہ foodpanda کی official fee ہے، کسی شخص کو cash نہ دیں۔ میں یہ سب، آپ سے ایک ایک کر کے مانگوں گی۔',
   'اگر آپ کا کوئی سوال ہو، تو نیچے microphone کا button دبائے رکھ کر، کسی بھی وقت voice note بھیج سکتے ہیں۔',
 ].join('\n')
