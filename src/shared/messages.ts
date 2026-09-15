@@ -192,7 +192,7 @@ export const SAY = {
    * and the number is kept, so it is not asked for twice.
    */
   numberNotName: say(
-    'Ye aap ka mobile number lagta hai, wo hum aage poochein ge. Pehle apna poora naam likhein, jaisa ID Card par hai.',
+    'Ye aap ka mobile number lagta hai, wo hum aage poochein ge. Pehle apna poora naam likhein, jaisay ID Card par hai.',
     '/say-number-not-name',
   ),
   /**
