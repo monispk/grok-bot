@@ -201,6 +201,26 @@ export function hushForInput() {
   lastEnded = Date.now()
 }
 
+/**
+ * Carry on from wherever the rider interrupted.
+ *
+ * `hushForInput` cancels a clip that was about to start as well as stopping
+ * one that had, and nothing was putting the first sort back. On a phone that
+ * mattered more than it sounds: a mobile browser will not play anything until
+ * the page has been touched, so the queue is waiting for a first tap — and if
+ * that tap is the microphone, the same gesture both released the queue and
+ * cancelled it. The welcome, which is where a rider is told what to bring,
+ * never played and could only be reached by pressing play.
+ *
+ * Nothing that was actually heard comes back: `hushOthers` marks those
+ * finished and skips anything already paused, so this resumes only what never
+ * got its turn.
+ */
+export function resumeQueue() {
+  lastEnded = Date.now()
+  pump()
+}
+
 const heard = new Set<string>()
 const waiting = new Map<string, Set<() => void>>()
 

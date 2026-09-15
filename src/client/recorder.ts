@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { hushForInput } from './autoplay.ts'
+import { hushForInput, resumeQueue } from './autoplay.ts'
 import { browserSupport, classifyMicFailure, type MicFailure, type Support } from './device.ts'
 
 export type Recording = { blob: Blob; mime: string; seconds: number }
@@ -147,6 +147,16 @@ export function useRecorder({
   const go = (s: RecorderState) => {
     stateRef.current = s
     setState(s)
+    /*
+     * Back to idle means the rider has finished with the microphone — sent,
+     * cancelled, refused the permission, or let go too soon. Whatever the
+     * press silenced that had not actually started yet gets its turn now.
+     *
+     * Without this, a rider whose very first tap was the microphone lost the
+     * welcome entirely: on a phone the queue is waiting for that first tap to
+     * release it, and the same gesture released and cancelled it.
+     */
+    if (s === 'idle') resumeQueue()
   }
 
   /** Releases the microphone, so the browser stops showing it as in use. */
