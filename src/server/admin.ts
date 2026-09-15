@@ -132,6 +132,42 @@ export function bubble(m: Msg): string {
 }
 
 /**
+ * The bank account against the card, in the four states it can be in.
+ *
+ * The question is whether the account the rider will be paid into is in the
+ * same name as their CNIC, and there are four honest answers — not two. A
+ * fetch that failed and a name that did not match look identical if both are
+ * reported as "no", and only one of them is about the rider.
+ */
+export type BankCheck = 'match' | 'mismatch' | 'fetch failed' | 'cnic not read' | 'not run'
+
+export function bankCheck(recorded: string | undefined): { state: BankCheck; detail: string } {
+  if (!recorded) return { state: 'not run', detail: '' }
+  // The card was never read, so whatever this matched, it was not the CNIC.
+  if (recorded.includes('CNIC not read'))
+    return { state: 'cnic not read', detail: recorded.replace(/ — CNIC not read.*/, '') }
+  if (recorded.startsWith('match')) return { state: 'match', detail: recorded.slice(8) }
+  if (recorded.includes('no account found')) return { state: 'fetch failed', detail: 'no account found' }
+  if (recorded.startsWith('not checked')) return { state: 'fetch failed', detail: 'the service did not answer' }
+  if (recorded.startsWith('no match')) return { state: 'mismatch', detail: recorded.slice(11) }
+  return { state: 'not run', detail: recorded }
+}
+
+const BANK_SAYS: Record<BankCheck, string> = {
+  match: 'matched the CNIC',
+  mismatch: 'does NOT match the CNIC',
+  'fetch failed': 'could not be looked up',
+  'cnic not read': 'CNIC was not read — not compared with the card',
+  'not run': 'not run',
+}
+
+/** The same verdict as one line, for the panel. */
+export function bankTitle(recorded: string | undefined): string {
+  const { state, detail } = bankCheck(recorded)
+  return detail ? `${BANK_SAYS[state]} — ${detail}` : BANK_SAYS[state]
+}
+
+/**
  * The face check, said in full.
  *
  * It is the criterion a rider is actually verified by — the selfie against the
@@ -348,6 +384,12 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
         <td class="nowrap mono">${esc(f['cnic'] || '—')}</td>
         <td class="nowrap">${r.step}<span class="of">/9</span>${r.completed ? ' <span class="pill ok">done</span>' : ''}</td>
         <td class="mid-cell">${mark(c['checks.faceMatch'])}</td>
+        <td class="mid-cell">${(() => {
+          const { state } = bankCheck(c['checks.wallet'])
+          const cls = state === 'match' ? 'good' : state === 'mismatch' ? 'bad' : state === 'not run' ? 'none' : 'mid'
+          const glyph = state === 'match' ? '✓' : state === 'mismatch' ? '✗' : state === 'not run' ? '–' : '?'
+          return `<span class="mark ${cls}" title="${esc(bankTitle(c['checks.wallet']))}">${glyph}</span>`
+        })()}</td>
         <td class="mid-cell">${
           // An expired card fails the column outright, whatever the name said:
           // it is the one licence fact that decides whether the rider pays.
@@ -355,7 +397,6 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
             ? `<span class="mark bad" title="licence expired ${esc(c['license.expiry'] ?? '')}">✗</span>`
             : mark(c['checks.licenceVsCnic'])
         }</td>
-        <td class="mid-cell">${mark(c['checks.wallet'])}</td>
         <td class="nowrap"><span class="shots">${shots || '<span class="sub">none</span>'}</span></td>
         <td class="nowrap">${
           pay
@@ -381,8 +422,8 @@ export function listPage(rows: Row[], waiting: Waiting[], pushOn: boolean): stri
   <div class="card"><b>${pushOn ? 'on' : 'off'}</b><span>backend push</span></div>
 </div>
 <div class="tablewrap"><table>
-<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face Match</th><th>Licence</th>
-<th>Wallet</th><th>Docs</th><th>Fee</th><th>Quiz</th><th>Synced</th></tr></thead>
+<thead><tr><th>Started</th><th>Rider</th><th>CNIC</th><th>Step</th><th>Face Match</th><th>Bank / CNIC</th><th>Licence</th>
+<th>Docs</th><th>Fee</th><th>Quiz</th><th>Synced</th></tr></thead>
 <tbody>${body || '<tr><td colspan="11"><small>No applications yet.</small></td></tr>'}</tbody>
 </table></div>
 </div></body></html>`
@@ -449,7 +490,7 @@ export function detailPage(
   <div class="panel"><h2>Verification</h2>
     ${kv('Face Match', faceMatch(c['checks.faceMatch']))}
     ${kv('Licence name vs CNIC', c['checks.licenceVsCnic'])}
-    ${kv('Wallet in rider’s name', c['checks.wallet'])}
+    ${kv('Bank / CNIC Name Match', bankTitle(c['checks.wallet']))}
     ${kv('Licence number', c['license.number'])}
     ${kv(
       'Licence expiry',

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { bubble, faceMatch, uploaded } from './admin.ts'
+import { bankCheck, bankTitle, bubble, faceMatch, uploaded } from './admin.ts'
 import { MIN_SIMILARITY } from './rozee.ts'
 
 /**
@@ -139,4 +139,31 @@ test('the face match is reported with its score and the bar it had to clear', ()
 test('a check that never ran says so, rather than reading as a failure', () => {
   assert.equal(faceMatch(undefined), 'not run')
   assert.equal(faceMatch('not checked'), 'not checked')
+})
+
+/**
+ * Whether the account a rider will be paid into is in the same name as their
+ * CNIC. Four honest answers, not two: a fetch that failed and a name that did
+ * not match look identical if both are reported as "no", and only one of them
+ * is about the rider.
+ */
+test('the bank check keeps its four outcomes apart', () => {
+  assert.equal(bankCheck('match — MONIS UR RAHMAN (jazzcash)').state, 'match')
+  assert.equal(bankCheck('no match — jazzcash: SOMEONE ELSE').state, 'mismatch')
+  assert.equal(bankCheck('no match — no account found').state, 'fetch failed')
+  assert.equal(bankCheck('not checked').state, 'fetch failed')
+  assert.equal(bankCheck(undefined).state, 'not run')
+})
+
+test('a match against a name nobody verified is not a match against the card', () => {
+  const r = bankCheck('match — MONIS UR RAHMAN (jazzcash) — CNIC not read, compared with the typed name')
+  assert.equal(r.state, 'cnic not read')
+  assert.match(bankTitle('match — X (jazzcash) — CNIC not read, compared with the typed name'), /CNIC was not read/)
+})
+
+test('the panel says it in words, not a tick', () => {
+  assert.match(bankTitle('match — MONIS UR RAHMAN (jazzcash)'), /matched the CNIC/)
+  assert.match(bankTitle('no match — jazzcash: SOMEONE ELSE'), /does NOT match the CNIC/)
+  assert.match(bankTitle('not checked'), /could not be looked up/)
+  assert.equal(bankTitle(undefined), 'not run')
 })

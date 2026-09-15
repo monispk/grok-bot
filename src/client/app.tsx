@@ -561,8 +561,24 @@ export function App() {
    * runs in the background because nothing the rider does depends on it.
    */
   useEffect(() => {
-    const name = collected['cnic_front.name'] ?? fullName
-    if (!phone || !name || collected['checks.wallet']) return
+    if (!phone || collected['checks.wallet']) return
+
+    /*
+     * The name on the card, and only that, while there is still a chance of
+     * getting it.
+     *
+     * The check answers one question — is the account in the same name as the
+     * CNIC — and it used to fall back to the name the rider typed the moment
+     * the card had not been read yet. Which ran it two steps early, against a
+     * name nobody had verified, and recorded the verdict as though the card
+     * had been seen. It waits for the card now, and if collection ends without
+     * one it says which name it actually used.
+     */
+    const onCard = collected['cnic_front.name']
+    const done = step >= STEPS.length
+    const name = onCard ?? (done ? fullName : '')
+    if (!name) return
+
     let cancelled = false
     fetch('/api/wallet', {
       method: 'POST',
@@ -572,11 +588,14 @@ export function App() {
       .then((r) => r.json())
       .then((r: { outcome?: string; rail?: string; title?: string; titles?: { rail: string; title: string }[] }) => {
         if (cancelled || !r.outcome) return
+        // The source travels with the verdict: a match against a typed name is
+        // not the same claim as a match against the card.
+        const against = onCard ? '' : ' — CNIC not read, compared with the typed name'
         const note =
           r.outcome === 'pass'
-            ? `match — ${r.title} (${r.rail})`
+            ? `match — ${r.title} (${r.rail})${against}`
             : r.outcome === 'fail'
-              ? `no match — ${(r.titles ?? []).map((t) => `${t.rail}: ${t.title}`).join(', ') || 'no account found'}`
+              ? `no match — ${(r.titles ?? []).map((t) => `${t.rail}: ${t.title}`).join(', ') || 'no account found'}${against}`
               : 'not checked'
         setFlow((f) => ({ ...f, collected: { ...f.collected, 'checks.wallet': note } }))
       })
@@ -584,7 +603,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [phone, fullName, collected])
+  }, [phone, fullName, collected, step])
 
   const say = useCallback((...lines: Message[]) => {
     setMessages((m) => append(m, lines))
