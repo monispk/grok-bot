@@ -1,10 +1,23 @@
 /**
- * Uploaded documents are held in memory with a short TTL and never written to
- * disk. These are CNICs, licences and utility bills — the exact set identity
- * theft is built from — and persisting them needs the encryption, access
- * control and retention policy described in docs/onboarding-flow.md. Until that
- * exists, nothing outlives the process. When the verification APIs land, this is
- * where the bytes get forwarded to them.
+ * Everything a rider sends: their licence, their CNIC, their selfie, their
+ * voice notes.
+ *
+ * Two stores, one door. New uploads sit in memory for half an hour, which is
+ * where the verification calls find them while the rider is still in the
+ * conversation; every upload is also written to Postgres, and stays there for
+ * KEEP_DAYS. `find` reads memory first and the database after, so nothing that
+ * needs an upload has to care which it came from.
+ *
+ * That distinction used to leak. A memory-only read was the normal way to get
+ * an upload, and the half hour was therefore a deadline on things that had no
+ * business having one — a rider who took longer than that over their documents
+ * had their face check come back "not checked", and every document queued for
+ * the backend before the endpoint existed reported itself as lost while
+ * sitting in the database. There is no memory-only reader any more.
+ *
+ * These are CNICs, licences and photographs of faces — the exact set identity
+ * theft is built from — so the window is deliberate and finite, and the
+ * retention rules live in db.ts with the sweep that enforces them.
  */
 import { createHash } from 'node:crypto'
 import { SAY } from '../shared/messages.ts'
@@ -113,8 +126,6 @@ export function hold(mime: string, bytes: Uint8Array): Upload | null {
   total += bytes.length
   return upload
 }
-
-export const get = (id: string): Upload | undefined => store.get(id)
 
 /**
  * Keeps a document past the half hour it lives in memory, so a recruiter can
