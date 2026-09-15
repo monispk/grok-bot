@@ -1066,6 +1066,13 @@ footer button.stop { background: var(--err); }
   pointer-events: none;
 }
 
+/* The tap-to-hear line is a sentence, not a two-word nudge: let it wrap. */
+.toast.tap {
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+
 /* ---------- the microphone sheet ---------- */
 
 .sheetback {

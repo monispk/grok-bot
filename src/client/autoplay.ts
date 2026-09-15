@@ -108,9 +108,30 @@ function pump() {
         /* it will start from the beginning anyway */
       }
       blocked = true
+      tell()
       waitForTouch()
     })
   }, wait)
+}
+
+/**
+ * Whether the browser is refusing to make a sound until the page is touched.
+ *
+ * Worth telling the rider about. A phone will not play anything before a
+ * gesture — and the count resets whenever the site moves to a new address,
+ * because the engagement that earns the exemption is kept per origin — so a
+ * rider who cannot read can sit in front of the instructions in silence with
+ * no idea there is anything to hear.
+ */
+const watchers = new Set<(blocked: boolean) => void>()
+const tell = () => watchers.forEach((cb) => cb(blocked))
+
+export function onBlocked(cb: (blocked: boolean) => void): () => void {
+  watchers.add(cb)
+  cb(blocked)
+  return () => {
+    watchers.delete(cb)
+  }
 }
 
 function waitForTouch() {
@@ -118,6 +139,7 @@ function waitForTouch() {
     document.removeEventListener('pointerdown', go)
     document.removeEventListener('keydown', go)
     blocked = false
+    tell()
     // They have just acted; do not make them sit through the gap as well.
     lastEnded = 0
     pump()
@@ -290,4 +312,5 @@ export function stopAll() {
   manual = null
   lastEnded = 0
   blocked = false
+  tell()
 }

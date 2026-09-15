@@ -62,7 +62,7 @@ import { lookup, pushSoon, resume } from './sync.ts'
 import { blip, cashBell, CHOICES, Choices, type Choice } from './choices.tsx'
 import { Camera } from './camera.tsx'
 import { BEAT_MS, GROUP_MS, MAX_TICKS, VOICE_PATIENCE_MS, WORD_MS } from './pace.ts'
-import { isReady, setOrder, stopAll, whenReady } from './autoplay.ts'
+import { isReady, onBlocked, setOrder, stopAll, whenReady } from './autoplay.ts'
 import { runTurn, warm } from './stream.ts'
 import { forModel, VOICE_SOURCES, WELCOME } from './welcome.ts'
 
@@ -266,6 +266,16 @@ export function App() {
   const [micSheet, setMicSheet] = useState<MicProblem | null>(null)
   /** The "hold to talk" hint, shown for a moment after a tap. */
   const [hint, setHint] = useState(false)
+  /**
+   * The browser is refusing sound until the screen is touched.
+   *
+   * Shown, because a rider who cannot read has no other way to know there is
+   * anything to hear — and because the exemption a phone grants a familiar
+   * site is counted per address, so moving to a domain of our own set every
+   * rider back to zero.
+   */
+  const [needsTap, setNeedsTap] = useState(false)
+  useEffect(() => onBlocked(setNeedsTap), [])
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Lines said once per visit, so reopening a sheet does not repeat them. */
   const saidOnce = useRef(new Set<string>())
@@ -2196,6 +2206,11 @@ export function App() {
       {hint && (
         <div class="toast" role="status">
           Bolne ke liye dabaye rakhein
+        </div>
+      )}
+      {needsTap && !hint && (
+        <div class="toast tap" role="status">
+          🔊 {SAY.tapToHear.text}
         </div>
       )}
 

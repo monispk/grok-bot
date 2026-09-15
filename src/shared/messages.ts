@@ -44,6 +44,20 @@ export const SAY = {
     '/say-not-license',
   ),
   /**
+   * The browser will not make a sound until the screen is touched.
+   *
+   * A phone refuses audio before a gesture, and the engagement that earns an
+   * exemption is counted per address — so moving to a domain of our own reset
+   * it to zero for every rider. Left unsaid, a rider who cannot read sits in
+   * front of the instructions in silence with nothing to suggest there is
+   * anything to hear.
+   */
+  tapToHear: say(
+    'Awaaz sunne ke liye screen par ek baar tap karein.',
+    '/say-tap-to-hear',
+    false,
+  ),
+  /**
    * Said while the last check runs.
    *
    * A second or two of silence at the end of a ten-minute conversation reads
@@ -374,7 +388,7 @@ export const SAY = {
    * whether somebody continues — the fee — read like an aside.
    */
   docsBriefing: say(
-    'Registration ke liye ye cheezein chahiye:\n\n1. Driving license ki picture\n2. CNIC ki picture\n3. Registration fee Rs. 2,500',
+    'Registration ke liye ye cheezein chahiye:\n\n1. Driving license ki picture\n2. CNIC ki picture\n3. Registration fee Rs. 2,500\n4. Aap ke bank ya wallet ka naam aur account number',
     '/say-docs-briefing',
   ),
   /** Everything that is not a requirement, kept out of the list above. */
