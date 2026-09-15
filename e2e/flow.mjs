@@ -1461,6 +1461,57 @@ await check('voice notes play themselves, one at a time, with a pause', async ()
   }
 })
 
+await check('answering stops whatever Rozeena was saying', async () => {
+  /*
+   * A voice note carrying on over an answer is the app talking across the
+   * person it is meant to be listening to — and on a phone held to the ear it
+   * is the only thing they hear. Every answer silences it: typed, tapped, or
+   * spoken. This drives the tapped one, at the bike question, where the answer
+   * is a picture.
+   */
+  const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 } })
+  const pg = await ctx3.newPage()
+  await pg.goto(`${APP}/?chrome=no`)
+  await pg.evaluate((at) => {
+    localStorage.clear()
+    localStorage.setItem('grok-bot:flow', JSON.stringify({
+      step: at, firstName: 'Monis', fullName: 'Monis Ur Rahmaan', cnic: '',
+      collected: {}, ineligible: false, phone: '923348234444', rail: 'neither', noWallet: true,
+    }))
+    localStorage.setItem('grok-bot:history', JSON.stringify([
+      { role: 'assistant', content: 'Kya aap ke paas apni bike hai?' },
+      {
+        role: 'assistant',
+        content: '',
+        kind: 'audio',
+        sources: [
+          { src: '/ask-bike.opus', type: 'audio/ogg; codecs=opus' },
+          { src: '/ask-bike.m4a', type: 'audio/mp4' },
+        ],
+      },
+    ]))
+  }, at('bike'))
+  await pg.reload()
+  await pg.waitForSelector('.choices button', { timeout: 20_000 })
+  await pg.waitForSelector('.voice button', { timeout: 20_000 })
+
+  // Started by a real tap, the way a rider starts one.
+  await pg.click('.voice button')
+  const playing = await settle(async () =>
+    pg.evaluate(() => [...document.querySelectorAll('audio')].some((a) => !a.paused)),
+    10_000,
+  )
+  assert.ok(playing, 'nothing was playing to interrupt')
+
+  await pg.click('.choices button')
+  await pg.waitForTimeout(800)
+  const stillGoing = await pg.evaluate(
+    () => [...document.querySelectorAll('audio')].filter((a) => !a.paused).length,
+  )
+  assert.equal(stillGoing, 0, `a voice note kept playing over the answer (${stillGoing})`)
+  await pg.context().close()
+})
+
 await check('pressing play on one voice note silences every other', async () => {
   // A rider tapping a second clip while the first is going has no way to stop
   // the first: there is one play button per bubble and no master control.

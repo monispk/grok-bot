@@ -7,6 +7,7 @@ import {
   useState,
 } from 'preact/hooks'
 import { Dashboard } from './dashboard.tsx'
+import { hushForInput } from './autoplay.ts'
 import { holdFresh } from './fresh.ts'
 import {
   alreadyAnswered,
@@ -1080,6 +1081,16 @@ export function App() {
 
   const processText = useCallback(
     async (text: string, withUser: Message[]) => {
+      /*
+       * The rider has answered, so Rozeena stops talking.
+       *
+       * Every answer arrives here — typed, tapped, or spoken — so this is the
+       * one place it has to be said. A voice note carrying on over an answer
+       * is the app talking across the person it is supposed to be listening
+       * to, and on a phone held to the ear it is the only thing they hear.
+       */
+      hushForInput()
+
       /**
        * The fee did not go through and the rider was asked whether to try
        * again. Yes puts the payment back to 'initiated', which the effect
@@ -1679,6 +1690,9 @@ export function App() {
    */
   const chooseOffice = useCallback(
     (branch: OfficeId, extra: Record<string, string> = {}) => {
+      // Picking a branch is an answer like any other; the two office buttons
+      // are the only ones that do not reach `processText`.
+      hushForInput()
       advanceFrom(step, [thanksOffice()], {
         branch,
         pickOffice: false,
@@ -1697,6 +1711,7 @@ export function App() {
    * of not taking their answer seriously.
    */
   const noOfficeForThem = useCallback(() => {
+    hushForInput()
     advanceFrom(step, [bot(NO_OFFICE), bot(SAY.noOfficeNearby.text)], {
       pickOffice: false,
       noOffice: true,

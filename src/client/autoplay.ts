@@ -177,17 +177,23 @@ function hushOthers(except: HTMLAudioElement | null) {
 /**
  * Everything stops, and stays stopped.
  *
- * Called when the rider holds the microphone. A voice note playing into an
- * open microphone is recorded along with them — Rozeena's own words end up
- * inside the rider's answer and Whisper transcribes both. Worse on the cheap
- * handsets riders actually use, where the speaker and the microphone are
+ * Called the moment the rider answers — by pressing the microphone, tapping a
+ * picture or a reply, or sending a line. Two reasons, and they are different.
+ *
+ * The microphone is the mechanical one: a voice note playing into an open mic
+ * is recorded along with the rider, and Whisper transcribes both. Worse on the
+ * cheap handsets riders actually use, where the speaker and the microphone are
  * centimetres apart and there is no echo cancellation worth the name.
  *
+ * The buttons are the human one. A rider who has answered has finished
+ * listening, and a voice note carrying on over their answer is the app talking
+ * across them.
+ *
  * Whatever was playing is marked heard, so the queue does not start it again
- * the moment the recording ends. A rider who wants it again presses play; a
- * clip resuming by itself over their next answer would be the same bug twice.
+ * the moment they are done. A rider who wants it again presses play; a clip
+ * resuming by itself over their next answer would be the same thing twice.
  */
-export function hushForRecording() {
+export function hushForInput() {
   clearTimers()
   hushOthers(null)
   current = null

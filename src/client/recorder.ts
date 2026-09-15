@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
-import { hushForRecording } from './autoplay.ts'
+import { hushForInput } from './autoplay.ts'
 import { browserSupport, classifyMicFailure, type MicFailure, type Support } from './device.ts'
 
 export type Recording = { blob: Blob; mime: string; seconds: number }
@@ -181,6 +181,16 @@ export function useRecorder({
 
     held.current = true
     go('asking')
+    /*
+     * Silence, on the press rather than on the recording.
+     *
+     * A voice note still playing goes into the microphone with the rider and
+     * Whisper hears both — but the wait between here and the first byte is the
+     * permission check and the phone handing over the stream, which on a slow
+     * handset is a second or more of Rozeena still talking while the rider has
+     * already started.
+     */
+    hushForInput()
 
     const known = await permissionState()
     if (known === 'denied') {
@@ -236,9 +246,6 @@ export function useRecorder({
         go('reviewing')
       } else onDone(clip)
     }
-    // Silence first, then record. A voice note still playing goes into the
-    // microphone with the rider, and Whisper hears both of them.
-    hushForRecording()
     startedAt.current = Date.now()
     r.start()
     setSeconds(0)
