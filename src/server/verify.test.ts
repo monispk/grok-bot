@@ -86,3 +86,41 @@ test('a licence that could not be read is asked for at the office', () => {
   assert.doesNotMatch(lines.join('\n'), /counter par jama karayein/)
   assert.match(farewellLines({ owesFee: false, licenceUnread: true }).join('\n'), /asli driving license/)
 })
+
+/**
+ * The address is shown, never spoken.
+ *
+ * Uplift reads "Al Babar Center, F8 Markaz" as Urdu words and produces a place
+ * that does not exist. Three things have to hold for it to stay silent: the
+ * bubble is not marked unscripted, and neither of the two rules in `append`
+ * that speak a plain line — a recording made for it, or a line of ours still
+ * waiting for one — matches the address either.
+ */
+test('the office address is written but not read aloud', async () => {
+  const { submitted } = await import('../client/flow.ts')
+  const { OFFICES } = await import('../shared/steps.ts')
+  const { audioForText, awaitingVoice } = await import('../shared/messages.ts')
+
+  for (const office of Object.values(OFFICES)) {
+    const said = submitted('verified_paid', 'Monis', office, { owesFee: false })
+    const address = said.find((m) => m.content === office.address)
+    assert.ok(address, 'the invitation still carries the address')
+    assert.ok(!address.unscripted, 'the address is not handed to the voice')
+    assert.equal(audioForText(office.address), null)
+    assert.equal(awaitingVoice(office.address), false)
+
+    // Everything else about going to the office is still spoken — by Uplift,
+    // by a recording named for the words, or by a clip travelling behind it.
+    let spokenLines = 0
+    said.forEach((m, i) => {
+      if (m.kind || !m.content.trim() || m.content === office.address) return
+      const carried = said[i + 1]?.kind === 'audio'
+      assert.ok(
+        m.unscripted || audioForText(m.content) || carried,
+        `silent line: ${m.content}`,
+      )
+      spokenLines++
+    })
+    assert.ok(spokenLines > 3, 'the invitation is still mostly spoken')
+  }
+})
