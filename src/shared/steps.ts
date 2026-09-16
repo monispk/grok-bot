@@ -717,6 +717,57 @@ export const OFFICES = {
   },
 } as const
 
+/**
+ * Segments of an address that name no place: our own name, a floor, a door
+ * number. Everything else in an address is somewhere, and somewhere is what
+ * the voice cannot say.
+ */
+const PLACELESS = /^(foodpanda office|office no\.?\s*\d+|(first|second|third|ground) floor)$/i
+
+/**
+ * The words that name a place we send riders to.
+ *
+ * Derived from the offices themselves rather than listed, because the list
+ * will grow: an office added here is covered the day it is added, without
+ * anyone remembering to add it somewhere else as well. The city is left out —
+ * "Islamabad" is a city a rider lives in as well as an office we have, and
+ * the voice says a city name perfectly well.
+ */
+const OFFICE_WORDS: string[] = (() => {
+  const words = new Set<string>()
+  for (const office of Object.values(OFFICES)) {
+    words.add(office.address)
+    words.add(office.short)
+    for (const part of [...office.address.split(','), ...office.short.split(',')]) {
+      const p = part.trim()
+      if (p.length < 3) continue
+      if (p.toLowerCase() === office.city.toLowerCase()) continue
+      if (PLACELESS.test(p)) continue
+      words.add(p)
+    }
+  }
+  return [...words]
+})()
+
+/**
+ * Does this line name an office?
+ *
+ * Asked of everything the bot is about to say, because nothing that names an
+ * office is ever read aloud. Uplift is given Roman Urdu and pronounces a
+ * sector, a plaza or a road as though the words were Urdu — "F8 Markaz"
+ * becomes a phrase, not a place — and a rider listening for where to go is
+ * told somewhere that does not exist, confidently. With more offices coming,
+ * each with its own plaza and its own road, there is no version of this that
+ * gets better by being tried harder.
+ *
+ * The address is never withheld, only unspoken: it is on screen as text, and
+ * the pin beneath it opens Google Maps.
+ */
+export const mentionsOffice = (text: string): boolean => {
+  const t = text.toLowerCase()
+  return OFFICE_WORDS.some((w) => t.includes(w.toLowerCase()))
+}
+
 export type OfficeId = keyof typeof OFFICES
 
 /** The cities an office is actually in. */

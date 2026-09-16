@@ -88,24 +88,52 @@ test('a licence that could not be read is asked for at the office', () => {
 })
 
 /**
- * The address is shown, never spoken.
+ * Nowhere a rider is sent is ever read aloud.
  *
- * Uplift reads "Al Babar Center, F8 Markaz" as Urdu words and produces a place
- * that does not exist. Three things have to hold for it to stay silent: the
- * bubble is not marked unscripted, and neither of the two rules in `append`
- * that speak a plain line — a recording made for it, or a line of ours still
- * waiting for one — matches the address either.
+ * Uplift pronounces a sector, a plaza or a road as though it were Urdu, and
+ * the place it names is not anywhere. With more offices coming — each with its
+ * own address — the rule is the whole of the fix: the words go on screen with
+ * the pin, and the voice stays out of it.
+ */
+test('an office is named in writing and nowhere else', async () => {
+  const { mentionsOffice, OFFICES, STEP_SPECS } = await import('../shared/steps.ts')
+  const { SAY } = await import('../shared/messages.ts')
+
+  for (const office of Object.values(OFFICES)) {
+    assert.ok(mentionsOffice(office.address), office.address)
+    assert.ok(mentionsOffice(office.short), office.short)
+    // The locality on its own, as the model paraphrases it.
+    assert.ok(mentionsOffice(`Aap ${office.short.split(',')[0]!} aa jayein.`))
+    // The city is not an office. A rider lives in one, and the voice says it
+    // perfectly well — "Achha, Islamabad!" must keep its recording.
+    assert.equal(mentionsOffice(`Achha, ${office.city}! Aap ka office ye hai.`), false)
+  }
+
+  // Nothing with a recording, and no question we ask, names a place.
+  for (const line of Object.values(SAY))
+    assert.equal(mentionsOffice(line.text), false, line.text)
+  for (const step of STEP_SPECS) assert.equal(mentionsOffice(step.ask), false, step.ask)
+})
+
+/**
+ * The invitation, bubble by bubble: the address arrives written, and every
+ * other line of it still speaks.
+ *
+ * Three things have to hold for the address to stay silent, and all three are
+ * checked, because `append` speaks a plain line for any one of them: the
+ * bubble is marked unscripted, a recording was made for those exact words, or
+ * the line is one of ours still waiting for one.
  */
 test('the office address is written but not read aloud', async () => {
   const { submitted } = await import('../client/flow.ts')
-  const { OFFICES } = await import('../shared/steps.ts')
+  const { mentionsOffice, OFFICES } = await import('../shared/steps.ts')
   const { audioForText, awaitingVoice } = await import('../shared/messages.ts')
 
   for (const office of Object.values(OFFICES)) {
     const said = submitted('verified_paid', 'Monis', office, { owesFee: false })
     const address = said.find((m) => m.content === office.address)
     assert.ok(address, 'the invitation still carries the address')
-    assert.ok(!address.unscripted, 'the address is not handed to the voice')
+    assert.ok(mentionsOffice(address.content), 'and the rule catches it')
     assert.equal(audioForText(office.address), null)
     assert.equal(awaitingVoice(office.address), false)
 
@@ -113,7 +141,7 @@ test('the office address is written but not read aloud', async () => {
     // by a recording named for the words, or by a clip travelling behind it.
     let spokenLines = 0
     said.forEach((m, i) => {
-      if (m.kind || !m.content.trim() || m.content === office.address) return
+      if (m.kind || !m.content.trim() || mentionsOffice(m.content)) return
       const carried = said[i + 1]?.kind === 'audio'
       assert.ok(
         m.unscripted || audioForText(m.content) || carried,

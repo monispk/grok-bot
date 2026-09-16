@@ -28,6 +28,7 @@ import {
   audioSources,
   feeReceivedLine,
   type InviteOpts,
+  mentionsOffice,
   NO_OFFICE,
   officeChoice,
   OFFICES,
@@ -206,6 +207,14 @@ function append(existing: Message[], incoming: Message[]): Message[] {
     if (m.role === 'assistant' && !m.kind && repeats) continue
     out.push(m)
     if (m.role === 'assistant' && !m.kind) {
+      /*
+       * Nothing that names an office is read aloud — the invitation's address
+       * line, and anything the model says about where to go. The voice cannot
+       * pronounce a sector or a plaza and says a place that is not anywhere,
+       * which is worse than silence because it sounds certain. The words stay
+       * on screen, with the pin under them.
+       */
+      if (mentionsOffice(m.content)) continue
       // A step's question arrives as the words followed by its own recording.
       // Looking one ahead stops a second copy being attached to the same line.
       const carried = incoming[i + 1]

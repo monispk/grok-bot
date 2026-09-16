@@ -94,21 +94,6 @@ export type Office = {
 }
 
 /**
- * A line of the invitation, spoken unless it is the address itself.
- *
- * The address is the one thing here that the voice cannot say. "Al Babar
- * Center, F8 Markaz" is a plaza and a sector, and Uplift reads both as Urdu
- * words — a rider listening for where to go hears something that is not the
- * name of anywhere, and it is worse than silence because it sounds confident.
- *
- * It loses the rider nothing: the line before it says an office is coming, the
- * address is on screen as text, and the pin under it opens Google Maps. Every
- * other line of the invitation is still read aloud.
- */
-const written = (line: string, address: string): Message =>
-  line.includes(address) ? bot(line) : spoken(line)
-
-/**
  * The pin: a picture of the street, and a tap that opens Google Maps.
  *
  * A rider who has never been to F-8 Markaz needs to see it, not read an
@@ -138,7 +123,9 @@ export const submitted = (
   opts: InviteOpts,
 ): Message[] => [
   ...submittedLines(outcome, firstName).map(spoken),
-  ...inviteLines(office.address, opts).map((line) => written(line, office.address)),
+  // The address among them is written, not spoken: `append` drops the voice
+  // from any line that names an office, wherever in the conversation it is.
+  ...inviteLines(office.address, opts).map(spoken),
   pin(office),
   spoken(WATCH_VIDEO),
   {

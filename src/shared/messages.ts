@@ -302,15 +302,6 @@ export const SAY = {
     'Ye number theek nahi lag raha. Baraye meherbani apna poora mobile number check kar ke dobara likhein, jaise 0300 1234567.',
     '/say-bad-number',
   ),
-  /** The pin was fine; the rider is simply far from both offices. Said so, plainly. */
-  farFromOffices: say(
-    'Shukriya, location mil gayi. Aap dono offices se kaafi door hain. Neeche bata dein, aap kis office aayein ge: Islamabad F8 Markaz, ya Rawalpindi Saddar.',
-    '/say-far-from-offices',
-  ),
-  pickOffice: say(
-    'Koi baat nahi. Aap khud bata dein: aap Islamabad ke F8 Markaz office aayein ge ya Rawalpindi ke Saddar office? Neeche apna office chunein.',
-    '/say-pick-office',
-  ),
   feeAsking: say(
     'Ab registration fee aap ke wallet se li ja rahi hai. Apne phone par aane wali request manzoor kar dein.',
     '/say-fee-asking',
